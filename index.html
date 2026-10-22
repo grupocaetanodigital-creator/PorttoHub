@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <script>
+      // Blindagem global no navegador contra ReferenceError de escopos legados
+      window.idCondominioAtivo = window.idCondominioAtivo || '';
+
+      // Diretriz do AI Studio: HMR desativado no ambiente embutido em iframe. Ignora erros inofensivos de WebSocket.
+      (function() {
+        var _err = console.error;
+        var _warn = console.warn;
+        console.error = function() {
+          var str = Array.prototype.slice.call(arguments).map(function(a) {
+            return (a && a.message) ? a.message : String(a);
+          }).join(' ');
+          if (str.indexOf('[vite]') !== -1 && (str.indexOf('websocket') !== -1 || str.indexOf('WebSocket') !== -1 || str.indexOf('ws://') !== -1 || str.indexOf('wss://') !== -1)) {
+            return;
+          }
+          return _err.apply(console, arguments);
+        };
+        console.warn = function() {
+          var str = Array.prototype.slice.call(arguments).map(function(a) {
+            return (a && a.message) ? a.message : String(a);
+          }).join(' ');
+          if (str.indexOf('[vite]') !== -1 && (str.indexOf('websocket') !== -1 || str.indexOf('WebSocket') !== -1 || str.indexOf('ws://') !== -1 || str.indexOf('wss://') !== -1)) {
+            return;
+          }
+          return _warn.apply(console, arguments);
+        };
+      })();
+
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>PorttoHub - Sistema Integrado de Portaria</title>
+    <meta name="description" content="PorttoHub - Sistema integrado de portaria, controle de acesso, rondas patrimoniais, encomendas, custódia e assistente de organização do Supabase." />
+    <meta property="og:title" content="PorttoHub - Sistema Integrado de Portaria" />
+    <meta property="og:description" content="PorttoHub - Sistema integrado de portaria, controle de acesso, rondas patrimoniais, encomendas, custódia e assistente de organização do Supabase." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="PorttoHub" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  </head>
+  <body class="bg-slate-900 text-slate-100 antialiased select-none">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
