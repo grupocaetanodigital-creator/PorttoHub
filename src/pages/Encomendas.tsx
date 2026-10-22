@@ -227,6 +227,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
 
   // Câmera Direta para Foto da Etiqueta
   const [modalCameraEtiqueta, setModalCameraEtiqueta] = useState(false);
+  const [codigoDetectadoAoVivo, setCodigoDetectadoAoVivo] = useState<string>('');
   const videoCameraEtiquetaRef = useRef<HTMLVideoElement | null>(null);
   const fileInputEtiquetaRef = useRef<HTMLInputElement | null>(null);
 
@@ -765,6 +766,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
    */
   const abrirCameraFotoEtiqueta = async () => {
     setModalCameraEtiqueta(true);
+    setCodigoDetectadoAoVivo('');
     setErroCamera('');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -793,6 +795,75 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     setModalCameraEtiqueta(false);
   };
 
+  /**
+   * Disparado ao pressionar o botão flutuante de Nova Entrada (+)
+   * Abre diretamente a câmera para o operador posicionar e tirar a foto da etiqueta,
+   * enquanto o leitor de código já extrai e preenche o rastreio em tempo real.
+   */
+  const iniciarEntradaComCamera = () => {
+    if (itensSelecionadosIds.length > 0) return;
+    if (!podeFazerEntrada) {
+      setMensagem({ tipo: 'erro', texto: 'Acesso restrito para registrar novas entradas.' });
+      return;
+    }
+    // Prepara estados limpos
+    setFotoEtiquetaUrl('');
+    setCodigoBarras('');
+    setCodigoDetectadoAoVivo('');
+    setSugestoesCodigosOcr([]);
+    setCodigoSelecionadoOcr('');
+    setOcrDadosDetectados(null);
+    setItemTriadoWhats(null);
+    // Abre a câmera diretamente
+    abrirCameraFotoEtiqueta();
+  };
+
+  /**
+   * Leitor de código em tempo real enquanto o operador posiciona a câmera para foto
+   */
+  useEffect(() => {
+    let intervalId: any = null;
+    let cancelado = false;
+
+    if (modalCameraEtiqueta) {
+      intervalId = setInterval(async () => {
+        if (cancelado) return;
+        const video = videoCameraEtiquetaRef.current;
+        if (!video || video.readyState !== 4) return;
+
+        if ('BarcodeDetector' in window) {
+          try {
+            const detector = new (window as any).BarcodeDetector({
+              formats: ['code_128', 'ean_13', 'qr_code', 'itf', 'code_39', 'upc_a', 'ean_8']
+            });
+            const barcodes = await detector.detect(video);
+            if (barcodes && barcodes.length > 0) {
+              const valorLido = (barcodes[0].rawValue || '').trim();
+              // Não aceitar chave DANFE de 44 dígitos
+              if (valorLido && valorLido.replace(/\D/g, '').length < 35) {
+                setCodigoBarras((prev) => {
+                  if (prev !== valorLido) {
+                    setCodigoDetectadoAoVivo(valorLido);
+                    tocarBipSucesso();
+                    return valorLido;
+                  }
+                  return prev;
+                });
+              }
+            }
+          } catch (e) {
+            // Continua em silêncio se algum frame não for decodificado
+          }
+        }
+      }, 200);
+    }
+
+    return () => {
+      cancelado = true;
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [modalCameraEtiqueta]);
+
   const capturarFotoDaCameraAoVivo = () => {
     if (!videoCameraEtiquetaRef.current) return;
     const video = videoCameraEtiquetaRef.current;
@@ -806,8 +877,21 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     canvas.toBlob((blob) => {
       if (!blob) return;
       const file = new File([blob], `etiqueta_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      
+      // Cria preview local imediato da foto tirada (0ms de espera)
+      const previewUrl = URL.createObjectURL(blob);
+      setFotoEtiquetaUrl(previewUrl);
+
+      // Fecha a câmera de captura ao vivo
       fecharCameraFotoEtiqueta();
-      uploadFotoStorage(file, 'etiquetas', setFotoEtiquetaUrl);
+
+      // Abre imediatamente o menu de entrada de encomenda já com a foto e o código de rastreio preenchidos
+      setModalEntradaAberta(true);
+
+      // Inicia upload seguro para o storage e o OCR ultra-rápido (< 5s) em segundo plano
+      uploadFotoStorage(file, 'etiquetas', (urlFinal) => {
+        setFotoEtiquetaUrl(urlFinal);
+      });
       processarOcrEtiqueta(file);
     }, 'image/jpeg', 0.85);
   };
@@ -4421,20 +4505,13 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       <button
         type="button"
         disabled={itensSelecionadosIds.length > 0 || !podeFazerEntrada}
-        onClick={() => {
-          if (itensSelecionadosIds.length > 0) return;
-          if (!podeFazerEntrada) {
-            setMensagem({ tipo: 'erro', texto: 'Acesso restrito para registrar novas entradas.' });
-            return;
-          }
-          setModalEntradaAberta(true);
-        }}
-        className={`fixed bottom-20 md:bottom-12 right-6 transition-all duration-200 flex items-center justify-center border-2 border-white/50 rounded-full p-4 shadow-2xl group ${
+        onClick={iniciarEntradaComCamera}
+        className={`fixed bottom-20 md:bottom-12 right-6 transition-all duration-200 flex items-center justify-center border-2 border-white/60 rounded-full p-4 shadow-2xl group ${
           itensSelecionadosIds.length > 0
             ? 'z-20 opacity-25 pointer-events-none cursor-not-allowed bg-emerald-900/60 ring-0'
-            : 'z-40 opacity-100 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white hover:scale-105 active:scale-95 cursor-pointer ring-4 ring-emerald-500/25'
+            : 'z-40 opacity-100 bg-gradient-to-tr from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 active:scale-95 text-white hover:scale-105 cursor-pointer ring-4 ring-emerald-500/30'
         }`}
-        title={itensSelecionadosIds.length > 0 ? 'Conclua ou limpe a seleção de pacotes para adicionar nova encomenda' : 'Nova Entrada de Encomenda (+)'}
+        title={itensSelecionadosIds.length > 0 ? 'Conclua ou limpe a seleção de pacotes para adicionar nova encomenda' : 'Nova Entrada: Abrir Câmera e Ler Código (+)'}
         aria-label="Nova Entrada de Encomenda"
         aria-disabled={itensSelecionadosIds.length > 0}
       >
@@ -4901,13 +4978,19 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
         </div>
       )}
 
-      {/* MODAL CÂMERA AO VIVO: TIRA FOTO DIRETO DA ETIQUETA */}
+      {/* MODAL CÂMERA AO VIVO: TIRA FOTO DIRETO DA ETIQUETA E LÊ CÓDIGO EM TEMPO REAL */}
       {modalCameraEtiqueta && (
-        <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-50 flex flex-col items-center justify-between p-4 sm:p-6 animate-in fade-in duration-150">
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-50 flex flex-col items-center justify-between p-3 sm:p-5 animate-in fade-in duration-150">
           <div className="w-full max-w-md flex justify-between items-center text-white pb-2">
             <div className="flex items-center gap-2">
               <Camera className="w-5 h-5 text-emerald-400" />
-              <span className="font-bold text-sm">Câmera: Foto da Etiqueta</span>
+              <div>
+                <span className="font-bold text-sm block">Câmera: Foto da Etiqueta</span>
+                <span className="text-[10px] text-emerald-300 flex items-center gap-1 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                  Leitor de código ativo durante o enquadramento
+                </span>
+              </div>
             </div>
             <button
               type="button"
@@ -4927,23 +5010,57 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
               muted
               className="w-full h-full object-cover"
             />
-            {/* Retículo de enquadramento da etiqueta com orientações */}
-            <div className="absolute inset-6 sm:inset-10 border-2 border-emerald-400/80 rounded-2xl pointer-events-none flex flex-col justify-between p-3">
+
+            {/* Banner HUD de status do leitor em tempo real */}
+            <div className="absolute top-3 left-3 right-3 z-10 flex flex-col items-center pointer-events-none">
+              {codigoDetectadoAoVivo ? (
+                <div className="bg-emerald-600/95 text-white border-2 border-emerald-300 px-3.5 py-2 rounded-2xl shadow-2xl flex items-center gap-2 animate-in zoom-in-95 backdrop-blur-xs text-left w-full sm:w-auto">
+                  <CheckCircle2 className="w-5 h-5 text-white shrink-0 animate-bounce" />
+                  <div className="min-w-0">
+                    <span className="text-[10px] text-emerald-100 uppercase tracking-wider font-extrabold block">
+                      ✓ Código Detectado e Preenchido!
+                    </span>
+                    <span className="font-mono text-xs sm:text-sm font-black truncate block text-white">
+                      {codigoDetectadoAoVivo}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-black/70 text-slate-200 border border-white/20 px-3 py-1.5 rounded-full shadow-lg flex items-center gap-2 text-[11px] font-semibold backdrop-blur-xs">
+                  <QrCode className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+                  <span>Posicione a etiqueta — Leitor escaneando automaticamente...</span>
+                </div>
+              )}
+            </div>
+
+            {/* Retículo de enquadramento da etiqueta com orientações dinâmicas */}
+            <div className={`absolute inset-5 sm:inset-8 border-2 rounded-2xl pointer-events-none flex flex-col justify-between p-3 transition-colors ${
+              codigoDetectadoAoVivo ? 'border-emerald-400 ring-2 ring-emerald-400/50' : 'border-emerald-400/70'
+            }`}>
               <div className="flex justify-between">
-                <div className="w-6 h-6 border-t-4 border-l-4 border-emerald-400 rounded-tl-lg -mt-1 -ml-1"></div>
-                <div className="w-6 h-6 border-t-4 border-r-4 border-emerald-400 rounded-tr-lg -mt-1 -mr-1"></div>
+                <div className={`w-7 h-7 border-t-4 border-l-4 rounded-tl-lg -mt-1 -ml-1 transition-colors ${codigoDetectadoAoVivo ? 'border-emerald-300' : 'border-emerald-400'}`}></div>
+                <div className={`w-7 h-7 border-t-4 border-r-4 rounded-tr-lg -mt-1 -mr-1 transition-colors ${codigoDetectadoAoVivo ? 'border-emerald-300' : 'border-emerald-400'}`}></div>
               </div>
-              <div className="text-center bg-black/70 backdrop-blur-xs text-white text-xs font-semibold py-1.5 px-3 rounded-full mx-auto self-center shadow-lg border border-white/10">
-                Centralize o código de rastreio ou número da NF
+
+              <div className="text-center bg-black/75 backdrop-blur-xs text-white text-xs font-semibold py-1.5 px-3.5 rounded-full mx-auto self-center shadow-lg border border-white/10 flex items-center gap-1.5">
+                {codigoDetectadoAoVivo ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    <span className="text-emerald-300 font-bold">Código registrado! Clique em "Tirar Foto Agora"</span>
+                  </>
+                ) : (
+                  <span>Centralize o código de rastreio ou número da NF</span>
+                )}
               </div>
+
               <div className="flex justify-between">
-                <div className="w-6 h-6 border-b-4 border-l-4 border-emerald-400 rounded-bl-lg -mb-1 -ml-1"></div>
-                <div className="w-6 h-6 border-b-4 border-r-4 border-emerald-400 rounded-br-lg -mb-1 -mr-1"></div>
+                <div className={`w-7 h-7 border-b-4 border-l-4 rounded-bl-lg -mb-1 -ml-1 transition-colors ${codigoDetectadoAoVivo ? 'border-emerald-300' : 'border-emerald-400'}`}></div>
+                <div className={`w-7 h-7 border-b-4 border-r-4 rounded-br-lg -mb-1 -mr-1 transition-colors ${codigoDetectadoAoVivo ? 'border-emerald-300' : 'border-emerald-400'}`}></div>
               </div>
             </div>
           </div>
 
-          <div className="w-full max-w-md flex items-center justify-between gap-3 py-3">
+          <div className="w-full max-w-md flex items-center justify-between gap-3 py-2">
             <button
               type="button"
               onClick={() => {
@@ -4952,7 +5069,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                   fileInputEtiquetaRef.current.click();
                 }
               }}
-              className="px-4 py-3 bg-white/15 hover:bg-white/25 text-white rounded-2xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+              className="px-3.5 py-3.5 bg-white/15 hover:bg-white/25 text-white rounded-2xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0"
               title="Alternar para câmera nativa do aparelho"
             >
               <Camera className="w-4 h-4" /> Câmera Nativa
@@ -4961,9 +5078,14 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
             <button
               type="button"
               onClick={capturarFotoDaCameraAoVivo}
-              className="flex-1 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-white font-black px-6 py-3.5 rounded-2xl flex items-center justify-center gap-2 shadow-xl ring-4 ring-emerald-400/30 transition text-sm cursor-pointer"
+              className={`flex-1 font-black px-5 py-3.5 rounded-2xl flex items-center justify-center gap-2 shadow-xl ring-4 transition text-xs sm:text-sm cursor-pointer active:scale-95 ${
+                codigoDetectadoAoVivo
+                  ? 'bg-emerald-500 hover:bg-emerald-400 text-white ring-emerald-400/50 shadow-emerald-950/50 scale-[1.02]'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white ring-emerald-500/30'
+              }`}
             >
-              <Camera className="w-5 h-5" /> Tirar Foto Agora
+              <Camera className="w-5 h-5 shrink-0" />
+              <span>{codigoDetectadoAoVivo ? 'Tirar Foto Agora (Código Lido!)' : 'Tirar Foto Agora'}</span>
             </button>
           </div>
         </div>
