@@ -5,7 +5,7 @@ process.env.DISABLE_HMR = 'true';
 import express from 'express';
 import http from 'http';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import dotenv from 'dotenv';
 import path from 'path';
 
@@ -204,7 +204,7 @@ REGRAS RÍGIDAS:
 
     // Chamada ultra-otimizada para resposta imediata (< 2-3s)
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.8-flash',
       contents: [
         {
           role: 'user',
@@ -226,7 +226,7 @@ REGRAS RÍGIDAS:
         responseMimeType: 'application/json',
         maxOutputTokens: 250,
         thinkingConfig: {
-          thinkingBudget: 0
+          thinkingLevel: ThinkingLevel.LOW
         },
         responseSchema: {
           type: Type.OBJECT,
