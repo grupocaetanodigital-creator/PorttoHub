@@ -318,7 +318,7 @@ export const NIVEIS_PADRAO: NivelAcessoItem[] = [
     condominio_id: null,
     padrao_sistema: true,
     permissoes: {
-      encomendas: { visualizar: true, criar: false, editar: false, excluir: false, entrada_lote: false, triagem: false, baixa: false, dossie: false, editar_lotes: false, excluir_lotes: false, cadastrar_entregador: false, editar_pacote: false, excluir_pacote: false, historico: true },
+      encomendas: { visualizar: true, criar: true, editar: false, excluir: false, entrada_lote: true, triagem: true, baixa: true, dossie: false, editar_lotes: false, excluir_lotes: false, cadastrar_entregador: true, editar_pacote: false, excluir_pacote: false, historico: true },
       custodia: { visualizar: true, criar: true, editar: false, excluir: false, receber: true, baixa: true, auditoria: false },
       chaves: { visualizar: true, criar: true, editar: false, excluir: false, emprestar: true, devolver: true, cadastrar: false },
       rondas: { visualizar: true, criar: true, editar: false, excluir: false, iniciar_ronda: true, cadastrar_pontos: false, setores: false },

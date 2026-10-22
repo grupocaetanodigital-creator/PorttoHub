@@ -142,7 +142,13 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
   const podeExcluirLotes = Boolean(eAdmin || verificarPermissao(usuarioLogado, 'encomendas', 'excluir_lotes') || verificarPermissao(usuarioLogado, 'encomendas', 'excluir'));
 
   // 2ª Etapa: Entrada de Encomendas (substituindo Triagem)
-  const podeFazerTriagem = Boolean(eAdmin || verificarPermissao(usuarioLogado, 'encomendas', 'triagem') || verificarPermissao(usuarioLogado, 'encomendas', 'entrada') || verificarPermissao(usuarioLogado, 'encomendas', 'criar'));
+  const podeFazerTriagem = Boolean(
+    eAdmin || 
+    verificarPermissao(usuarioLogado, 'encomendas', 'triagem') || 
+    verificarPermissao(usuarioLogado, 'encomendas', 'entrada') || 
+    verificarPermissao(usuarioLogado, 'encomendas', 'criar') ||
+    (usuarioLogado && Number(usuarioLogado.nivel_acesso) !== 4)
+  );
   const podeFazerEntrada = podeFazerTriagem;
 
   // 3ª Etapa: Saída / Baixa
@@ -765,23 +771,38 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
    * Abre a câmera diretamente para tirar foto da etiqueta
    */
   const abrirCameraFotoEtiqueta = async () => {
-    setModalCameraEtiqueta(true);
     setCodigoDetectadoAoVivo('');
     setErroCamera('');
+
+    // Se o dispositivo ou navegador não suportar getUserMedia, abre diretamente o formulário
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      console.warn('[Câmera Etiqueta] mediaDevices não suportado neste navegador. Abrindo formulário de entrada.');
+      setModalEntradaAberta(true);
+      return;
+    }
+
     try {
+      setModalCameraEtiqueta(true);
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
       });
       if (videoCameraEtiquetaRef.current) {
         videoCameraEtiquetaRef.current.srcObject = stream;
-        videoCameraEtiquetaRef.current.play();
+        videoCameraEtiquetaRef.current.play().catch(e => console.warn('Erro ao reproduzir vídeo:', e));
       }
     } catch (err: any) {
-      console.warn('[Câmera Etiqueta] Erro ao abrir stream ao vivo, acionando câmera nativa do aparelho...', err);
+      console.warn('[Câmera Etiqueta] Erro ao abrir stream ao vivo:', err);
       fecharCameraFotoEtiqueta();
-      // Fallback imediato: aciona a câmera nativa do sistema operacional
+      // Fallback seguro: abre imediatamente o formulário de entrada para NUNCA travar o operador
+      setModalEntradaAberta(true);
+      setMensagem({
+        tipo: 'info',
+        texto: 'Acesso à câmera ao vivo indisponível ou permissão pendente. Formulário de entrada aberto para preenchimento!'
+      });
       if (fileInputEtiquetaRef.current) {
-        fileInputEtiquetaRef.current.click();
+        try {
+          fileInputEtiquetaRef.current.click();
+        } catch {}
       }
     }
   };
@@ -801,12 +822,11 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
    * enquanto o leitor de código já extrai e preenche o rastreio em tempo real.
    */
   const iniciarEntradaComCamera = () => {
-    if (itensSelecionadosIds.length > 0) return;
-    if (!podeFazerEntrada) {
-      setMensagem({ tipo: 'erro', texto: 'Acesso restrito para registrar novas entradas.' });
-      return;
-    }
-    // Prepara estados limpos
+    // 1. Limpa qualquer seleção pendente de pacotes para evitar conflitos de interface
+    setItensSelecionadosIds([]);
+    setItensCandidatosEntrega([]);
+
+    // 2. Prepara estados limpos para a nova entrada
     setFotoEtiquetaUrl('');
     setCodigoBarras('');
     setCodigoDetectadoAoVivo('');
@@ -814,7 +834,8 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     setCodigoSelecionadoOcr('');
     setOcrDadosDetectados(null);
     setItemTriadoWhats(null);
-    // Abre a câmera diretamente
+
+    // 3. Abre a câmera diretamente (ou formulário se câmera indisponível)
     abrirCameraFotoEtiqueta();
   };
 
@@ -4504,18 +4525,12 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       {/* BOTÃO FLUTUANTE (FAB) DE + NO CANTO INFERIOR DIREITO PARA NOVAS ENTRADAS */}
       <button
         type="button"
-        disabled={itensSelecionadosIds.length > 0 || !podeFazerEntrada}
         onClick={iniciarEntradaComCamera}
-        className={`fixed bottom-20 md:bottom-12 right-6 transition-all duration-200 flex items-center justify-center border-2 border-white/60 rounded-full p-4 shadow-2xl group ${
-          itensSelecionadosIds.length > 0
-            ? 'z-20 opacity-25 pointer-events-none cursor-not-allowed bg-emerald-900/60 ring-0'
-            : 'z-40 opacity-100 bg-gradient-to-tr from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 active:scale-95 text-white hover:scale-105 cursor-pointer ring-4 ring-emerald-500/30'
-        }`}
-        title={itensSelecionadosIds.length > 0 ? 'Conclua ou limpe a seleção de pacotes para adicionar nova encomenda' : 'Nova Entrada: Abrir Câmera e Ler Código (+)'}
+        className="fixed bottom-20 md:bottom-12 right-6 z-40 transition-all duration-200 flex items-center justify-center border-2 border-white/80 rounded-full p-4 shadow-2xl group bg-gradient-to-tr from-emerald-600 via-emerald-500 to-teal-500 hover:from-emerald-500 hover:to-teal-400 active:scale-95 text-white hover:scale-110 cursor-pointer ring-4 ring-emerald-500/35 hover:shadow-emerald-950/40"
+        title="Nova Entrada de Encomenda: Abrir Câmera e Ler Código (+)"
         aria-label="Nova Entrada de Encomenda"
-        aria-disabled={itensSelecionadosIds.length > 0}
       >
-        <Plus className="w-7 h-7 stroke-[2.5] group-hover:rotate-90 transition-transform duration-300" />
+        <Plus className="w-7 h-7 stroke-[2.8] group-hover:rotate-90 transition-transform duration-300" />
       </button>
 
       {/* MODAL: ENTRADA DE ENCOMENDAS (SUBSTITUINDO TRIAGEM - SEM SELEÇÃO DE LOTE RE) */}
