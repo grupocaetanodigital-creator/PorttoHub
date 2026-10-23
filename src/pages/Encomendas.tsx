@@ -250,6 +250,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const [buscaBaixaGeral, setBuscaBaixaGeral] = useState('');
+  const [mostrarBuscaBaixa, setMostrarBuscaBaixa] = useState(false);
   const [tipoFiltroBuscaBaixa, setTipoFiltroBuscaBaixa] = useState<'todos' | 'unidade' | 'nome' | 'rastreio'>('unidade');
   const [leitorModoLote, setLeitorModoLote] = useState(true);
   const [ultimoPacoteBipado, setUltimoPacoteBipado] = useState<any | null>(null);
@@ -2594,17 +2595,53 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
           </div>
 
           <div className="bg-white p-2.5 sm:p-3 rounded-xl shadow-2xs border border-slate-200 space-y-2">
-          <div className="border-b border-slate-100 pb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-            <div className="flex items-center gap-2 flex-wrap">
+          <div className="border-b border-slate-100 pb-2 flex items-center justify-between gap-1.5 flex-wrap">
+            <div className="flex items-center gap-2">
               <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5 shrink-0">
                 <UserCheck className="w-4 h-4 text-slate-800" /> Entrega de Pacotes (Saída)
               </h3>
+            </div>
+            
+            <div className="flex items-center gap-1.5">
+              {/* Botão de Pesquisa com Ícone que ABRE essa função */}
+              <button
+                type="button"
+                onClick={() => setMostrarBuscaBaixa(!mostrarBuscaBaixa)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border shadow-2xs ${
+                  mostrarBuscaBaixa || buscaBaixaGeral.trim()
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                }`}
+                title={mostrarBuscaBaixa ? "Recolher pesquisa" : "Abrir pesquisa de encomendas"}
+              >
+                <Search className="w-3.5 h-3.5" />
+                <span>Pesquisa</span>
+                {buscaBaixaGeral.trim() && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Pesquisa ativa" />
+                )}
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${mostrarBuscaBaixa || buscaBaixaGeral.trim() ? 'rotate-180' : ''}`} />
+              </button>
 
-              {/* Lista seletora ao lado do título com ícones: Unidade (padrão), Todos, Morador e Rastreio */}
+              {/* Botão de Leitura de Código ao lado do botão de pesquisa */}
+              <button 
+                type="button"
+                onClick={() => abrirLeitorCamera('baixa')} 
+                className="bg-emerald-600 hover:bg-emerald-700 text-white p-2 rounded-lg transition flex items-center justify-center shrink-0 cursor-pointer shadow-2xs" 
+                title="Leitor de Código de Barras / Escanear em Lote"
+              >
+                <QrCode className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* PAINEL DA FUNÇÃO DE PESQUISA (ABERTO PELO BOTÃO DE PESQUISA) */}
+          {(mostrarBuscaBaixa || buscaBaixaGeral.trim()) && (
+            <div className="p-2 sm:p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-wrap sm:flex-nowrap items-center gap-2 animate-in fade-in duration-150">
+              {/* Lista seletora com o tipo de filtro */}
               <select
                 value={tipoFiltroBuscaBaixa}
                 onChange={(e) => setTipoFiltroBuscaBaixa(e.target.value as any)}
-                className="py-1 px-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg text-slate-800 text-xs font-bold focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900 transition cursor-pointer shrink-0"
+                className="py-1.5 px-2.5 bg-white border border-slate-300 rounded-lg text-slate-800 text-xs font-bold focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900 transition cursor-pointer shrink-0"
                 title="Filtrar tipo de pesquisa"
               >
                 <option value="unidade">🏠 UNIDADE</option>
@@ -2612,15 +2649,13 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                 <option value="nome">👤 MORADOR</option>
                 <option value="rastreio">📦 RASTREIO</option>
               </select>
-            </div>
-            
-            <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 w-full sm:w-auto">
 
-              {/* 1º DIV filho de div:nth-of-type(2) -> input:nth-of-type(1) com botão de pesquisa embutido */}
-              <div className="relative flex-1 sm:w-64 min-w-[160px] flex items-center">
+              {/* Input com botão de pesquisa embutido */}
+              <div className="relative flex-1 min-w-[160px] flex items-center">
                 <input
                   type="text"
                   value={buscaBaixaGeral}
+                  autoFocus
                   onChange={(e) => {
                     const novoVal = e.target.value;
                     setBuscaBaixaGeral(novoVal);
@@ -2643,10 +2678,10 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                       ? "Código de rastreio..."
                       : "Unidade, morador ou rastreio..."
                   }
-                  className="pl-3 pr-9 py-1.5 w-full bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-xs focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900 transition font-medium"
+                  className="pl-3 pr-9 py-1.5 w-full bg-white border border-slate-300 rounded-lg text-slate-900 text-xs focus:outline-hidden focus:ring-2 focus:ring-slate-900 transition font-medium"
                 />
 
-                {/* Botão de Pesquisa DENTRO da barra de pesquisa: só o ícone sem o nome */}
+                {/* Botão de Pesquisa DENTRO da barra de pesquisa */}
                 <button
                   type="button"
                   onClick={() => handleExecutarBusca()}
@@ -2657,7 +2692,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                 </button>
               </div>
 
-              {/* Botão de Limpar ao lado da barra com apenas o ícone de uma borracha em vermelho */}
+              {/* Botão de Limpar (Borracha) */}
               <button
                 type="button"
                 onClick={handleLimparBuscaBaixa}
@@ -2671,17 +2706,20 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                 <Eraser className="w-4 h-4 text-red-600" />
               </button>
 
-              {/* Botão de Leitura de Código ao lado do botão de limpar */}
-              <button 
+              {/* Botão para Fechar / Recolher a pesquisa */}
+              <button
                 type="button"
-                onClick={() => abrirLeitorCamera('baixa')} 
-                className="bg-emerald-600 hover:bg-emerald-700 text-white p-2 rounded-lg transition flex items-center justify-center shrink-0 cursor-pointer shadow-2xs" 
-                title="Leitor de Código de Barras / Escanear em Lote"
+                onClick={() => {
+                  setMostrarBuscaBaixa(false);
+                  if (buscaBaixaGeral) handleLimparBuscaBaixa();
+                }}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition cursor-pointer"
+                title="Fechar pesquisa"
               >
-                <QrCode className="w-4 h-4" />
+                <X className="w-4 h-4" />
               </button>
             </div>
-          </div>
+          )}
 
           <div className="flex overflow-x-auto pb-1 gap-1 snap-x">
             <button

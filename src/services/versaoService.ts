@@ -12,7 +12,7 @@
 export const NOME_APLICACAO = 'INFPORT';
 
 // Versão de build gravada da última modificação
-export const VERSAO_BUILD_ATUAL = '2310260937';
+export const VERSAO_BUILD_ATUAL = '2310260953';
 
 /**
  * Retorna a string da versão formatada
