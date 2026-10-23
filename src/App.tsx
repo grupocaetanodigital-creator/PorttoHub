@@ -918,12 +918,34 @@ export default function App() {
             />
           )}
 
-          {/* CABEÇALHO GLOBAL (MOBILE E DESKTOP COM NOTIFICAÇÕES NO TOPO DIREITO) */}
+          {/* CABEÇALHO GLOBAL INTEGRADO (EMBLEMA AO LADO DE INFPORT, VERSÃO SOBRE CONTROLE DE FONTE E AÇÕES) */}
           <header className="bg-slate-900/95 backdrop-blur-md text-white px-3.5 sm:px-5 py-2.5 flex items-center justify-between sticky top-0 z-30 shadow-xs border-b border-slate-800/80">
-            <div className="flex items-center gap-2.5 sm:gap-3.5 overflow-hidden flex-1 mr-3">
-              <div className="shrink-0 flex items-center">
+            <div className="flex items-center gap-2.5 sm:gap-3.5 overflow-hidden flex-1 mr-2 sm:mr-4">
+              <button
+                type="button"
+                onClick={() => setDrawerMobileAberto(true)}
+                className="md:hidden text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition shrink-0"
+                title="Abrir Menu"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+
+              {/* Logo / Emblema posicionado antes e ao lado do nome INFPORT */}
+              <div className="shrink-0 flex items-center gap-2 sm:gap-2.5">
                 <EmblemaInfport tamanho="sm" comBrilho />
+                <div className="flex items-center gap-1.5">
+                  <span className="font-black text-base sm:text-lg text-white tracking-tight flex items-center gap-1.5">
+                    {NOME_APLICACAO}
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" title="Sistema Online" />
+                  </span>
+                  <span className="hidden lg:inline-flex text-[9px] uppercase font-mono font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    Enterprise
+                  </span>
+                </div>
               </div>
+
+              <div className="h-6 w-px bg-slate-800 hidden sm:block shrink-0" />
+
               <div className="min-w-0 flex-1">
                 {eAcessoMultiCondominio && !eSindico ? (
                   <select
@@ -943,7 +965,7 @@ export default function App() {
                     ))}
                   </select>
                 ) : (
-                  <h1 className="font-extrabold text-xs sm:text-sm text-white truncate leading-tight tracking-tight">
+                  <h1 className="font-bold text-xs sm:text-sm text-slate-200 truncate leading-tight tracking-tight">
                     {operadorContextoGlobal.condominio_nome || 'Condomínio'}
                   </h1>
                 )}
@@ -955,15 +977,27 @@ export default function App() {
               </div>
             </div>
 
-            {/* Ações no Topo Superior Direito: Botão de Notificações/Lembretes e Alerta de Presentes no Condomínio */}
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Alerta de pessoas presentes no condomínio logo ao lado do botão de lembrete */}
+            {/* Ações no Topo Superior Direito: Versão sobre Controle de Fonte + Botão Atualizar, Alerta Presentes e Notificações */}
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              <div className="flex flex-col items-end gap-1">
+                <span className="text-[10px] text-slate-400 font-mono tracking-wider font-bold uppercase">
+                  VERSÃO {VERSAO_BUILD_ATUAL}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <ControleFonteAcessibilidade />
+                  <BotaoAtualizarApp />
+                </div>
+              </div>
+
+              <div className="h-7 w-px bg-slate-800 hidden sm:block shrink-0" />
+
+              {/* Alerta de pessoas presentes no condomínio */}
               <AlertaNoCondominioTopo
                 condominioId={condominioAtivoId || operador?.condominio_id || ''}
                 onNavegar={() => mudarModulo('prestadores')}
               />
 
-              {/* Ícone de Notificações (Sino/Mensagens) com Alerta Piscante e Contador em Tempo Real */}
+              {/* Ícone de Notificações com Alerta Piscante e Contador */}
               <BotaoNotificacoesLembretes
                 condominioId={condominioAtivoId || operador?.condominio_id || ''}
                 onAbrirPainel={() => setModalLembretesAberto(true)}
@@ -972,7 +1006,7 @@ export default function App() {
           </header>
 
           {moduloAtual !== 'dashboard' && !eSindico && (
-            <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 shadow-xs transition-colors">
+            <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3.5 py-2.5 flex items-center justify-between gap-2 shadow-xs transition-colors">
               <button 
                 onClick={() => mudarModulo('dashboard')}
                 className="flex items-center gap-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-800 dark:border-slate-700 px-3.5 py-2 rounded-xl shadow-xs transition cursor-pointer"
@@ -983,16 +1017,9 @@ export default function App() {
               </button>
 
               <div className="flex items-center gap-2">
-                <div className="hidden sm:flex flex-col text-right leading-none">
-                  <span className="font-extrabold text-xs text-slate-800 dark:text-slate-100">
-                    {NOME_APLICACAO}
-                  </span>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono font-bold mt-0.5">
-                    VERSÃO {VERSAO_BUILD_ATUAL}
-                  </span>
-                </div>
-                <ControleFonteAcessibilidade />
-                <BotaoAtualizarApp />
+                <span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                  {modulosDisponiveis.find(m => m.id === moduloAtual)?.titulo || 'Módulo'}
+                </span>
               </div>
             </div>
           )}
@@ -1001,34 +1028,6 @@ export default function App() {
             
             {moduloAtual === 'dashboard' && (
               <div className="max-w-5xl mx-auto space-y-4">
-                
-                {/* Topo do Painel: INFPORT ampliado com Versão sobre o Menu de Controle de Fonte e Atualização */}
-                <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 sm:p-5 flex items-center justify-between flex-wrap gap-4 shadow-xs transition-colors">
-                  <div className="flex flex-col">
-                    <div className="flex items-center gap-2.5">
-                      <h1 className="font-black text-2xl sm:text-3xl text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-                        {NOME_APLICACAO}
-                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse inline-block" title="Sistema Operacional Online"></span>
-                      </h1>
-                      <span className="text-[10px] uppercase font-mono font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                        Enterprise
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1">
-                      Central Integrada de Portaria, Segurança & Gestão Condominial
-                    </p>
-                  </div>
-
-                  <div className="flex flex-col items-end gap-1.5">
-                    <span className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500 font-mono tracking-wider font-bold uppercase">
-                      VERSÃO {VERSAO_BUILD_ATUAL}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <ControleFonteAcessibilidade />
-                      <BotaoAtualizarApp />
-                    </div>
-                  </div>
-                </div>
 
                 {/* Grid dos Módulos Operacionais Otimizado e Profissional */}
                 <div className="space-y-3">
