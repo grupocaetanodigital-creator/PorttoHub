@@ -4782,14 +4782,9 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
 
                     {/* SELETOR DE LOCAL INTEGRADO DENTRO DO ALERTA DE AGRUPAMENTO */}
                     <div className="pt-2 border-t border-amber-200/80 space-y-1">
-                      <label className="block text-[11px] font-bold text-amber-950 uppercase flex items-center justify-between">
-                        <span className="flex items-center gap-1">
-                          <Boxes className="w-3.5 h-3.5 text-amber-700" />
-                          Local de Armazenamento / Agrupar *
-                        </span>
-                        <span className="text-[10px] text-amber-800 font-medium">
-                          Agrupa anteriores e este pacote
-                        </span>
+                      <label className="block text-[11px] font-bold text-amber-950 uppercase flex items-center gap-1">
+                        <Boxes className="w-3.5 h-3.5 text-amber-700" />
+                        Local de armazenamento
                       </label>
                       <div className="flex items-center gap-1.5">
                         <select
@@ -4829,7 +4824,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                   <div className="space-y-1">
                     <label className="block text-[11px] font-bold text-slate-700 uppercase flex items-center gap-1">
                       <Boxes className="w-3.5 h-3.5 text-emerald-600" />
-                      Local de Armazenamento na Portaria *
+                      Local de armazenamento
                     </label>
                     <select
                       value={localArmazenamentoTriagem}
