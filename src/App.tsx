@@ -117,8 +117,10 @@ export default function App() {
     return () => window.removeEventListener('niveis_acesso_atualizados', handleAtualizacao);
   }, []);
 
-  const eSuperAdminGlobal = (operador?.login === 'admin' || operador?.perfil === 'admin_geral' || (Number(operador?.nivel_acesso) === 0 && (!operador?.condominio_id || operador?.condominio_id === 'global')));
-  const eAdmin = eSuperAdminGlobal || operador?.perfil === 'admin' || operador?.nivel_acesso === 0;
+  const eSupervisorGlobal = (Number(operador?.nivel_acesso) === 2 || operador?.perfil === 'supervisor') && (!operador?.condominio_id || operador?.condominio_id === 'global' || operador?.condominio_id === 'todos');
+  const eSuperAdminGlobal = (operador?.login === 'admin' || operador?.perfil === 'admin_geral' || (Number(operador?.nivel_acesso) <= 1 && (!operador?.condominio_id || operador?.condominio_id === 'global' || operador?.condominio_id === 'todos')));
+  const eAdmin = eSuperAdminGlobal || operador?.perfil === 'admin' || operador?.nivel_acesso === 0 || operador?.nivel_acesso === 1;
+  const eAcessoMultiCondominio = eSuperAdminGlobal || eSupervisorGlobal || (eAdmin && (!operador?.condominio_id || operador?.condominio_id === 'global' || operador?.condominio_id === 'todos'));
   const eSindico = operador?.nivel_acesso === 4 || 
                    operador?.perfil === 'sindico' || 
                    operador?.perfil === 'Síndico' || 
@@ -232,7 +234,7 @@ export default function App() {
 
   useEffect(() => {
     if (operador) {
-      const idCondTarget = eAdmin ? (condominioAtivoId || operador.condominio_id) : operador.condominio_id;
+      const idCondTarget = (eAdmin || eAcessoMultiCondominio) ? (condominioAtivoId || operador.condominio_id) : operador.condominio_id;
       if (idCondTarget) {
         carregarFeatureFlags(idCondTarget);
       } else {
@@ -246,7 +248,7 @@ export default function App() {
     const handleAtualizacaoModulos = (e: any) => {
       if (e.detail) {
         const idAlvo = e.detail.condominio_id;
-        const condoAtual = eAdmin ? (condominioAtivoId || operador?.condominio_id) : operador?.condominio_id;
+        const condoAtual = (eAdmin || eAcessoMultiCondominio) ? (condominioAtivoId || operador?.condominio_id) : operador?.condominio_id;
         if (!idAlvo || idAlvo === condoAtual) {
           const novas = e.detail.flags || e.detail;
           setFeatureFlags(prev => ({
@@ -261,7 +263,7 @@ export default function App() {
     return () => {
       window.removeEventListener('modulos_atualizados', handleAtualizacaoModulos);
     };
-  }, [operador?.condominio_id, condominioAtivoId, eAdmin]);
+  }, [operador?.condominio_id, condominioAtivoId, eAdmin, eAcessoMultiCondominio]);
 
   // Listener para navegação rápida entre módulos (ex: da Bancada para Baixa ou da Passagem para Checklist)
   useEffect(() => {
@@ -417,17 +419,33 @@ export default function App() {
       const loginLimpo = login.trim();
       const senhaLimpa = senha.trim();
 
-      const { data: opData, error: opError } = await supabase
+      // Busca sem restrição de maiúsculas/minúsculas (case-insensitive com ilike)
+      let { data: opData, error: opError } = await supabase
         .from('operadores')
         .select('*')
-        .eq('login', loginLimpo)
+        .ilike('login', loginLimpo)
         .eq('senha', senhaLimpa)
-        .eq('ativo', true)
         .maybeSingle();
 
-      if (opError) throw opError;
+      if (opError) {
+        // Fallback caso ilike não seja suportado em alguma versão
+        const fallback = await supabase
+          .from('operadores')
+          .select('*')
+          .eq('login', loginLimpo.toLowerCase())
+          .eq('senha', senhaLimpa)
+          .maybeSingle();
+        opData = fallback.data;
+      }
+
       if (!opData) {
         setErro('Usuário ou senha incorretos.');
+        setLoading(false);
+        return;
+      }
+
+      if (opData.ativo === false) {
+        setErro('Esta conta de acesso está desativada. Entre em contato com a supervisão.');
         setLoading(false);
         return;
       }
@@ -657,7 +675,7 @@ export default function App() {
               </button>
             </div>
 
-            {eSuperAdminGlobal && !eSindico && menuAberto && (
+            {eAcessoMultiCondominio && !eSindico && menuAberto && (
               <div className="p-3 bg-slate-800/80 mx-3 mt-3 rounded-xl border border-slate-700/60 space-y-1">
                 <label className="block text-xs font-bold text-emerald-400 uppercase flex items-center gap-1">
                   <Filter className="w-3.5 h-3.5" /> Condomínio Ativo
@@ -782,7 +800,7 @@ export default function App() {
                   </button>
                 </div>
 
-                {eSuperAdminGlobal && !eSindico && (
+                {eAcessoMultiCondominio && !eSindico && (
                   <div className="my-3 p-2.5 bg-slate-800 rounded-xl space-y-1">
                     <label className="text-xs font-bold text-emerald-400 uppercase">Condomínio Ativo</label>
                     <select
@@ -902,7 +920,7 @@ export default function App() {
                 <EmblemaInfport tamanho="sm" comBrilho />
               </div>
               <div className="min-w-0 flex-1">
-                {eSuperAdminGlobal && !eSindico ? (
+                {eAcessoMultiCondominio && !eSindico ? (
                   <select
                     value={condominioAtivoId}
                     onChange={(e) => {
@@ -1278,7 +1296,10 @@ export default function App() {
                 required
                 value={login}
                 onChange={(e) => setLogin(e.target.value)}
-                placeholder="Digite seu usuário (ex: admin)"
+                placeholder="Digite seu usuário de acesso"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-800 text-slate-900 text-base font-semibold"
               />
             </div>

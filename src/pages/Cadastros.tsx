@@ -148,6 +148,7 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
   const [fotoOperador, setFotoOperador] = useState('');
   const [nivelAcesso, setNivelAcesso] = useState('nivel_3');
   const [condominioIdOperador, setCondominioIdOperador] = useState('');
+  const [ativoOperador, setAtivoOperador] = useState(true);
   const [listaNiveis, setListaNiveis] = useState<NivelAcessoItem[]>(() => obterNiveisLocal());
 
   // Formulário Morador & Controle de Acesso
@@ -272,6 +273,7 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
     setFotoOperador('');
     setNivelAcesso('nivel_3');
     setCondominioIdOperador(targetCondo);
+    setAtivoOperador(true);
     setNomeMorador('');
     setFotoMorador('');
     setBlocoMorador(eEstruturaCasasAtivo ? 'Casa' : '');
@@ -307,7 +309,7 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
     limparFormularios();
     let targetCondo = condoAtivoId || (condominios[0]?.id || usuarioLogado?.condominio_id || '');
     if (targetCondo === 'global' || targetCondo === 'todos') {
-      targetCondo = condominios.find(c => c.id && c.id !== 'global' && c.id !== 'todos')?.id || '';
+      targetCondo = 'todos';
     }
     setCondominioIdOperador(targetCondo);
     setTipoModalFlutuante('operador');
@@ -389,8 +391,8 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
         }
       } else if (abaAtiva === 'operadores' && !eOperador) {
         let query = supabase.from('operadores').select('*').order('nome');
-        if (activeCondoId) {
-          query = query.eq('condominio_id', activeCondoId);
+        if (activeCondoId && activeCondoId !== 'global' && activeCondoId !== 'todos') {
+          query = query.or(`condominio_id.eq.${activeCondoId},condominio_id.is.null`);
         }
         const { data, error } = await query;
         if (!error && data) {
@@ -414,8 +416,8 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
         }
       } else if (abaAtiva === 'niveis' && !eOperador) {
         let query = supabase.from('operadores').select('*').order('nome');
-        if (activeCondoId) {
-          query = query.eq('condominio_id', activeCondoId);
+        if (activeCondoId && activeCondoId !== 'global' && activeCondoId !== 'todos') {
+          query = query.or(`condominio_id.eq.${activeCondoId},condominio_id.is.null`);
         }
         const { data: opsData } = await query;
         if (opsData) setOperadores(opsData);
@@ -431,9 +433,12 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
     }
   };
 
-  const getNomeCondominioPorId = (id: string) => {
+  const getNomeCondominioPorId = (id: string | null | undefined) => {
+    if (!id || id === 'global' || id === 'todos') {
+      return '🌐 Todos os Condomínios (Global)';
+    }
     const c = condominios.find(item => item.id === id);
-    return c ? c.nome : (id ? 'Condomínio Vinculado' : 'Não atribuído');
+    return c ? c.nome : (id ? 'Condomínio Vinculado' : '🌐 Todos os Condomínios (Global)');
   };
 
   const salvarCondominio = async (e: React.FormEvent) => {
@@ -585,14 +590,8 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
       return;
     }
 
-    let targetCondominioId = (eAdmin ? (condominioIdOperador || condominioFiltroAdmin || condoAtivoId) : usuarioLogado?.condominio_id) || condoAtivoId || condominios[0]?.id;
-    if (targetCondominioId === 'global' || targetCondominioId === 'todos') {
-      const primeiroValido = condominios.find(c => c.id && c.id !== 'global' && c.id !== 'todos')?.id;
-      targetCondominioId = primeiroValido || '';
-    }
-
-    if (!nomeOperador.trim() || !loginOperador.trim() || !targetCondominioId) {
-      setMensagem({ tipo: 'erro', texto: 'Preencha o nome, login e selecione um condomínio.' });
+    if (!nomeOperador.trim() || !loginOperador.trim()) {
+      setMensagem({ tipo: 'erro', texto: 'Preencha o nome e o login do operador.' });
       return;
     }
 
@@ -619,6 +618,27 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
         nivelNum = 3;
       }
 
+      const ehAdminOuSupervisor = nivelNum <= 2 || perfilStr === 'admin' || perfilStr === 'master' || perfilStr === 'supervisor';
+      const selecionouTodos = condominioIdOperador === 'todos' || condominioIdOperador === 'global';
+
+      let targetCondominioId: string | null = null;
+      if (selecionouTodos) {
+        if (!ehAdminOuSupervisor) {
+          setMensagem({ tipo: 'erro', texto: 'A opção "Todos os Condomínios" é permitida apenas para Administradores e Supervisores.' });
+          setLoading(false);
+          return;
+        }
+        targetCondominioId = null; // null no Postgres para acesso global irrestrito
+      } else {
+        targetCondominioId = (eAdmin ? (condominioIdOperador || condominioFiltroAdmin || condoAtivoId) : usuarioLogado?.condominio_id) || condoAtivoId || condominios[0]?.id || null;
+      }
+
+      if (!targetCondominioId && !selecionouTodos) {
+        setMensagem({ tipo: 'erro', texto: 'Selecione um condomínio ou marque Todos os Condomínios para Adms/Supervisores.' });
+        setLoading(false);
+        return;
+      }
+
       if (idEdicao) {
         const dadosAtualizacao: any = {
           nome: nomeOperador.trim(),
@@ -627,7 +647,8 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
           nivel_acesso_custom_id: customId,
           perfil: perfilStr,
           foto_url: fotoOperador || null,
-          condominio_id: targetCondominioId
+          condominio_id: targetCondominioId,
+          ativo: ativoOperador
         };
         if (senhaOperador.trim()) {
           dadosAtualizacao.senha = senhaOperador.trim();
@@ -652,7 +673,8 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
             login: loginOperador.trim().toLowerCase(),
             nivel_acesso: nivelNum,
             foto_url: fotoOperador || null,
-            condominio_id: targetCondominioId
+            condominio_id: targetCondominioId,
+            ativo: ativoOperador
           };
           if (dadosAtualizacao.senha) fallback.senha = dadosAtualizacao.senha;
           const retry = await supabase.from('operadores').update(fallback).eq('id', idEdicao);
@@ -677,7 +699,7 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
           perfil: perfilStr,
           foto_url: fotoOperador || null,
           condominio_id: targetCondominioId,
-          ativo: true
+          ativo: ativoOperador
         };
 
         let { error } = await supabase.from('operadores').insert([novoOp]);
@@ -697,7 +719,7 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
             senha: novoOp.senha,
             nivel_acesso: novoOp.nivel_acesso,
             condominio_id: novoOp.condominio_id,
-            ativo: true
+            ativo: ativoOperador
           };
           const retry = await supabase.from('operadores').insert([fallbackOp]);
           error = retry.error;
@@ -728,9 +750,29 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
       (op.nivel_acesso !== undefined && op.nivel_acesso !== null && !isNaN(Number(op.nivel_acesso)) ? `nivel_${op.nivel_acesso}` : null) ||
       (op.perfil === 'admin' ? 'nivel_0' : op.perfil === 'master' ? 'nivel_1' : op.perfil === 'supervisor' ? 'nivel_2' : (op.perfil === 'sindico' || op.perfil === 'Síndico') ? 'nivel_4' : 'nivel_3');
     setNivelAcesso(nivelDefinido);
-    setCondominioIdOperador(op.condominio_id || '');
+    setCondominioIdOperador(op.condominio_id || (Number(op.nivel_acesso) <= 2 || op.perfil === 'admin' || op.perfil === 'master' || op.perfil === 'supervisor' ? 'todos' : ''));
+    setAtivoOperador(op.ativo !== false);
     setTipoModalFlutuante('operador');
     setModalFlutuanteAberto(true);
+  };
+
+  const alternarStatusOperador = async (op: any) => {
+    const novoStatus = !(op.ativo !== false);
+    try {
+      const { error } = await supabase
+        .from('operadores')
+        .update({ ativo: novoStatus })
+        .eq('id', op.id);
+      if (error) throw error;
+      setOperadores(prev => prev.map(item => item.id === op.id ? { ...item, ativo: novoStatus } : item));
+      setMensagem({
+        tipo: 'sucesso',
+        texto: `Operador ${op.nome} ${novoStatus ? 'ativado' : 'desativado'} com sucesso.`
+      });
+      setTimeout(() => setMensagem({ tipo: '', texto: '' }), 3000);
+    } catch (err: any) {
+      setMensagem({ tipo: 'erro', texto: `Erro ao alterar status: ${err.message}` });
+    }
   };
 
   const salvarMorador = async (e: React.FormEvent) => {
@@ -1601,77 +1643,92 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
             </button>
           </div>
 
-          {/* Grid de Cards dos Operadores */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+          {/* Grid de Cards dos Operadores - Minimalista & Limpo */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
             {operadores
               .filter(op => {
+                // Apenas Administradores podem visualizar e gerenciar contas de Administrador
+                const ehContaAdmin = op.login?.toLowerCase() === 'admin' || op.perfil?.toLowerCase() === 'admin' || Number(op.nivel_acesso) === 0;
+                if (ehContaAdmin && !eAdmin) {
+                  return false;
+                }
+
                 if (!buscaOperador.trim()) return true;
                 const termo = buscaOperador.toLowerCase();
                 return (op.nome || '').toLowerCase().includes(termo) || (op.login || '').toLowerCase().includes(termo);
               })
               .map((op) => {
-                const nivelStr = obterNomeNivel(op.nivel_acesso_custom_id || op.nivel_acesso || op.perfil, listaNiveis);
-
-                const badgeCor = (op.nivel_acesso === 0 || op.perfil === 'admin' || op.nivel_acesso_custom_id === 'nivel_0')
-                  ? 'bg-purple-100 text-purple-900 border-purple-200' 
-                  : (op.nivel_acesso === 1 || op.perfil === 'master' || op.nivel_acesso_custom_id === 'nivel_1')
-                  ? 'bg-amber-100 text-amber-900 border-amber-200' 
-                  : (op.nivel_acesso === 2 || op.perfil === 'supervisor' || op.nivel_acesso_custom_id === 'nivel_2')
-                  ? 'bg-blue-100 text-blue-900 border-blue-200'
-                  : (op.nivel_acesso === 4 || op.perfil === 'sindico' || op.nivel_acesso_custom_id === 'nivel_4')
-                  ? 'bg-emerald-100 text-emerald-900 border-emerald-200'
-                  : 'bg-teal-100 text-teal-900 border-teal-200';
-
+                const estaAtivo = op.ativo !== false;
                 return (
                   <div 
                     key={op.id} 
-                    className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm hover:border-blue-300 transition space-y-3 flex flex-col justify-between"
+                    className={`bg-white rounded-xl border p-3 shadow-2xs hover:border-slate-300 transition flex flex-col justify-between gap-2.5 ${
+                      estaAtivo ? 'border-slate-200/80' : 'border-red-200 bg-red-50/20'
+                    }`}
                   >
-                    <div className="space-y-2">
-                      <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          {op.foto_url ? (
-                            <img 
-                              src={op.foto_url} 
-                              alt={op.nome} 
-                              loading="lazy"
-                              decoding="async"
-                              className="w-10 h-10 rounded-xl object-cover border-2 border-blue-400 shrink-0 shadow-2xs" 
-                            />
-                          ) : (
-                            <div className="w-10 h-10 rounded-xl bg-slate-800 text-blue-400 font-black text-sm flex items-center justify-center shrink-0 border border-slate-700">
-                              {op.nome ? op.nome.charAt(0).toUpperCase() : 'OP'}
-                            </div>
-                          )}
-                          <div className="min-w-0">
-                            <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${badgeCor}`}>
-                              {nivelStr}
-                            </span>
-                            <h4 className="font-extrabold text-slate-900 text-sm mt-0.5 truncate">{op.nome}</h4>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {op.foto_url ? (
+                          <img 
+                            src={op.foto_url} 
+                            alt={op.nome} 
+                            loading="lazy" 
+                            decoding="async" 
+                            className={`w-9 h-9 rounded-lg object-cover border shrink-0 ${
+                              estaAtivo ? 'border-slate-200' : 'border-red-300 opacity-60'
+                            }`} 
+                          />
+                        ) : (
+                          <div className={`w-9 h-9 rounded-lg font-bold text-xs flex items-center justify-center shrink-0 border ${
+                            estaAtivo ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-red-100 text-red-700 border-red-200'
+                          }`}>
+                            {op.nome ? op.nome.charAt(0).toUpperCase() : 'OP'}
                           </div>
+                        )}
+                        <div className="min-w-0">
+                          <h4 className={`font-bold text-xs sm:text-sm truncate ${
+                            estaAtivo ? 'text-slate-900' : 'text-slate-500 line-through'
+                          }`}>
+                            {op.nome}
+                          </h4>
+                          <p className="text-[11px] font-mono text-slate-500 truncate">
+                            @{op.login}
+                          </p>
                         </div>
-                        <span className="text-[10px] bg-emerald-100 text-emerald-800 font-black px-2 py-0.5 rounded-full shrink-0">
-                          Ativo
-                        </span>
                       </div>
 
-                      <div className="space-y-1 text-xs text-slate-600">
-                        <div>Login de Acesso: <strong className="font-mono text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded">{op.login}</strong></div>
-                        <div className="text-[11px] text-slate-500">
-                          🏢 Condomínio: <strong>{getNomeCondominioPorId(op.condominio_id)}</strong>
-                        </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => alternarStatusOperador(op)}
+                          title={estaAtivo ? "Clique para desativar login de ex-funcionário" : "Clique para reativar"}
+                          className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition cursor-pointer border ${
+                            estaAtivo
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-red-50 hover:text-red-700 hover:border-red-200'
+                              : 'bg-red-50 text-red-700 border-red-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200'
+                          }`}
+                        >
+                          {estaAtivo ? 'Ativo' : 'Desativado'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => prepararEdicaoOperador(op)}
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
+                          title="Editar operador"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-end pt-2 border-t border-slate-100">
-                      <button
-                        type="button"
-                        onClick={() => prepararEdicaoOperador(op)}
-                        className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition shadow-2xs cursor-pointer active:scale-95"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                        <span>Editar no Card</span>
-                      </button>
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+                      <span className="truncate pr-2 font-medium">
+                        {getNomeCondominioPorId(op.condominio_id)}
+                      </span>
+                      <span 
+                        className={`w-2 h-2 rounded-full shrink-0 ${estaAtivo ? 'bg-emerald-500' : 'bg-red-500'}`} 
+                        title={estaAtivo ? 'Conta Ativa' : 'Conta Desativada'} 
+                      />
                     </div>
                   </div>
                 );
@@ -2620,20 +2677,40 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
               <form onSubmit={salvarOperador} className="space-y-3.5">
                 {eAdmin && (
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                      Condomínio Vinculado *
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase">
+                        Condomínio Vinculado *
+                      </label>
+                      <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                        Multi-Condomínio para Adms e Supervisores
+                      </span>
+                    </div>
                     <select
                       value={condominioIdOperador}
                       onChange={(e) => setCondominioIdOperador(e.target.value)}
-                      required
-                      className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:border-blue-500 focus:outline-none"
+                      required={condominioIdOperador !== 'todos' && condominioIdOperador !== 'global'}
+                      className={`w-full p-2.5 rounded-xl text-xs font-semibold focus:outline-none transition border cursor-pointer ${
+                        condominioIdOperador === 'todos' || condominioIdOperador === 'global'
+                          ? 'bg-emerald-50 border-emerald-500 text-emerald-950 font-bold ring-2 ring-emerald-400/40 shadow-xs'
+                          : 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:border-blue-500'
+                      }`}
                     >
                       <option value="">Selecione o Condomínio...</option>
+                      <option value="todos" className="font-black text-emerald-700 bg-emerald-100 py-1">
+                        🏢 🌐 Todos os Condomínios (Acesso Global - Adms e Supervisores)
+                      </option>
                       {condominios.map((c) => (
                         <option key={c.id} value={c.id}>🏢 {c.nome}</option>
                       ))}
                     </select>
+                    {(condominioIdOperador === 'todos' || condominioIdOperador === 'global') && (
+                      <p className="text-[11px] text-emerald-800 font-semibold mt-1.5 flex items-center gap-1.5 bg-emerald-50 p-2 rounded-xl border border-emerald-200">
+                        <span className="text-emerald-600 font-black">✓</span>
+                        <span>
+                          Usuário configurado com <strong>Acesso Global</strong> a todos os condomínios (permitido para <strong>Administradores</strong> e <strong>Supervisores</strong>).
+                        </span>
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -2689,9 +2766,12 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
                       type="text"
                       required
                       value={loginOperador}
-                      onChange={(e) => setLoginOperador(e.target.value.toLowerCase())}
-                      placeholder="marcos.porteiro"
-                      className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:bg-white focus:border-blue-500 focus:outline-none"
+                      onChange={(e) => setLoginOperador(e.target.value.trim())}
+                      placeholder="Ex: marcos.porteiro"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:border-blue-500 focus:outline-none"
                     />
                   </div>
 
@@ -2705,9 +2785,47 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
                       value={senhaOperador}
                       onChange={(e) => setSenhaOperador(e.target.value)}
                       placeholder={idEdicao ? 'Deixe em branco para manter' : 'Senha secreta'}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:bg-white focus:border-blue-500 focus:outline-none"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:border-blue-500 focus:outline-none"
                     />
                   </div>
+                </div>
+
+                {/* Status da Conta: Ativo ou Desativado (ideal para ex-funcionários) */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                    Status da Conta / Login *
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAtivoOperador(true)}
+                      className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer border ${
+                        ativoOperador
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                      <span>Conta Ativa</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAtivoOperador(false)}
+                      className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer border ${
+                        !ativoOperador
+                          ? 'bg-red-600 text-white border-red-600 shadow-xs'
+                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-white" />
+                      <span>Desativada (Ex-func.)</span>
+                    </button>
+                  </div>
+                  {!ativoOperador && (
+                    <p className="text-[10px] text-red-600 font-semibold mt-1">
+                      ⚠️ Contas desativadas não conseguem fazer login no sistema. Use para revogar o acesso de ex-funcionários sem perder o histórico.
+                    </p>
+                  )}
                 </div>
 
                 <div>

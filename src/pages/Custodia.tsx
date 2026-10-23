@@ -493,29 +493,58 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 sm:grid-cols-3 bg-white rounded-xl shadow-2xs border border-slate-200 overflow-hidden">
+      <div className="grid grid-cols-3 bg-slate-100 p-1 rounded-xl border border-slate-200 gap-1 shadow-2xs">
         <button
+          type="button"
           onClick={() => setAba('entrada')}
-          className={`p-2.5 text-left border-b-2 transition cursor-pointer ${aba === 'entrada' ? 'border-emerald-600 bg-slate-50' : 'border-transparent'}`}
+          className={`py-2 px-2 sm:px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+            aba === 'entrada'
+              ? 'bg-white text-emerald-700 shadow-xs border border-slate-200'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
         >
-          <span className="text-[10px] font-bold uppercase text-slate-400 block">Fluxo 1</span>
-          <strong className="text-xs sm:text-sm text-slate-900 flex items-center gap-1.5"><PackagePlus className="w-3.5 h-3.5 text-emerald-600" /> Receber e Guardar</strong>
+          <PackagePlus className={`w-4 h-4 shrink-0 ${aba === 'entrada' ? 'text-emerald-600' : 'text-slate-500'}`} />
+          <span className="truncate">Receber</span>
         </button>
 
         <button
+          type="button"
           onClick={() => setAba('saida')}
-          className={`p-2.5 text-left border-b-2 transition cursor-pointer ${aba === 'saida' ? 'border-emerald-600 bg-slate-50' : 'border-transparent'}`}
+          className={`py-2 px-2 sm:px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+            aba === 'saida'
+              ? 'bg-white text-blue-700 shadow-xs border border-slate-200'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
         >
-          <span className="text-[10px] font-bold uppercase text-slate-400 block">Fluxo 2</span>
-          <strong className="text-xs sm:text-sm text-slate-900 flex items-center gap-1.5"><PackageCheck className="w-3.5 h-3.5 text-blue-600" /> Baixa / Devolução ({itensGuardados.length})</strong>
+          <PackageCheck className={`w-4 h-4 shrink-0 ${aba === 'saida' ? 'text-blue-600' : 'text-slate-500'}`} />
+          <span className="truncate">Baixar</span>
+          {itensGuardados.length > 0 && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+              aba === 'saida' ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {itensGuardados.length}
+            </span>
+          )}
         </button>
 
         <button
+          type="button"
           onClick={() => setAba('auditoria')}
-          className={`p-2.5 text-left border-b-2 transition cursor-pointer ${aba === 'auditoria' ? 'border-purple-600 bg-purple-50/50' : 'border-transparent'}`}
+          className={`py-2 px-2 sm:px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+            aba === 'auditoria'
+              ? 'bg-white text-purple-700 shadow-xs border border-slate-200'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
         >
-          <span className="text-[10px] font-bold uppercase text-slate-400 block">Fluxo 3</span>
-          <strong className="text-xs sm:text-sm text-slate-900 flex items-center gap-1.5"><History className="w-3.5 h-3.5 text-purple-600" /> Auditoria & Histórico ({historicoCompleto.length})</strong>
+          <History className={`w-4 h-4 shrink-0 ${aba === 'auditoria' ? 'text-purple-600' : 'text-slate-500'}`} />
+          <span className="truncate">Histórico</span>
+          {historicoCompleto.length > 0 && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+              aba === 'auditoria' ? 'bg-purple-100 text-purple-800' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {historicoCompleto.length}
+            </span>
+          )}
         </button>
       </div>
 
