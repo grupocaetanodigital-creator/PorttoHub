@@ -611,9 +611,9 @@ export default function App() {
   );
 
   const modulosDisponiveis = eSindico ? [
-    { id: 'painel_sindico', titulo: 'Portal do Síndico', icone: ShieldCheck, flag: true, cor: 'bg-emerald-950 text-emerald-300 border-emerald-700' }
+    { id: 'painel_sindico', titulo: 'Síndico', icone: ShieldCheck, flag: true, cor: 'bg-emerald-950 text-emerald-300 border-emerald-700' }
   ] : [
-    ...(eAdmin ? [{ id: 'painel_sindico', titulo: 'Portal Síndico (Visão)', icone: ShieldCheck, flag: Boolean(featureFlags.mod_portal_sindico ?? true), cor: 'bg-emerald-950 text-emerald-300 border-emerald-700' }] : []),
+    ...(eAdmin ? [{ id: 'painel_sindico', titulo: 'Síndico', icone: ShieldCheck, flag: Boolean(featureFlags.mod_portal_sindico ?? true), cor: 'bg-emerald-950 text-emerald-300 border-emerald-700' }] : []),
     { id: 'encomendas', titulo: 'Encomendas', icone: Package, flag: Boolean(featureFlags.mod02_gestao_encomendas && verificarPermissao(operadorContextoGlobal, 'encomendas', 'visualizar')), cor: 'bg-blue-50 text-blue-600 border-blue-200' },
     { id: 'custodia', titulo: 'Custódia Itens', icone: PackageCheck, flag: Boolean(featureFlags.mod03_custodia_itens && verificarPermissao(operadorContextoGlobal, 'custodia', 'visualizar')), cor: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
     { id: 'prestadores', titulo: 'Autorizados', icone: UserCheck, flag: Boolean(featureFlags.mod10_prestadores_servico && (verificarPermissao(operadorContextoGlobal, 'autorizados', 'visualizar') || verificarPermissao(operadorContextoGlobal, 'prestadores', 'visualizar'))), cor: 'bg-purple-50 text-purple-700 border-purple-200' },
@@ -622,8 +622,8 @@ export default function App() {
     { id: 'manutencao', titulo: 'Manutenção OS', icone: Wrench, flag: Boolean(featureFlags.mod06_gestao_manutencao && verificarPermissao(operadorContextoGlobal, 'manutencao', 'visualizar')), cor: 'bg-orange-50 text-orange-600 border-orange-200' },
     { id: 'rondas', titulo: 'Rondas QR', icone: QrCode, flag: Boolean(featureFlags.mod07_gestao_ronda && verificarPermissao(operadorContextoGlobal, 'rondas', 'visualizar')), cor: 'bg-slate-100 text-slate-800 border-slate-300' },
     { id: 'ocorrencias', titulo: 'Ocorrências', icone: BookOpen, flag: Boolean(featureFlags.mod08_livro_ocorrencias && verificarPermissao(operadorContextoGlobal, 'ocorrencias', 'visualizar')), cor: 'bg-rose-50 text-rose-600 border-rose-200' },
-    { id: 'passagem', titulo: 'Passagem Posto', icone: Repeat, flag: Boolean(featureFlags.mod09_passagem_posto && (verificarPermissao(operadorContextoGlobal, 'passagem_posto', 'visualizar') || verificarPermissao(operadorContextoGlobal, 'passagem', 'visualizar'))), cor: 'bg-cyan-50 text-cyan-600 border-cyan-200' },
-    { id: 'bancada', titulo: 'Bancada (Balcão)', icone: Layers, flag: Boolean(featureFlags.mod11_bancada_conferencia && (verificarPermissao(operadorContextoGlobal, 'bancada', 'visualizar') || verificarPermissao(operadorContextoGlobal, 'encomendas', 'visualizar'))), cor: 'bg-amber-50 text-amber-800 border-amber-200' },
+    { id: 'passagem', titulo: 'Passagem de Posto', icone: Repeat, flag: Boolean(featureFlags.mod09_passagem_posto && (verificarPermissao(operadorContextoGlobal, 'passagem_posto', 'visualizar') || verificarPermissao(operadorContextoGlobal, 'passagem', 'visualizar'))), cor: 'bg-cyan-50 text-cyan-600 border-cyan-200' },
+    { id: 'bancada', titulo: 'Bancada', icone: Layers, flag: Boolean(featureFlags.mod11_bancada_conferencia && (verificarPermissao(operadorContextoGlobal, 'bancada', 'visualizar') || verificarPermissao(operadorContextoGlobal, 'encomendas', 'visualizar'))), cor: 'bg-amber-50 text-amber-800 border-amber-200' },
     ...(podeAcessarCadastros ? [{ id: 'cadastros', titulo: 'Cadastros Base', icone: Database, flag: Boolean(featureFlags.mod01_cadastros_base ?? true), cor: 'bg-slate-100 text-slate-700 border-slate-300' }] : []),
     ...(verificarPermissao(operadorContextoGlobal, 'historico_absoluto', 'visualizar') ? [{ id: 'historico_absoluto', titulo: 'Histórico Absoluto', icone: History, flag: Boolean(featureFlags.mod12_historico_absoluto ?? true), cor: 'bg-indigo-50 text-indigo-700 border-indigo-200' }] : []),
   ];
@@ -1027,28 +1027,28 @@ export default function App() {
                     <ControleFonteAcessibilidade />
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-3.5">
+                  <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3">
                     {modulosDisponiveis.filter(m => m.flag).map((item) => {
                       const Icone = item.icone;
                       return (
                         <button
                           key={item.id}
                           onClick={() => mudarModulo(item.id)}
-                          className="bg-white dark:bg-slate-900/95 hover:bg-slate-50 dark:hover:bg-slate-800/90 active:scale-[0.98] p-3.5 sm:p-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 hover:border-emerald-500/40 dark:hover:border-emerald-500/40 shadow-xs hover:shadow-md flex flex-col justify-between text-left gap-3 transition-all duration-200 group cursor-pointer relative overflow-hidden"
+                          className="bg-white dark:bg-slate-900/95 hover:bg-slate-50 dark:hover:bg-slate-800/90 active:scale-95 p-2 sm:p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 hover:border-emerald-500/40 dark:hover:border-emerald-500/40 shadow-xs hover:shadow-md flex flex-col items-center justify-center text-center gap-2 transition-all duration-200 group cursor-pointer relative overflow-hidden min-h-[96px] sm:min-h-[108px]"
                         >
-                          <div className="flex items-center justify-between w-full">
-                            <div className={`p-2.5 rounded-lg border ${item.cor} group-hover:scale-105 transition-transform duration-200 shadow-2xs`}>
-                              <Icone className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
-                            </div>
-                            <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-emerald-500 group-hover:translate-x-0.5 transition-all duration-200" />
+                          <div className={`p-2 sm:p-2.5 rounded-xl border ${item.cor} group-hover:scale-110 transition-transform duration-200 shadow-2xs flex items-center justify-center`}>
+                            <Icone className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
                           </div>
-                          <div>
-                            <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors line-clamp-1 block">
-                              {item.titulo}
-                            </span>
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium block mt-0.5">
-                              Acessar módulo
-                            </span>
+                          <div className="w-full flex items-center justify-center px-0.5">
+                            {item.id === 'passagem' ? (
+                              <span className="text-[11px] sm:text-xs font-bold text-slate-800 dark:text-slate-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors text-center leading-tight">
+                                Passagem<br />de Posto
+                              </span>
+                            ) : (
+                              <span className="text-[11px] sm:text-xs font-bold text-slate-800 dark:text-slate-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors text-center leading-tight line-clamp-2">
+                                {item.titulo}
+                              </span>
+                            )}
                           </div>
                         </button>
                       );
