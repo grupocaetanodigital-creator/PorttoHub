@@ -156,14 +156,22 @@ export default function ModalLeitorDocumentoOCR({
         mediaStreamRef.current.getTracks().forEach(t => t.stop());
       }
 
-      // Tenta obter câmera traseira com foco contínuo e resolução HD
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        }
-      });
+      // Tenta obter câmera traseira com foco contínuo e resolução HD, com fallback universal
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }
+        });
+      } catch (eEnv) {
+        console.warn('[ModalOCR] Câmera traseira indisponível, usando câmera padrão:', eEnv);
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true
+        });
+      }
 
       mediaStreamRef.current = stream;
       setStreamAtivo(true);
@@ -186,7 +194,9 @@ export default function ModalLeitorDocumentoOCR({
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.setAttribute('playsinline', 'true');
-        await videoRef.current.play();
+        videoRef.current.setAttribute('autoplay', 'true');
+        videoRef.current.muted = true;
+        await videoRef.current.play().catch(e => console.warn('Erro ao reproduzir vídeo:', e));
       }
     } catch (err: any) {
       console.warn('[ModalOCR] Erro ao abrir câmera:', err);
@@ -482,7 +492,7 @@ export default function ModalLeitorDocumentoOCR({
               ref={containerCameraRef}
               className="relative bg-black rounded-2xl overflow-hidden aspect-[4/3] flex items-center justify-center border-2 border-slate-700 shadow-2xl"
             >
-              <video ref={videoRef} className="w-full h-full object-cover" />
+              <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
 
               {/* RETÂNGULO TRACEJADO GUIA VISUAL DE ENQUADRAMENTO */}
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-3 sm:p-5">

@@ -1,6 +1,9 @@
 {
   "name": "PorttoHub - Sistema Integrado de Portaria",
   "description": "PorttoHub - Sistema integrado de portaria, controle de acesso, rondas patrimoniais, encomendas, custódia e assistente de organização do Supabase.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

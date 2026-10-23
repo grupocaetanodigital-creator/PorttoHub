@@ -235,6 +235,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
   const [modalCameraEtiqueta, setModalCameraEtiqueta] = useState(false);
   const [codigoDetectadoAoVivo, setCodigoDetectadoAoVivo] = useState<string>('');
   const videoCameraEtiquetaRef = useRef<HTMLVideoElement | null>(null);
+  const streamCameraEtiquetaRef = useRef<MediaStream | null>(null);
   const fileInputEtiquetaRef = useRef<HTMLInputElement | null>(null);
 
   const [locaisArmazenamento, setLocaisArmazenamento] = useState<any[]>([]);
@@ -774,30 +775,55 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     setCodigoDetectadoAoVivo('');
     setErroCamera('');
 
-    // Se o dispositivo ou navegador não suportar getUserMedia, abre diretamente o formulário
+    // Garante sempre o formulário de entrada aberto para o operador
+    setModalEntradaAberta(true);
+
+    // Se o dispositivo ou navegador não suportar getUserMedia, mantém o formulário aberto com fallback
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       console.warn('[Câmera Etiqueta] mediaDevices não suportado neste navegador. Abrindo formulário de entrada.');
-      setModalEntradaAberta(true);
+      setMensagem({
+        tipo: 'info',
+        texto: 'Formulário aberto! Navegador sem suporte a transmissão direta. Utilize a Câmera Nativa do aparelho.'
+      });
       return;
     }
 
     try {
       setModalCameraEtiqueta(true);
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
-      });
+
+      // Limpa stream anterior se ainda estiver aberto
+      if (streamCameraEtiquetaRef.current) {
+        streamCameraEtiquetaRef.current.getTracks().forEach(t => t.stop());
+        streamCameraEtiquetaRef.current = null;
+      }
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+      } catch (eEnv) {
+        console.warn('Tentativa com câmera traseira falhou, alternando para câmera disponível:', eEnv);
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true
+        });
+      }
+
+      streamCameraEtiquetaRef.current = stream;
+
       if (videoCameraEtiquetaRef.current) {
         videoCameraEtiquetaRef.current.srcObject = stream;
+        videoCameraEtiquetaRef.current.setAttribute('playsinline', 'true');
         videoCameraEtiquetaRef.current.play().catch(e => console.warn('Erro ao reproduzir vídeo:', e));
       }
     } catch (err: any) {
       console.warn('[Câmera Etiqueta] Erro ao abrir stream ao vivo:', err);
       fecharCameraFotoEtiqueta();
-      // Fallback seguro: abre imediatamente o formulário de entrada para NUNCA travar o operador
+      // O formulário de entrada já fica aberto para preenchimento imediato!
       setModalEntradaAberta(true);
       setMensagem({
         tipo: 'info',
-        texto: 'Acesso à câmera ao vivo indisponível ou permissão pendente. Formulário de entrada aberto para preenchimento!'
+        texto: 'Formulário aberto para preenchimento! Para anexar a etiqueta, toque em "Câmera Nativa" ou selecione a foto.'
       });
       if (fileInputEtiquetaRef.current) {
         try {
@@ -808,6 +834,10 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
   };
 
   const fecharCameraFotoEtiqueta = () => {
+    if (streamCameraEtiquetaRef.current) {
+      streamCameraEtiquetaRef.current.getTracks().forEach(t => t.stop());
+      streamCameraEtiquetaRef.current = null;
+    }
     if (videoCameraEtiquetaRef.current && videoCameraEtiquetaRef.current.srcObject) {
       const stream = videoCameraEtiquetaRef.current.srcObject as MediaStream;
       stream.getTracks().forEach(t => t.stop());
@@ -816,10 +846,20 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     setModalCameraEtiqueta(false);
   };
 
+  // Garante que o stream seja anexado ao elemento de vídeo assim que o modal for montado no DOM
+  useEffect(() => {
+    if (modalCameraEtiqueta && streamCameraEtiquetaRef.current && videoCameraEtiquetaRef.current) {
+      if (videoCameraEtiquetaRef.current.srcObject !== streamCameraEtiquetaRef.current) {
+        videoCameraEtiquetaRef.current.srcObject = streamCameraEtiquetaRef.current;
+        videoCameraEtiquetaRef.current.setAttribute('playsinline', 'true');
+        videoCameraEtiquetaRef.current.play().catch(e => console.warn('Erro ao reproduzir vídeo:', e));
+      }
+    }
+  }, [modalCameraEtiqueta]);
+
   /**
    * Disparado ao pressionar o botão flutuante de Nova Entrada (+)
-   * Abre diretamente a câmera para o operador posicionar e tirar a foto da etiqueta,
-   * enquanto o leitor de código já extrai e preenche o rastreio em tempo real.
+   * Abre o formulário de entrada E ativa a câmera simultaneamente.
    */
   const iniciarEntradaComCamera = () => {
     // 1. Limpa qualquer seleção pendente de pacotes para evitar conflitos de interface
@@ -835,7 +875,8 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     setOcrDadosDetectados(null);
     setItemTriadoWhats(null);
 
-    // 3. Abre a câmera diretamente (ou formulário se câmera indisponível)
+    // 3. Abre o formulário de entrada E ativa a câmera
+    setModalEntradaAberta(true);
     abrirCameraFotoEtiqueta();
   };
 
@@ -4546,9 +4587,6 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                   <h3 className="text-base font-bold text-slate-900 flex items-center gap-1.5">
                     Entrada de Encomendas
                   </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Registre o pacote recebido para guarda e aviso automático ao morador
-                  </p>
                 </div>
               </div>
               <button
@@ -4622,6 +4660,8 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                     </label>
                     <input
                       type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={unidadeTriagem}
                       onChange={(e) => handleDigitarUnidadeTriagem(e.target.value)}
                       onBlur={handleBlurUnidadeTriagem}
@@ -4862,34 +4902,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                     disabled={uploadingFoto || analisandoOcrEtiqueta} 
                   />
 
-                  {!fotoEtiquetaUrl ? (
-                    <div className="flex flex-col gap-2">
-                      <button
-                        type="button"
-                        onClick={abrirCameraFotoEtiqueta}
-                        disabled={uploadingFoto || analisandoOcrEtiqueta}
-                        className={`w-full border-2 border-dashed transition-all rounded-2xl p-4 flex flex-col items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-[0.99] ${
-                          analisandoOcrEtiqueta 
-                            ? 'border-emerald-500 bg-emerald-50 text-emerald-900' 
-                            : 'border-emerald-400 bg-emerald-50/60 hover:bg-emerald-100/70 text-emerald-800'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 font-black text-sm text-emerald-800">
-                          <Camera className="w-5 h-5 text-emerald-600 animate-bounce" />
-                          <span>
-                            {uploadingFoto 
-                              ? 'Salvando foto...' 
-                              : analisandoOcrEtiqueta 
-                              ? '⚡ Lendo etiqueta com IA (< 5s)...' 
-                              : 'Abrir Câmera e Tirar Foto da Etiqueta'}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-emerald-700/90 text-center font-medium">
-                          Abre a câmera direto para foto. A IA extrai até 3 códigos com a NF inclusa em menos de 5s!
-                        </span>
-                      </button>
-                    </div>
-                  ) : (
+                  {fotoEtiquetaUrl && (
                     <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50 p-2 flex flex-col items-center gap-2">
                       <div className="relative w-full flex justify-center">
                         <img 
