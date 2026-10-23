@@ -55,6 +55,7 @@ import {
   Home,
   Grid,
   ChevronLeft,
+  ChevronRight,
   Sparkles,
   HardHat,
   PackageCheck,
@@ -697,16 +698,18 @@ export default function App() {
               </div>
             )}
 
-            <nav className="p-3 space-y-1.5 overflow-y-auto max-h-[calc(100vh-250px)]">
+            <nav className="p-3 space-y-1 overflow-y-auto max-h-[calc(100vh-250px)]">
               {!eSindico && (
                 <button
                   onClick={() => mudarModulo('dashboard')}
-                  className={`w-full p-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-between transition ${
-                    moduloAtual === 'dashboard' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-300 hover:bg-slate-800'
+                  className={`w-full px-3 py-2.5 rounded-lg text-xs font-semibold flex items-center justify-between transition-all duration-150 cursor-pointer ${
+                    moduloAtual === 'dashboard'
+                      ? 'bg-emerald-500/15 text-emerald-400 border-l-2 border-emerald-500 shadow-2xs font-bold'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <Home className="w-5 h-5 shrink-0" />
+                    <Home className="w-4 h-4 shrink-0" />
                     {menuAberto && <span>Painel Principal</span>}
                   </div>
                 </button>
@@ -714,16 +717,19 @@ export default function App() {
 
               {modulosDisponiveis.filter(m => m.flag).map((item) => {
                 const IconeComponente = item.icone;
+                const ativo = moduloAtual === item.id;
                 return (
                   <button
                     key={item.id}
                     onClick={() => mudarModulo(item.id)}
-                    className={`w-full p-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-between transition ${
-                      moduloAtual === item.id ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-300 hover:bg-slate-800'
+                    className={`w-full px-3 py-2.5 rounded-lg text-xs font-semibold flex items-center justify-between transition-all duration-150 cursor-pointer ${
+                      ativo
+                        ? 'bg-emerald-500/15 text-emerald-400 border-l-2 border-emerald-500 shadow-2xs font-bold'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <IconeComponente className="w-5 h-5 shrink-0" />
+                      <IconeComponente className="w-4 h-4 shrink-0" />
                       {menuAberto && <span>{item.titulo}</span>}
                     </div>
                   </button>
@@ -913,8 +919,8 @@ export default function App() {
           )}
 
           {/* CABEÇALHO GLOBAL (MOBILE E DESKTOP COM NOTIFICAÇÕES NO TOPO DIREITO) */}
-          <header className="bg-slate-900 text-white px-3 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between sticky top-0 z-30 shadow-md border-b border-slate-800">
-            <div className="flex items-center gap-2 sm:gap-3 overflow-hidden flex-1 mr-2">
+          <header className="bg-slate-900/95 backdrop-blur-md text-white px-3.5 sm:px-5 py-2.5 flex items-center justify-between sticky top-0 z-30 shadow-xs border-b border-slate-800/80">
+            <div className="flex items-center gap-2.5 sm:gap-3.5 overflow-hidden flex-1 mr-3">
               <div className="shrink-0 flex items-center">
                 <EmblemaInfport tamanho="sm" comBrilho />
               </div>
@@ -929,26 +935,28 @@ export default function App() {
                       const cObj = listaCondominios.find(c => c.id === novoId);
                       if (cObj) setCondominio(cObj);
                     }}
-                    className="bg-slate-800 text-emerald-400 font-extrabold text-[11px] sm:text-xs px-2 py-1 rounded border border-slate-700 focus:outline-none max-w-full truncate"
+                    className="bg-slate-800/90 text-emerald-400 font-bold text-xs px-2.5 py-1 rounded-lg border border-slate-700/80 hover:border-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 max-w-full truncate shadow-2xs cursor-pointer"
                   >
-                    <option value="">🏢 Todos (Global)</option>
+                    <option value="">🏢 Todos os Condomínios (Visão Global)</option>
                     {listaCondominios.map((c) => (
                       <option key={c.id} value={c.id}>🏢 {c.nome}</option>
                     ))}
                   </select>
                 ) : (
-                  <h1 className="font-extrabold text-xs sm:text-sm text-white truncate leading-tight">
+                  <h1 className="font-extrabold text-xs sm:text-sm text-white truncate leading-tight tracking-tight">
                     {operadorContextoGlobal.condominio_nome || 'Condomínio'}
                   </h1>
                 )}
-                <p className="text-[11px] text-slate-300 font-semibold truncate leading-tight mt-0.5">
-                  Operador: <span className="text-white font-bold">{operador.nome || 'Caetano'}</span>
-                </p>
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium truncate mt-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                  <span>Operador:</span>
+                  <span className="text-slate-200 font-bold">{operador.nome || 'Caetano'}</span>
+                </div>
               </div>
             </div>
 
             {/* Ações no Topo Superior Direito: Botão de Notificações/Lembretes e Alerta de Presentes no Condomínio */}
-            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
               {/* Alerta de pessoas presentes no condomínio logo ao lado do botão de lembrete */}
               <AlertaNoCondominioTopo
                 condominioId={condominioAtivoId || operador?.condominio_id || ''}
@@ -964,7 +972,7 @@ export default function App() {
           </header>
 
           {moduloAtual !== 'dashboard' && !eSindico && (
-            <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-2 flex flex-wrap items-center justify-between gap-2 shadow-xs transition-colors">
+            <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 shadow-xs transition-colors">
               <button 
                 onClick={() => mudarModulo('dashboard')}
                 className="flex items-center gap-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-800 dark:border-slate-700 px-3.5 py-2 rounded-xl shadow-xs transition cursor-pointer"
@@ -989,22 +997,30 @@ export default function App() {
             </div>
           )}
 
-          <main className="flex-1 p-2.5 sm:p-4 overflow-y-auto text-slate-900 dark:text-slate-100 bg-slate-100 dark:bg-slate-950 transition-colors duration-200">
+          <main className="flex-1 p-3.5 sm:p-5 md:p-6 overflow-y-auto text-slate-900 dark:text-slate-100 bg-slate-100/70 dark:bg-slate-950 transition-colors duration-200">
             
             {moduloAtual === 'dashboard' && (
-              <div className="max-w-4xl mx-auto space-y-3">
+              <div className="max-w-5xl mx-auto space-y-4">
                 
                 {/* Topo do Painel: INFPORT ampliado com Versão sobre o Menu de Controle de Fonte e Atualização */}
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 flex items-center justify-between flex-wrap gap-2.5 shadow-2xs transition-colors">
-                  <div className="flex items-center">
-                    <h1 className="font-black text-xl sm:text-2xl md:text-3xl text-slate-900 dark:text-white tracking-wider flex items-center gap-2">
-                      {NOME_APLICACAO}
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse inline-block" title="Sistema Ativo"></span>
-                    </h1>
+                <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 sm:p-5 flex items-center justify-between flex-wrap gap-4 shadow-xs transition-colors">
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-2.5">
+                      <h1 className="font-black text-2xl sm:text-3xl text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                        {NOME_APLICACAO}
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse inline-block" title="Sistema Operacional Online"></span>
+                      </h1>
+                      <span className="text-[10px] uppercase font-mono font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        Enterprise
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1">
+                      Central Integrada de Portaria, Segurança & Gestão Condominial
+                    </p>
                   </div>
 
-                  <div className="flex flex-col items-end gap-1">
-                    <span className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-mono tracking-tight font-bold uppercase">
+                  <div className="flex flex-col items-end gap-1.5">
+                    <span className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500 font-mono tracking-wider font-bold uppercase">
                       VERSÃO {VERSAO_BUILD_ATUAL}
                     </span>
                     <div className="flex items-center gap-2">
@@ -1014,26 +1030,43 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Grid dos Módulos Operacionais Otimizado */}
-                <div>
-                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 mb-2 px-1">
-                    Módulos Operacionais
-                  </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                {/* Grid dos Módulos Operacionais Otimizado e Profissional */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between px-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-4 bg-emerald-500 rounded-full" />
+                      <h2 className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                        Módulos Operacionais
+                      </h2>
+                    </div>
+                    <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
+                      {modulosDisponiveis.filter(m => m.flag).length} módulos ativos
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-3.5">
                     {modulosDisponiveis.filter(m => m.flag).map((item) => {
                       const Icone = item.icone;
                       return (
                         <button
                           key={item.id}
                           onClick={() => mudarModulo(item.id)}
-                          className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-[0.98] p-2.5 sm:p-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-2xs flex flex-col items-center justify-center text-center gap-1.5 transition group cursor-pointer"
+                          className="bg-white dark:bg-slate-900/95 hover:bg-slate-50 dark:hover:bg-slate-800/90 active:scale-[0.98] p-3.5 sm:p-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 hover:border-emerald-500/40 dark:hover:border-emerald-500/40 shadow-xs hover:shadow-md flex flex-col justify-between text-left gap-3 transition-all duration-200 group cursor-pointer relative overflow-hidden"
                         >
-                          <div className={`p-2 rounded-lg border ${item.cor} group-hover:scale-105 transition duration-150`}>
-                            <Icone className="w-5 h-5 sm:w-6 sm:h-6" />
+                          <div className="flex items-center justify-between w-full">
+                            <div className={`p-2.5 rounded-lg border ${item.cor} group-hover:scale-105 transition-transform duration-200 shadow-2xs`}>
+                              <Icone className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-emerald-500 group-hover:translate-x-0.5 transition-all duration-200" />
                           </div>
-                          <span className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-tight line-clamp-1">
-                            {item.titulo}
-                          </span>
+                          <div>
+                            <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors line-clamp-1 block">
+                              {item.titulo}
+                            </span>
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium block mt-0.5">
+                              Acessar módulo
+                            </span>
+                          </div>
                         </button>
                       );
                     })}
