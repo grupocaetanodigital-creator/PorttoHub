@@ -16,7 +16,8 @@ import HistoricoAbsoluto from './pages/HistoricoAbsoluto';
 import PainelSindico from './pages/PainelSindico';
 import AlertaRondaGlobal from './components/AlertaRondaGlobal';
 import { OfflineIndicator } from './components/OfflineIndicator';
-import SeletorTema from './components/SeletorTema';
+import ControleFonteAcessibilidade from './components/ControleFonteAcessibilidade';
+import BotaoAtualizarApp from './components/BotaoAtualizarApp';
 import { NOME_APLICACAO, VERSAO_BUILD_ATUAL } from './services/versaoService';
 import AlertaNovaVersaoPWA from './components/AlertaNovaVersaoPWA';
 import IndicadorConectividade from './components/IndicadorConectividade';
@@ -973,7 +974,7 @@ export default function App() {
                 <span className="text-white font-bold">Voltar ao Painel</span>
               </button>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 <div className="hidden sm:flex flex-col text-right leading-none">
                   <span className="font-extrabold text-xs text-slate-800 dark:text-slate-100">
                     {NOME_APLICACAO}
@@ -982,7 +983,8 @@ export default function App() {
                     VERSÃO {VERSAO_BUILD_ATUAL}
                   </span>
                 </div>
-                <SeletorTema />
+                <ControleFonteAcessibilidade />
+                <BotaoAtualizarApp />
               </div>
             </div>
           )}
@@ -992,7 +994,7 @@ export default function App() {
             {moduloAtual === 'dashboard' && (
               <div className="max-w-4xl mx-auto space-y-3">
                 
-                {/* Topo do Painel: INFPORT com Versão e Seletor de Tema Modo Claro / Modo Escuro */}
+                {/* Topo do Painel: INFPORT com Versão e Menu de Fonte, Modo Claro/Escuro e Atualização GitHub */}
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 flex items-center justify-between flex-wrap gap-2.5 shadow-2xs transition-colors">
                   <div className="flex items-center gap-2.5">
                     <EmblemaInfport tamanho="sm" comBrilho />
@@ -1008,7 +1010,8 @@ export default function App() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <SeletorTema />
+                    <ControleFonteAcessibilidade />
+                    <BotaoAtualizarApp />
                   </div>
                 </div>
 
@@ -1275,9 +1278,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex flex-col items-center justify-center p-4 text-slate-900 dark:text-slate-100 antialiased relative transition-colors duration-200">
-      {/* Barra Superior com Marca, Versão e Tema */}
-      <div className="absolute top-4 right-4 flex items-center gap-3 z-20">
-        <div className="flex flex-col text-right leading-none">
+      {/* Barra Superior com Marca, Versão, Fonte, Tema e Atualizações */}
+      <div className="absolute top-4 right-4 flex items-center gap-2 z-20">
+        <div className="hidden sm:flex flex-col text-right leading-none">
           <span className="font-extrabold text-xs text-slate-800 dark:text-slate-100">
             {NOME_APLICACAO}
           </span>
@@ -1285,7 +1288,8 @@ export default function App() {
             VERSÃO {VERSAO_BUILD_ATUAL}
           </span>
         </div>
-        <SeletorTema />
+        <ControleFonteAcessibilidade />
+        <BotaoAtualizarApp />
       </div>
 
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md p-6 sm:p-8 my-auto border border-slate-200 dark:border-slate-800 transition-colors">
