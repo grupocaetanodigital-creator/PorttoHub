@@ -11,6 +11,10 @@ import path from 'path';
 
 dotenv.config();
 
+// Força as credenciais ativas do PorttoHub (ignora resquícios de variáveis legadas do contêiner)
+process.env.VITE_SUPABASE_URL = 'https://kkeizhscivyfjgetnbke.supabase.co';
+process.env.VITE_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtrZWl6aHNjaXZ5ZmpnZXRuYmtlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2ODk5NDUsImV4cCI6MjEwODI2NTk0NX0.hQzzvICbZfNPziWrj8DlD-A8-Vm4xbr25Nr0xQe3BEA';
+
 const app = express();
 const port = 3000;
 

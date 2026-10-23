@@ -687,21 +687,21 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
       {/* CABEÇALHO COM IDENTIFICAÇÃO E AÇÕES RÁPIDAS */}
       <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 text-white p-3.5 sm:p-4 rounded-2xl shadow-md border border-amber-500/30">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-lg sm:text-xl font-black flex items-center gap-2 tracking-tight">
-              <Layers className="w-5 h-5 text-amber-200" />
-              Conferência de Bancada
+              <Layers className="w-5 h-5 text-amber-200 shrink-0" />
+              <span>Conferência de Bancada</span>
             </h1>
 
-            {/* BOTÃO COMPARTILHAR EM FRENTE DO NOME */}
+            {/* BOTÃO COMPARTILHAR APENAS COM ÍCONE AO LADO DO TÍTULO */}
             <button
               type="button"
               onClick={handleCopiarWhatsApp}
-              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition active:scale-95 cursor-pointer border border-emerald-400/30"
-              title="Copiar lista estruturada para o grupo de WhatsApp"
+              className="p-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-black inline-flex items-center justify-center shadow-sm transition active:scale-95 cursor-pointer border border-emerald-400/30 shrink-0"
+              title={copiadoWhats ? 'Copiado para o WhatsApp!' : 'Copiar lista estruturada para o WhatsApp'}
+              aria-label="Compartilhar no WhatsApp"
             >
-              {copiadoWhats ? <Check className="w-3.5 h-3.5 text-emerald-200" /> : <Share2 className="w-3.5 h-3.5" />}
-              <span>{copiadoWhats ? 'Copiado!' : 'Compartilhar'}</span>
+              {copiadoWhats ? <Check className="w-4 h-4 text-emerald-200" /> : <Share2 className="w-4 h-4" />}
             </button>
           </div>
 
@@ -779,57 +779,48 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
         </div>
       </div>
 
-      {/* NAVEGAÇÃO DE ABAS */}
-      <div className="flex border-b border-slate-200 bg-white rounded-xl p-1 shadow-xs gap-1 flex-wrap sm:flex-nowrap">
+      {/* NAVEGAÇÃO DE ABAS LADO A LADO */}
+      <div className="grid grid-cols-3 gap-1.5 sm:gap-2 bg-white rounded-xl p-1 shadow-xs border border-slate-200">
         <button
           type="button"
           onClick={() => setAbaVisualizacao('lancamento')}
-          className={`flex-1 py-2 px-3 rounded-lg text-xs font-black flex items-center justify-center gap-2 transition cursor-pointer ${
+          className={`py-2 px-2 sm:px-3 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 sm:gap-2 transition cursor-pointer text-center truncate ${
             abaVisualizacao === 'lancamento'
               ? 'bg-amber-500 text-white shadow-sm'
               : 'text-slate-600 hover:bg-slate-100'
           }`}
+          title="Entrada Manual"
         >
-          <PenTool className="w-4 h-4" />
-          <span>Manual</span>
+          <PenTool className="w-4 h-4 shrink-0" />
+          <span className="truncate">Entr. Manual</span>
         </button>
 
         <button
           type="button"
           onClick={() => setAbaVisualizacao('visao_geral')}
-          className={`flex-1 py-2 px-3 rounded-lg text-xs font-black flex items-center justify-center gap-2 transition cursor-pointer ${
+          className={`py-2 px-2 sm:px-3 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 sm:gap-2 transition cursor-pointer text-center truncate ${
             abaVisualizacao === 'visao_geral'
               ? 'bg-amber-500 text-white shadow-sm'
               : 'text-slate-600 hover:bg-slate-100'
           }`}
+          title="Consolidado"
         >
-          <Layers className="w-4 h-4" />
-          <span>Consolidado</span>
-          {estatisticas.totalVolumes > 0 && (
-            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-              abaVisualizacao === 'visao_geral' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
-            }`}>
-              {estatisticas.totalVolumes} vol
-            </span>
-          )}
+          <Layers className="w-4 h-4 shrink-0" />
+          <span className="truncate">Consolidado</span>
         </button>
 
         <button
           type="button"
           onClick={() => setAbaVisualizacao('checklist')}
-          className={`flex-1 py-2 px-3 rounded-lg text-xs font-black flex items-center justify-center gap-2 transition cursor-pointer ${
+          className={`py-2 px-2 sm:px-3 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 sm:gap-2 transition cursor-pointer text-center truncate ${
             abaVisualizacao === 'checklist'
               ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-300'
               : 'text-slate-600 hover:bg-emerald-50 hover:text-emerald-800'
           }`}
+          title="Checklist"
         >
-          <ListChecks className="w-4 h-4" />
-          <span>Checklist</span>
-          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-            abaVisualizacao === 'checklist' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
-          }`}>
-            {estatisticasChecklistGeral.conferidos}/{estatisticasChecklistGeral.totalItens}
-          </span>
+          <ListChecks className="w-4 h-4 shrink-0" />
+          <span className="truncate">Checklist</span>
         </button>
       </div>
 
