@@ -2571,45 +2571,24 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
           </div>
         ) : (
         <div className="space-y-2">
-          {/* BARRA DE AÇÕES: ÍCONE DO DOSSIÊ (DOCI) E BOTÃO DE PESQUISA */}
-          <div className="flex items-center justify-between gap-2 px-1 pt-0.5 flex-wrap">
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!podeVerDossie) {
-                    setMensagem({ tipo: 'erro', texto: 'Acesso restrito: A visualização do Dossiê Completo de Auditoria exige permissão adequada.' });
-                    return;
-                  }
-                  setEtapa('4');
-                  carregarDossie();
-                }}
-                className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 hover:border-purple-300 rounded-xl font-bold text-xs shadow-2xs transition-all cursor-pointer group"
-                title="Dossiê Completo de Auditoria e Histórico de Encomendas (DOCI)"
-              >
-                <FileText className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />
-                <span>Dossiê (DOCI)</span>
-              </button>
-
-              {/* Botão de Pesquisa ao lado do Dossiê */}
-              <button
-                type="button"
-                onClick={() => setMostrarBuscaBaixa(!mostrarBuscaBaixa)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border shadow-2xs ${
-                  mostrarBuscaBaixa || buscaBaixaGeral.trim()
-                    ? 'bg-slate-900 text-white border-slate-900'
-                    : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
-                }`}
-                title={mostrarBuscaBaixa ? "Recolher pesquisa" : "Abrir pesquisa de encomendas"}
-              >
-                <Search className="w-3.5 h-3.5" />
-                <span>Pesquisa</span>
-                {buscaBaixaGeral.trim() && (
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Pesquisa ativa" />
-                )}
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${mostrarBuscaBaixa || buscaBaixaGeral.trim() ? 'rotate-180' : ''}`} />
-              </button>
-            </div>
+          {/* BARRA DE AÇÕES: ÍCONE DO DOSSIÊ (DOCI) */}
+          <div className="flex items-center justify-between gap-2 px-1 pt-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                if (!podeVerDossie) {
+                  setMensagem({ tipo: 'erro', texto: 'Acesso restrito: A visualização do Dossiê Completo de Auditoria exige permissão adequada.' });
+                  return;
+                }
+                setEtapa('4');
+                carregarDossie();
+              }}
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 hover:border-purple-300 rounded-xl font-bold text-xs shadow-2xs transition-all cursor-pointer group"
+              title="Dossiê Completo de Auditoria e Histórico de Encomendas (DOCI)"
+            >
+              <FileText className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />
+              <span>Dossiê (DOCI)</span>
+            </button>
           </div>
 
           <div className="bg-white p-2.5 sm:p-3 rounded-xl shadow-2xs border border-slate-200 space-y-2">
@@ -2619,6 +2598,25 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                 <UserCheck className="w-4 h-4 text-slate-800" /> Entrega de Pacotes (Saída)
               </h3>
             </div>
+
+            {/* Botão de Pesquisa em frente a Entrega de Pacotes (Saída) */}
+            <button
+              type="button"
+              onClick={() => setMostrarBuscaBaixa(!mostrarBuscaBaixa)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border shadow-2xs ${
+                mostrarBuscaBaixa || buscaBaixaGeral.trim()
+                  ? 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+              }`}
+              title={mostrarBuscaBaixa ? "Recolher pesquisa" : "Abrir pesquisa de encomendas"}
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span>Pesquisa</span>
+              {buscaBaixaGeral.trim() && (
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Pesquisa ativa" />
+              )}
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${mostrarBuscaBaixa || buscaBaixaGeral.trim() ? 'rotate-180' : ''}`} />
+            </button>
           </div>
 
           {/* PAINEL DA FUNÇÃO DE PESQUISA (ABERTO PELO BOTÃO DE PESQUISA) */}
