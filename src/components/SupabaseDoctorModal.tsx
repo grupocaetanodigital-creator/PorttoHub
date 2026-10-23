@@ -40,20 +40,33 @@ import {
 interface SupabaseDoctorModalProps {
   isOpen: boolean;
   onClose: () => void;
+  abaInicial?: 'condominios' | 'auditoria' | 'script' | 'storage' | 'oci';
 }
 
-export default function SupabaseDoctorModal({ isOpen, onClose }: SupabaseDoctorModalProps) {
+export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'oci' }: SupabaseDoctorModalProps) {
   const [loading, setLoading] = useState(false);
   const [diagnostics, setDiagnostics] = useState<TableDiagnostic[]>(CANONICAL_SCHEMA_MAP);
   const [orphanedCount, setOrphanedCount] = useState(0);
   const [copiado, setCopiado] = useState(false);
   const [copiadoOCI, setCopiadoOCI] = useState(false);
   const [copiadoComandoOCI, setCopiadoComandoOCI] = useState(false);
-  const [abaAtiva, setAbaAtiva] = useState<'condominios' | 'auditoria' | 'script' | 'storage' | 'oci'>('condominios');
-  const [inputUrlOci, setInputUrlOci] = useState(() => obterStatusConexaoBanco().url);
+  const [abaAtiva, setAbaAtiva] = useState<'condominios' | 'auditoria' | 'script' | 'storage' | 'oci'>(abaInicial);
+  const [inputUrlOci, setInputUrlOci] = useState(() => {
+    const atual = obterStatusConexaoBanco().url;
+    return atual && !atual.includes('supabase.co') ? atual : 'http://163.176.49.21:8000';
+  });
   const [statusOci, setStatusOci] = useState(() => obterStatusConexaoBanco());
   const [executandoInitDb, setExecutandoInitDb] = useState(false);
   const [resultadoInitDb, setResultadoInitDb] = useState<{ sucesso: boolean; mensagem: string; dica?: string; totalTabelas?: number } | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (abaInicial) {
+        setAbaAtiva(abaInicial);
+      }
+      setStatusOci(obterStatusConexaoBanco());
+    }
+  }, [isOpen, abaInicial]);
 
   const executarCriacaoTabelasServidor = async () => {
     setExecutandoInitDb(true);

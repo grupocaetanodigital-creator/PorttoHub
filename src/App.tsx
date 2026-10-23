@@ -735,6 +735,24 @@ export default function App() {
                   </button>
                 );
               })}
+
+              {/* Botão de Banco de Dados OCI no menu */}
+              <button
+                type="button"
+                onClick={() => setModalSupabaseDoctorAberto(true)}
+                className="w-full px-3 py-2 rounded-lg text-xs font-semibold flex items-center justify-between text-blue-400 hover:text-white hover:bg-blue-900/40 border border-blue-500/20 transition cursor-pointer mt-2"
+                title="Diagnóstico & Integridade do Banco (Oracle Cloud OCI)"
+              >
+                <div className="flex items-center gap-3">
+                  <Database className="w-4 h-4 text-blue-400 shrink-0" />
+                  {menuAberto && <span>Banco OCI / Doctor</span>}
+                </div>
+                {menuAberto && (
+                  <span className="text-[9px] bg-blue-500/20 text-blue-300 font-mono px-1 py-0.2 rounded">
+                    OCI
+                  </span>
+                )}
+              </button>
             </nav>
           </div>
 
@@ -941,8 +959,19 @@ export default function App() {
               </div>
             </div>
 
-            {/* Ações no Topo Superior Direito: Alerta de Presentes no Condomínio e Notificações */}
+            {/* Ações no Topo Superior Direito: Banco OCI, Alerta de Presentes no Condomínio e Notificações */}
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              {/* Botão de Banco de Dados / Oracle Cloud OCI Doctor */}
+              <button
+                type="button"
+                onClick={() => setModalSupabaseDoctorAberto(true)}
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-blue-600/90 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition active:scale-95 shadow-xs border border-blue-400/40 cursor-pointer"
+                title="Diagnóstico & Integridade do Banco (Oracle Cloud OCI / PostgREST)"
+              >
+                <Database className="w-4 h-4 text-white shrink-0" />
+                <span className="hidden sm:inline">Banco OCI</span>
+              </button>
+
               {/* Alerta de pessoas presentes no condomínio */}
               <AlertaNoCondominioTopo
                 condominioId={condominioAtivoId || operador?.condominio_id || ''}
@@ -1268,7 +1297,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex flex-col items-center justify-center p-4 text-slate-900 dark:text-slate-100 antialiased relative transition-colors duration-200">
-      {/* Barra Superior com Marca, Versão, Fonte, Tema e Atualizações */}
+      {/* Barra Superior com Marca, Versão, Fonte, Tema, Atualizações e Botão Banco OCI */}
       <div className="absolute top-4 right-4 flex items-center gap-2 z-20">
         <div className="hidden sm:flex flex-col text-right leading-none">
           <span className="font-extrabold text-xs text-slate-800 dark:text-slate-100">
@@ -1278,6 +1307,15 @@ export default function App() {
             VERSÃO {VERSAO_BUILD_ATUAL}
           </span>
         </div>
+        <button
+          type="button"
+          onClick={() => setModalSupabaseDoctorAberto(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+          title="Configurar Banco de Dados na Oracle Cloud (OCI)"
+        >
+          <Database className="w-3.5 h-3.5 shrink-0" />
+          <span>Banco OCI</span>
+        </button>
         <ControleFonteAcessibilidade />
         <BotaoAtualizarApp />
       </div>
@@ -1368,7 +1406,25 @@ export default function App() {
             {loading ? 'Autenticando...' : 'Entrar no Sistema'}
           </button>
         </form>
+
+        <div className="mt-4 pt-3.5 border-t border-slate-200 dark:border-slate-800 text-center">
+          <button
+            type="button"
+            onClick={() => setModalSupabaseDoctorAberto(true)}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline cursor-pointer transition"
+          >
+            <Database className="w-4 h-4 shrink-0" />
+            <span>Configurar / Inicializar Banco OCI (163.176.49.21)</span>
+          </button>
+        </div>
       </div>
+
+      {/* Modal do Banco / OCI Doctor acessível também na tela de login */}
+      <SupabaseDoctorModal
+        isOpen={modalSupabaseDoctorAberto}
+        onClose={() => setModalSupabaseDoctorAberto(false)}
+        abaInicial="oci"
+      />
 
       <IndicadorConectividade />
       <OfflineIndicator />
