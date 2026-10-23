@@ -2520,7 +2520,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
   return (
     <div className="space-y-2">
       {/* PAINEL DE MÉTRICAS DO DIA (DIRETO E COMPACTO) */}
-      <div className="grid grid-cols-2 gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
+      <div className="grid grid-cols-3 gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
         <div className="py-1 px-1.5 rounded-lg bg-blue-50/70 flex items-center justify-center gap-1.5 text-center">
           <Boxes className="w-3.5 h-3.5 text-blue-700 shrink-0" />
           <div className="leading-tight">
@@ -2534,6 +2534,14 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
           <div className="leading-tight">
             <span className="text-[9px] font-bold uppercase text-slate-500 block truncate">Entradas Hoje</span>
             <strong className="text-xs sm:text-sm font-black text-emerald-700">{statsDia.triadasHoje}</strong>
+          </div>
+        </div>
+
+        <div className="py-1 px-1.5 rounded-lg bg-purple-50/70 flex items-center justify-center gap-1.5 text-center">
+          <UserCheck className="w-3.5 h-3.5 text-purple-700 shrink-0" />
+          <div className="leading-tight">
+            <span className="text-[9px] font-bold uppercase text-slate-500 block truncate">Saídas Hoje</span>
+            <strong className="text-xs sm:text-sm font-black text-purple-900">{statsDia.entreguesHoje}</strong>
           </div>
         </div>
       </div>
