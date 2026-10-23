@@ -4877,36 +4877,25 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                   )}
                 </div>
 
-                {/* FOTO DO PACOTE / ETIQUETA COM ABERTURA DIRETA DA CÂMERA */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase flex items-center gap-1">
-                      <Camera className="w-3.5 h-3.5 text-emerald-600" />
-                      Foto da Etiqueta (Câmera Direta)
-                    </label>
-                    <span className="text-[10px] font-medium text-slate-500">
-                      Extração rápida &lt; 5s
-                    </span>
-                  </div>
+                {/* Input oculto com capture="environment" para suporte universal */}
+                <input 
+                  ref={fileInputEtiquetaRef}
+                  type="file" 
+                  accept="image/*" 
+                  capture="environment" 
+                  className="hidden" 
+                  onChange={(e) => {
+                    const file = e.target.files ? e.target.files[0] : null;
+                    if (file) {
+                      uploadFotoStorage(file, 'etiquetas', setFotoEtiquetaUrl);
+                      processarOcrEtiqueta(file);
+                    }
+                  }} 
+                  disabled={uploadingFoto || analisandoOcrEtiqueta} 
+                />
 
-                  {/* Input oculto com capture="environment" para suporte universal */}
-                  <input 
-                    ref={fileInputEtiquetaRef}
-                    type="file" 
-                    accept="image/*" 
-                    capture="environment" 
-                    className="hidden" 
-                    onChange={(e) => {
-                      const file = e.target.files ? e.target.files[0] : null;
-                      if (file) {
-                        uploadFotoStorage(file, 'etiquetas', setFotoEtiquetaUrl);
-                        processarOcrEtiqueta(file);
-                      }
-                    }} 
-                    disabled={uploadingFoto || analisandoOcrEtiqueta} 
-                  />
-
-                  {fotoEtiquetaUrl && (
+                {fotoEtiquetaUrl && (
+                  <div className="space-y-1">
                     <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50 p-2 flex flex-col items-center gap-2">
                       <div className="relative w-full flex justify-center">
                         <img 
@@ -4952,8 +4941,8 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                         </div>
                       ) : null}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {/* OBSERVAÇÕES */}
                 <div className="space-y-1">
