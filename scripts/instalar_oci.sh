@@ -60,6 +60,13 @@ echo "🚀 Subindo containers Docker..."
 docker compose down || true
 docker compose up -d
 
+echo "⏳ Aguardando inicialização do PostgreSQL..."
+sleep 5
+
+echo "📦 Criando automaticamente todas as tabelas (Módulos 01 a 12)..."
+docker exec -i porttohub_postgres psql -U postgres -d porttohub < oracle_cloud_postgresql_porttohub.sql || true
+docker exec -i porttohub_postgres psql -U postgres -d porttohub -c "NOTIFY pgrst, 'reload schema';" || true
+
 echo ""
 echo "===================================================================="
 echo "🎉 BANCO DE DADOS E API REST DO PORTTOHUB INSTALADOS COM SUCESSO!"

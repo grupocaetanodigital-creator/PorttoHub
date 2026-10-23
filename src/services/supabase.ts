@@ -1,5 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
+// IP da Máquina Virtual do usuário na Oracle Cloud
+export const OCI_DEFAULT_IP = '163.176.49.21';
+export const OCI_DEFAULT_URL = `http://${OCI_DEFAULT_IP}:8000`;
+
 // Endpoint padrão de contingência (Supabase Nuvem)
 const FALLBACK_SUPABASE_URL = 'https://kkeizhscivyfjgetnbke.supabase.co';
 const FALLBACK_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtrZWl6aHNjaXZ5ZmpnZXRuYmtlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2ODk5NDUsImV4cCI6MjEwODI2NTk0NX0.hQzzvICbZfNPziWrj8DlD-A8-Vm4xbr25Nr0xQe3BEA';
@@ -12,7 +16,7 @@ const OCI_DEFAULT_ANON_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiY
  * 1. Configuração salva em tempo de execução no localStorage (porttohub_oci_url)
  * 2. Variável de ambiente VITE_OCI_API_URL (Oracle Cloud)
  * 3. Variável de ambiente VITE_SUPABASE_URL
- * 4. Fallback padrão
+ * 4. Padrão: Máquina Virtual Oracle Cloud (163.176.49.21:8000)
  */
 export function resolveApiUrl(): string {
   // 1. Verificação de override no navegador
@@ -37,7 +41,8 @@ export function resolveApiUrl(): string {
     return envUrl.trim().replace(/\/+$/, '');
   }
 
-  return FALLBACK_SUPABASE_URL;
+  // 4. Default: Servidor próprio na Oracle Cloud do usuário
+  return OCI_DEFAULT_URL;
 }
 
 /**
@@ -78,7 +83,7 @@ export function resolveApiKey(): string {
 
 /**
  * Salva a URL da sua Máquina Virtual na Oracle Cloud no navegador
- * Exemplo: salvarConfiguracaoOCI('http://129.153.xx.xx:8000')
+ * Exemplo: salvarConfiguracaoOCI('http://163.176.49.21:8000')
  */
 export function salvarConfiguracaoOCI(url: string, key?: string): void {
   if (typeof window !== 'undefined' && window.localStorage) {

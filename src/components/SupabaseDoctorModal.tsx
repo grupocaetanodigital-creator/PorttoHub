@@ -52,6 +52,30 @@ export default function SupabaseDoctorModal({ isOpen, onClose }: SupabaseDoctorM
   const [abaAtiva, setAbaAtiva] = useState<'condominios' | 'auditoria' | 'script' | 'storage' | 'oci'>('condominios');
   const [inputUrlOci, setInputUrlOci] = useState(() => obterStatusConexaoBanco().url);
   const [statusOci, setStatusOci] = useState(() => obterStatusConexaoBanco());
+  const [executandoInitDb, setExecutandoInitDb] = useState(false);
+  const [resultadoInitDb, setResultadoInitDb] = useState<{ sucesso: boolean; mensagem: string; dica?: string; totalTabelas?: number } | null>(null);
+
+  const executarCriacaoTabelasServidor = async () => {
+    setExecutandoInitDb(true);
+    setResultadoInitDb(null);
+    try {
+      const res = await fetch('/api/init-database', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip: '163.176.49.21' })
+      });
+      const data = await res.json();
+      setResultadoInitDb(data);
+    } catch (e: any) {
+      setResultadoInitDb({
+        sucesso: false,
+        mensagem: e.message || 'Falha ao requisitar inicialização.',
+        dica: 'Execute no terminal da VM: python3 scripts/inicializar_banco_oci.py'
+      });
+    } finally {
+      setExecutandoInitDb(false);
+    }
+  };
 
   // Estados da integridade de condomínios
   const [condoDiagnostics, setCondoDiagnostics] = useState<CondominioConfigDiagnostic[]>([]);
@@ -722,6 +746,48 @@ export default function SupabaseDoctorModal({ isOpen, onClose }: SupabaseDoctorM
                     <span>Salvar e Conectar</span>
                   </button>
                 </div>
+              </div>
+
+              {/* Executar Criação Automática via Servidor */}
+              <div className="bg-emerald-50 border border-emerald-300 p-4 rounded-2xl space-y-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h5 className="font-extrabold text-xs text-emerald-950 flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-emerald-600" />
+                      Inicialização Automática de Tabelas (Módulos 01 a 12)
+                    </h5>
+                    <p className="text-[11px] text-emerald-800">
+                      Dispara a criação de todas as 29 tabelas, índices e triggers na sua VM (163.176.49.21) sem precisar colar SQL manualmente.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={executandoInitDb}
+                    onClick={executarCriacaoTabelasServidor}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 shadow-sm shrink-0 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${executandoInitDb ? 'animate-spin' : ''}`} />
+                    <span>{executandoInitDb ? 'Criando Tabelas...' : '⚡ Criar Tabelas Agora'}</span>
+                  </button>
+                </div>
+
+                {resultadoInitDb && (
+                  <div className={`p-3 rounded-xl border text-xs font-semibold ${
+                    resultadoInitDb.sucesso 
+                      ? 'bg-emerald-100/80 border-emerald-300 text-emerald-900' 
+                      : 'bg-amber-100/80 border-amber-300 text-amber-950'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      {resultadoInitDb.sucesso ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />}
+                      <span>{resultadoInitDb.mensagem || (resultadoInitDb.sucesso ? 'Tabelas criadas com sucesso!' : 'Aviso ao conectar via TCP')}</span>
+                    </div>
+                    {resultadoInitDb.dica && (
+                      <p className="text-[11px] mt-1 text-slate-700 font-normal">
+                        💡 {resultadoInitDb.dica}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Comando de Instalação na VM em 1 Linha */}
