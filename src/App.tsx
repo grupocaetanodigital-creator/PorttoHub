@@ -918,33 +918,29 @@ export default function App() {
             />
           )}
 
-          {/* CABEÇALHO GLOBAL INTEGRADO (EMBLEMA AO LADO DE INFPORT, VERSÃO SOBRE CONTROLE DE FONTE E AÇÕES) */}
+          {/* CABEÇALHO GLOBAL INTEGRADO (EMBLEMA AO LADO DE INFPORT COM VERSÃO ABAIXO E AÇÕES) */}
           <header className="bg-slate-900/95 backdrop-blur-md text-white px-3.5 sm:px-5 py-2.5 flex items-center justify-between sticky top-0 z-30 shadow-xs border-b border-slate-800/80">
             <div className="flex items-center gap-2.5 sm:gap-3.5 overflow-hidden flex-1 mr-2 sm:mr-4">
-              <button
-                type="button"
-                onClick={() => setDrawerMobileAberto(true)}
-                className="md:hidden text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition shrink-0"
-                title="Abrir Menu"
-              >
-                <Menu className="w-5 h-5" />
-              </button>
-
-              {/* Logo / Emblema posicionado antes e ao lado do nome INFPORT */}
-              <div className="shrink-0 flex items-center gap-2 sm:gap-2.5">
+              {/* Logo / Emblema posicionado antes e ao lado do nome INFPORT, com Versão abaixo e fonte ampliada */}
+              <div className="shrink-0 flex items-center gap-2.5 sm:gap-3">
                 <EmblemaInfport tamanho="sm" comBrilho />
-                <div className="flex items-center gap-1.5">
-                  <span className="font-black text-base sm:text-lg text-white tracking-tight flex items-center gap-1.5">
-                    {NOME_APLICACAO}
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" title="Sistema Online" />
-                  </span>
-                  <span className="hidden lg:inline-flex text-[9px] uppercase font-mono font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    Enterprise
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-black text-lg sm:text-xl text-white tracking-tight flex items-center gap-1.5">
+                      {NOME_APLICACAO}
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" title="Sistema Online" />
+                    </span>
+                    <span className="hidden lg:inline-flex text-[9px] uppercase font-mono font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      Enterprise
+                    </span>
+                  </div>
+                  <span className="text-[10px] sm:text-[11px] text-slate-400 font-mono tracking-wider font-bold uppercase mt-0.5">
+                    VERSÃO {VERSAO_BUILD_ATUAL}
                   </span>
                 </div>
               </div>
 
-              <div className="h-6 w-px bg-slate-800 hidden sm:block shrink-0" />
+              <div className="h-7 w-px bg-slate-800 hidden sm:block shrink-0" />
 
               <div className="min-w-0 flex-1">
                 {eAcessoMultiCondominio && !eSindico ? (
@@ -977,20 +973,8 @@ export default function App() {
               </div>
             </div>
 
-            {/* Ações no Topo Superior Direito: Versão sobre Controle de Fonte + Botão Atualizar, Alerta Presentes e Notificações */}
+            {/* Ações no Topo Superior Direito: Alerta de Presentes no Condomínio e Notificações */}
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-              <div className="flex flex-col items-end gap-1">
-                <span className="text-[10px] text-slate-400 font-mono tracking-wider font-bold uppercase">
-                  VERSÃO {VERSAO_BUILD_ATUAL}
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <ControleFonteAcessibilidade />
-                  <BotaoAtualizarApp />
-                </div>
-              </div>
-
-              <div className="h-7 w-px bg-slate-800 hidden sm:block shrink-0" />
-
               {/* Alerta de pessoas presentes no condomínio */}
               <AlertaNoCondominioTopo
                 condominioId={condominioAtivoId || operador?.condominio_id || ''}
@@ -1016,10 +1000,11 @@ export default function App() {
                 <span className="text-white font-bold">Voltar ao Painel</span>
               </button>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
                   {modulosDisponiveis.find(m => m.id === moduloAtual)?.titulo || 'Módulo'}
                 </span>
+                <ControleFonteAcessibilidade />
               </div>
             </div>
           )}
@@ -1038,9 +1023,8 @@ export default function App() {
                         Módulos Operacionais
                       </h2>
                     </div>
-                    <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
-                      {modulosDisponiveis.filter(m => m.flag).length} módulos ativos
-                    </span>
+                    {/* Menu de Controle de Fontes movido para o local da descrição de módulos ativos */}
+                    <ControleFonteAcessibilidade />
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-3.5">
