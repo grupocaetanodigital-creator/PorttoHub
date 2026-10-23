@@ -434,6 +434,18 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     }
   };
 
+  const obterOperadorPacote = (item: any) => {
+    if (item.operador_id) return item.operador_id;
+    if (item.operador_nome) return item.operador_nome;
+    if (item.operador_cadastro) return item.operador_cadastro;
+    if (item.lotes_re?.operador_id) return item.lotes_re.operador_id;
+    if (item.lote_re_id) {
+      const lote = todosLotesRE.find((l: any) => l.id === item.lote_re_id);
+      if (lote?.operador_id) return lote.operador_id;
+    }
+    return usuarioLogado?.nome || usuarioLogado?.login || 'Portaria';
+  };
+
   const carregarDadosBase = async () => {
     setLoading(true);
     carregarLocais();
@@ -487,12 +499,22 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
         .order('nome');
       setMoradores(moradData || []);
 
-      const { data: retidosData } = await supabase
+      let { data: retidosData, error: errRetidos } = await supabase
         .from('encomendas_itens')
-        .select('*, moradores(nome, telefone)')
+        .select('*, moradores(nome, telefone), lotes_re(operador_id, codigo_re)')
         .eq('condominio_id', condId)
         .eq('status', 'retido')
         .order('created_at', { ascending: false });
+
+      if (errRetidos || !retidosData) {
+        const { data: fallbackRetidos } = await supabase
+          .from('encomendas_itens')
+          .select('*, moradores(nome, telefone)')
+          .eq('condominio_id', condId)
+          .eq('status', 'retido')
+          .order('created_at', { ascending: false });
+        retidosData = fallbackRetidos;
+      }
       setTodosItensRetidos(retidosData || []);
 
       const { data: lotesHojeData } = await supabase
@@ -2302,8 +2324,8 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
 
                 {/* Conteúdo completo e legível */}
                 <div className="flex-1 min-w-0 space-y-1">
-                  <div className="flex items-center justify-between gap-1 flex-wrap">
-                    <div className="flex items-center gap-1.5">
+                  <div className="flex items-start justify-between gap-1 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-[10px] font-black uppercase text-slate-900 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
                         #{idx + 1} {formatarIdentificacaoUnidade(item.unidade, item.bloco, condoConfig?.tipo_estrutura)}
                       </span>
@@ -2316,9 +2338,27 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                       </span>
                     </div>
 
-                    <span className="text-[9px] font-mono text-slate-400">
-                      Chegada: {new Date(item.created_at).toLocaleDateString('pt-BR')}
-                    </span>
+                    <div className="flex flex-col items-end text-right shrink-0">
+                      {/* EM FRENTE DA HORA: LOCAL ONDE ESTA O VOLUME */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9.5px] font-bold text-emerald-950 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded flex items-center gap-1">
+                          <Boxes className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                          <span className="truncate max-w-[120px]">{item.local_armazenamento || 'Bancada Principal'}</span>
+                        </span>
+
+                        {/* HORA */}
+                        <span className="text-[9px] bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-mono font-bold flex items-center gap-0.5">
+                          <Clock className="w-2.5 h-2.5 text-slate-400" />
+                          <span>{new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                        </span>
+                      </div>
+
+                      {/* NOME DE OPERADOR: EM BAIXO DA HORA */}
+                      <span className="text-[8.5px] text-slate-500 font-semibold truncate max-w-[140px] mt-0.5 flex items-center gap-0.5">
+                        <User className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                        <span>{obterOperadorPacote(item)}</span>
+                      </span>
+                    </div>
                   </div>
 
                   <p className="text-xs font-bold text-slate-900 truncate">
@@ -2326,11 +2366,6 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                   </p>
 
                   <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
-                    {/* Local Físico Destacado */}
-                    <span className="bg-emerald-50 text-emerald-900 border border-emerald-300 font-bold px-1.5 py-0.5 rounded flex items-center gap-1">
-                      <Boxes className="w-3 h-3 text-emerald-600 shrink-0" />
-                      <span>{item.local_armazenamento || 'Bancada Principal'}</span>
-                    </span>
 
                     {/* Código de Rastreio */}
                     {item.codigo_barras && (
@@ -2885,13 +2920,33 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                           {selecionado ? <CheckSquare className="w-4 h-4 text-emerald-600" /> : <Square className="w-4 h-4" />}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex justify-between items-center gap-1.5">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-900 bg-slate-100 px-1.5 py-0.2 rounded">
+                          {/* LINHA SUPERIOR: UNIDADE NA ESQUERDA, LOCAL EM FRENTE DA HORA E OPERADOR ABAIXO DA HORA */}
+                          <div className="flex justify-between items-start gap-1.5">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
                               {formatarIdentificacaoUnidade(item.unidade, item.bloco, condoConfig?.tipo_estrutura)}
                             </span>
-                            <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.2 rounded font-mono font-bold">
-                              {new Date(item.created_at).toLocaleDateString('pt-BR')}
-                            </span>
+
+                            <div className="flex flex-col items-end text-right shrink-0">
+                              {/* EM FRENTE DA HORA: LOCAL ONDE ESTA O VOLUME */}
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[9.5px] font-bold text-emerald-950 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded flex items-center gap-1">
+                                  <Boxes className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                                  <span className="truncate max-w-[120px]">{item.local_armazenamento || 'Bancada Principal'}</span>
+                                </span>
+
+                                {/* HORA DE ENTRADA */}
+                                <span className="text-[9px] bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-mono font-bold flex items-center gap-0.5" title={`Entrada: ${new Date(item.created_at).toLocaleDateString('pt-BR')} às ${new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}>
+                                  <Clock className="w-2.5 h-2.5 text-slate-400" />
+                                  <span>{new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                                </span>
+                              </div>
+
+                              {/* NOME DE OPERADOR EM BAIXO DA HORA */}
+                              <span className="text-[8.5px] text-slate-500 font-semibold truncate max-w-[150px] mt-0.5 flex items-center gap-0.5" title={`Operador de cadastro: ${obterOperadorPacote(item)}`}>
+                                <User className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                                <span>{obterOperadorPacote(item)}</span>
+                              </span>
+                            </div>
                           </div>
 
                           <p className="text-xs font-bold text-slate-900 mt-0.5 truncate">
@@ -2919,14 +2974,13 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                             )}
                           </div>
 
-                          {/* LOCAL FÍSICO COM BOTÃO DE ALTERAR EM 1 CLIQUE E AÇÕES PROTEGIDAS POR RBAC */}
+                          {/* DATA E BOTÕES DE AÇÃO */}
                           <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-100 flex-wrap gap-1">
-                            <span className="text-[10px] font-bold text-emerald-950 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded flex items-center gap-1">
-                              <Boxes className="w-3 h-3 text-emerald-600 shrink-0" />
-                              <span className="truncate max-w-[130px]">{item.local_armazenamento || 'Bancada Principal'}</span>
+                            <span className="text-[9px] text-slate-400 font-mono">
+                              {new Date(item.created_at).toLocaleDateString('pt-BR')}
                             </span>
 
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1 ml-auto">
                               {podeEditarPacote && (
                                 <button
                                   type="button"
@@ -2942,7 +2996,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                                   className="text-[10px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-1.5 py-0.5 rounded flex items-center gap-0.5 transition cursor-pointer"
                                   title="Alterar local físico deste pacote"
                                 >
-                                  <Edit3 className="w-2.5 h-2.5 text-slate-500" /> Alterar
+                                  <Edit3 className="w-2.5 h-2.5 text-slate-500" /> Alterar Local
                                 </button>
                               )}
 
