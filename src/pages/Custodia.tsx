@@ -577,347 +577,394 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
       {aba === 'entrada' && (
         <div className="fixed inset-0 z-[60] bg-slate-950/80 backdrop-blur-sm overflow-y-auto p-2 sm:p-4 md:p-6 flex justify-center items-start animate-in fade-in duration-150">
           <div className="bg-white my-auto sm:my-4 p-4 sm:p-6 rounded-2xl shadow-2xl border border-slate-200 space-y-4 w-full max-w-4xl relative animate-in zoom-in-95 duration-150">
-            <div className="border-b pb-3 flex items-center justify-between gap-3">
+            {/* Cabeçalho do Formulário Exclusivo do Fluxo Selecionado */}
+            <div className="border-b border-slate-100 pb-4 flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-                  <ShieldCheck className="w-6 h-6 text-emerald-600" />
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border ${
+                  fluxo === 'M-M' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600' :
+                  fluxo === 'M-T' ? 'bg-blue-500/10 border-blue-500/20 text-blue-600' :
+                  'bg-amber-500/10 border-amber-500/20 text-amber-600'
+                }`}>
+                  <PackagePlus className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
-                    Receber Objeto em Custódia
-                  </h3>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[11px] text-slate-500 font-medium">Fluxo selecionado:</span>
-                    <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-md ${
-                      fluxo === 'M-M' 
-                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
-                        : fluxo === 'M-T'
-                        ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                        : 'bg-amber-100 text-amber-800 border border-amber-300'
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-black text-slate-900 text-base sm:text-lg tracking-tight">
+                      {fluxo === 'M-M' && 'Custódia: Morador ➔ Morador'}
+                      {fluxo === 'M-T' && 'Custódia: Morador ➔ Terceiro'}
+                      {fluxo === 'T-M' && 'Custódia: Terceiro ➔ Morador'}
+                    </h3>
+                    <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border shadow-2xs ${
+                      fluxo === 'M-M' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                      fluxo === 'M-T' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                      'bg-amber-100 text-amber-800 border-amber-300'
                     }`}>
-                      {fluxo === 'M-M' ? '🏢 Morador ➔ Morador' : fluxo === 'M-T' ? '🚚 Morador ➔ Terceiro' : '📦 Terceiro ➔ Morador'}
+                      {fluxo === 'M-M' ? '🏢 Fluxo Entre Moradores' : fluxo === 'M-T' ? '🚚 Morador para Prestador' : '📦 Externo para Morador'}
                     </span>
                   </div>
+                  <p className="text-xs text-slate-500 mt-1 flex items-center gap-2">
+                    <span>
+                      {fluxo === 'M-M' && 'Formulário exclusivo para itens deixados por morador para outro morador da mesma comunidade.'}
+                      {fluxo === 'M-T' && 'Formulário exclusivo para itens deixados por morador para retirada por prestador ou visitante.'}
+                      {fluxo === 'T-M' && 'Formulário exclusivo para itens recebidos de prestadores ou entregadores para moradores.'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setModalSelecaoFluxoAberto(true)}
+                      className="text-xs font-bold text-slate-600 hover:text-emerald-700 underline shrink-0 cursor-pointer"
+                    >
+                      Trocar fluxo
+                    </button>
+                  </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setAba('saida')}
-                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition flex items-center gap-1 text-xs font-bold cursor-pointer"
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition cursor-pointer"
                 title="Fechar formulário"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-          <form onSubmit={salvarEntradaCustodia} className="space-y-3 max-w-4xl">
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Selecione o Fluxo de Custódia *</label>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setFluxo('M-M')}
-                  className={`p-2.5 rounded-lg border text-center transition cursor-pointer font-bold ${fluxo === 'M-M' ? 'bg-slate-900 text-white border-slate-900 shadow-xs' : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'}`}
-                >
-                  <p className="text-xs font-bold">Morador ➔ Morador</p>
-                </button>
+            <form onSubmit={salvarEntradaCustodia} className="space-y-4">
+              {/* Cards Origem e Destino */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                {/* CARD ORIGEM */}
+                <div className="bg-slate-50/90 rounded-2xl border border-slate-200/80 p-4 space-y-3 shadow-2xs">
+                  <div className="border-b border-slate-200/60 pb-2 flex items-center justify-between">
+                    <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <User className="w-4 h-4 text-emerald-600" />
+                      Origem (Quem Deixou o Objeto)
+                    </h4>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                      {fluxo.startsWith('M') ? 'Morador' : 'Terceiro / Prestador'}
+                    </span>
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={() => setFluxo('M-T')}
-                  className={`p-2.5 rounded-lg border text-center transition cursor-pointer font-bold ${fluxo === 'M-T' ? 'bg-slate-900 text-white border-slate-900 shadow-xs' : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'}`}
-                >
-                  <p className="text-xs font-bold">Morador ➔ Terceiro</p>
-                </button>
+                  {fluxo.startsWith('M') ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                            {rotuloUnidade} *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={origemUnidade}
+                            onChange={(e) => selecionarOrigemMorador(e.target.value, origemBloco)}
+                            placeholder={eEstruturaCasas ? "Ex: 01 ou 24" : "Ex: 101"}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition shadow-2xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                            {rotuloBloco}
+                          </label>
+                          {eEstruturaCasas ? (
+                            <div className="w-full px-3 py-2 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-950 text-xs font-black flex items-center justify-between">
+                              <span>🏠 Casa</span>
+                              <span className="text-[9px] bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded font-bold uppercase">Automático</span>
+                            </div>
+                          ) : (
+                            <select
+                              value={origemBloco}
+                              onChange={(e) => {
+                                setOrigemBloco(e.target.value);
+                                selecionarOrigemMorador(origemUnidade, e.target.value);
+                              }}
+                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition shadow-2xs"
+                            >
+                              <option value="">{eEstruturaTorres ? 'Todas / Sem Torre' : 'Todos / Sem Bloco'}</option>
+                              {listaBlocos.map((b) => (
+                                <option key={b} value={b}>{b}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      </div>
 
-                <button
-                  type="button"
-                  onClick={() => setFluxo('T-M')}
-                  className={`p-2.5 rounded-lg border text-center transition cursor-pointer font-bold ${fluxo === 'T-M' ? 'bg-slate-900 text-white border-slate-900 shadow-xs' : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'}`}
-                >
-                  <p className="text-xs font-bold">Terceiro ➔ Morador</p>
-                </button>
-              </div>
-            </div>
+                      {moradoresOrigemFiltrados.length > 0 && (
+                        <div className="bg-white p-2.5 rounded-xl border border-emerald-200/80 space-y-1.5">
+                          <label className="block text-[10px] font-bold text-emerald-900 uppercase">
+                            Toque no morador da {eEstruturaCasas ? 'Casa' : 'Unidade'} {origemUnidade}:
+                          </label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {moradoresOrigemFiltrados.map((m) => (
+                              <button
+                                key={m.id}
+                                type="button"
+                                onClick={() => {
+                                  setOrigemNome(m.nome);
+                                  if (m.telefone) setOrigemWhats(m.telefone);
+                                }}
+                                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer active:scale-95"
+                              >
+                                👤 {m.nome}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-              <div className="space-y-2">
-                <h4 className="font-bold text-[11px] uppercase text-slate-700 border-b pb-1 flex items-center gap-1">
-                  <User className="w-3.5 h-3.5 text-emerald-600" /> Origem (Quem Deixou o Objeto)
-                </h4>
-
-                {fluxo.startsWith('M') ? (
-                  <>
-                    <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-600 uppercase">
-                          {rotuloUnidade} *
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                          Nome do Morador *
                         </label>
                         <input
                           type="text"
                           required
-                          value={origemUnidade}
-                          onChange={(e) => {
-                            selecionarOrigemMorador(e.target.value, origemBloco);
-                          }}
-                          placeholder={eEstruturaCasas ? "Ex: 01 ou 24" : "Ex: 101"}
-                          className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-bold"
+                          value={origemNome}
+                          onChange={(e) => setOrigemNome(e.target.value)}
+                          placeholder="Nome de quem deixou"
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition shadow-2xs"
                         />
                       </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-600 uppercase">
-                          {rotuloBloco}
-                        </label>
-                        {eEstruturaCasas ? (
-                          <div className="w-full p-2 bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-950 text-xs font-black flex items-center justify-between">
-                            <span>🏠 Casa</span>
-                            <span className="text-[9px] bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded font-bold uppercase">Automático</span>
-                          </div>
-                        ) : (
-                          <select
-                            value={origemBloco}
-                            onChange={(e) => {
-                              setOrigemBloco(e.target.value);
-                              selecionarOrigemMorador(origemUnidade, e.target.value);
-                            }}
-                            className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-bold"
-                          >
-                            <option value="">{eEstruturaTorres ? 'Todas / Sem Torre' : 'Todos / Sem Bloco'}</option>
-                            {listaBlocos.map((b) => (
-                              <option key={b} value={b}>{b}</option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
-                    </div>
-
-                    {moradoresOrigemFiltrados.length > 0 && (
-                      <div className="space-y-1">
-                        <label className="block text-[10px] font-bold text-emerald-800 uppercase">
-                          Moradores da {eEstruturaCasas ? 'Casa' : 'Unidade'} {origemUnidade}:
-                        </label>
-                        <div className="flex flex-wrap gap-1">
-                          {moradoresOrigemFiltrados.map((m) => (
-                            <button
-                              key={m.id}
-                              type="button"
-                              onClick={() => {
-                                setOrigemNome(m.nome);
-                                if (m.telefone) setOrigemWhats(m.telefone);
-                              }}
-                              className="px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
-                            >
-                              👤 {m.nome}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
+                    </>
+                  ) : (
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase">Nome do Morador *</label>
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                        Nome / Empresa do Terceiro *
+                      </label>
                       <input
                         type="text"
                         required
                         value={origemNome}
                         onChange={(e) => setOrigemNome(e.target.value)}
-                        placeholder="Nome do morador"
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                        placeholder="Ex: Farmácia Drogasil / Entregador João"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition shadow-2xs"
                       />
                     </div>
-                  </>
-                ) : (
+                  )}
+
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase">Nome / Empresa do Terceiro *</label>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                      WhatsApp para Contato / Recibo
+                    </label>
                     <input
                       type="text"
-                      required
-                      value={origemNome}
-                      onChange={(e) => setOrigemNome(e.target.value)}
-                      placeholder="Ex: Farmácia Drogasil / Entregador João"
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                      value={origemWhats}
+                      onChange={(e) => setOrigemWhats(e.target.value)}
+                      placeholder="Ex: (11) 99999-9999"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition shadow-2xs"
                     />
                   </div>
-                )}
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-600 uppercase">WhatsApp para Contato</label>
-                  <input
-                    type="text"
-                    value={origemWhats}
-                    onChange={(e) => setOrigemWhats(e.target.value)}
-                    placeholder="Ex: 11940609960"
-                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs"
-                  />
                 </div>
-              </div>
 
-              <div className="space-y-3">
-                <h4 className="font-bold text-xs uppercase text-slate-700 border-b pb-2 flex items-center gap-1.5">
-                  <User className="w-4 h-4 text-blue-600" /> Destino (Quem Vai Retirar)
-                </h4>
+                {/* CARD DESTINO */}
+                <div className="bg-slate-50/90 rounded-2xl border border-slate-200/80 p-4 space-y-3 shadow-2xs">
+                  <div className="border-b border-slate-200/60 pb-2 flex items-center justify-between">
+                    <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <User className="w-4 h-4 text-blue-600" />
+                      Destino (Quem Vai Retirar)
+                    </h4>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800">
+                      {fluxo.endsWith('M') ? 'Morador' : 'Terceiro / Prestador'}
+                    </span>
+                  </div>
 
-                {fluxo.endsWith('M') ? (
-                  <>
-                    <div className="grid grid-cols-2 gap-2">
+                  {fluxo.endsWith('M') ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                            {rotuloUnidade} Destinatária *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={destinoUnidade}
+                            onChange={(e) => selecionarDestinoMorador(e.target.value, destinoBloco)}
+                            placeholder={eEstruturaCasas ? "Ex: 01 ou 24" : "Ex: 101"}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition shadow-2xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                            {rotuloBloco}
+                          </label>
+                          {eEstruturaCasas ? (
+                            <div className="w-full px-3 py-2 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-950 text-xs font-black flex items-center justify-between">
+                              <span>🏠 Casa</span>
+                              <span className="text-[9px] bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded font-bold uppercase">Automático</span>
+                            </div>
+                          ) : (
+                            <select
+                              value={destinoBloco}
+                              onChange={(e) => {
+                                setDestinoBloco(e.target.value);
+                                selecionarDestinoMorador(destinoUnidade, e.target.value);
+                              }}
+                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition shadow-2xs"
+                            >
+                              <option value="">{eEstruturaTorres ? 'Todas / Sem Torre' : 'Todos / Sem Bloco'}</option>
+                              {listaBlocos.map((b) => (
+                                <option key={b} value={b}>{b}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      </div>
+
+                      {moradoresDestinoFiltrados.length > 0 && (
+                        <div className="bg-white p-2.5 rounded-xl border border-blue-200/80 space-y-1.5">
+                          <label className="block text-[10px] font-bold text-blue-900 uppercase">
+                            Toque no morador do {eEstruturaCasas ? 'Casa' : 'Ap.'} {destinoUnidade}:
+                          </label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {moradoresDestinoFiltrados.map((m) => (
+                              <button
+                                key={m.id}
+                                type="button"
+                                onClick={() => {
+                                  setDestinoNome(m.nome);
+                                  if (m.telefone) setDestinoWhats(m.telefone);
+                                }}
+                                className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-300 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer active:scale-95"
+                              >
+                                👤 {m.nome}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-600 uppercase">
-                          {rotuloUnidade} *
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                          Nome do Morador Destinatário *
                         </label>
                         <input
                           type="text"
                           required
-                          value={destinoUnidade}
-                          onChange={(e) => {
-                            selecionarDestinoMorador(e.target.value, destinoBloco);
-                          }}
-                          placeholder={eEstruturaCasas ? "Ex: 01 ou 24" : "Ex: 101"}
-                          className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-bold"
+                          value={destinoNome}
+                          onChange={(e) => setDestinoNome(e.target.value)}
+                          placeholder="Nome do destinatário"
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition shadow-2xs"
                         />
                       </div>
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600 uppercase">
-                          {rotuloBloco}
-                        </label>
-                        {eEstruturaCasas ? (
-                          <div className="w-full p-2 bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-950 text-xs font-black flex items-center justify-between">
-                            <span>🏠 Casa</span>
-                            <span className="text-[9px] bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded font-bold uppercase">Automático</span>
-                          </div>
-                        ) : (
-                          <select
-                            value={destinoBloco}
-                            onChange={(e) => {
-                              setDestinoBloco(e.target.value);
-                              selecionarDestinoMorador(destinoUnidade, e.target.value);
-                            }}
-                            className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-bold"
-                          >
-                            <option value="">{eEstruturaTorres ? 'Todas / Sem Torre' : 'Todos / Sem Bloco'}</option>
-                            {listaBlocos.map((b) => (
-                              <option key={b} value={b}>{b}</option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
-                    </div>
-
-                    {moradoresDestinoFiltrados.length > 0 && (
-                      <div className="space-y-1">
-                        <label className="block text-[10px] font-bold text-blue-800 uppercase">
-                          Moradores do Ap. {destinoUnidade}:
-                        </label>
-                        <div className="flex flex-wrap gap-1">
-                          {moradoresDestinoFiltrados.map((m) => (
-                            <button
-                              key={m.id}
-                              type="button"
-                              onClick={() => {
-                                setDestinoNome(m.nome);
-                                if (m.telefone) setDestinoWhats(m.telefone);
-                              }}
-                              className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-300 rounded text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
-                            >
-                              👤 {m.nome}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
+                    </>
+                  ) : (
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-600 uppercase">Nome do Morador Destinatário *</label>
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                        Nome / Documento do Terceiro *
+                      </label>
                       <input
                         type="text"
                         required
                         value={destinoNome}
                         onChange={(e) => setDestinoNome(e.target.value)}
-                        placeholder="Nome do destinatário"
-                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs"
+                        placeholder="Ex: Técnico Enel / Entregador Loggi / Maria"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition shadow-2xs"
                       />
                     </div>
-                  </>
-                ) : (
+                  )}
+
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase">Nome / Documento do Terceiro *</label>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                      WhatsApp para Notificação de Chegada
+                    </label>
                     <input
                       type="text"
-                      required
-                      value={destinoNome}
-                      onChange={(e) => setDestinoNome(e.target.value)}
-                      placeholder="Ex: Técnico Enel / Maria da Limpeza"
-                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs"
+                      value={destinoWhats}
+                      onChange={(e) => setDestinoWhats(e.target.value)}
+                      placeholder="Ex: (11) 99999-9999"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition shadow-2xs"
                     />
                   </div>
-                )}
+                </div>
+
+              </div>
+
+              {/* CARD DADOS DO OBJETO & FOTO */}
+              <div className="bg-slate-50/90 rounded-2xl border border-slate-200/80 p-4 space-y-4 shadow-2xs">
+                <div className="border-b border-slate-200/60 pb-2">
+                  <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <PackagePlus className="w-4 h-4 text-emerald-600" />
+                    Dados do Objeto Guardado & Evidência Fotográfica
+                  </h4>
+                </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-600 uppercase">WhatsApp para Notificação</label>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">
+                    Descrição Detalhada do Objeto *
+                  </label>
                   <input
                     type="text"
-                    value={destinoWhats}
-                    onChange={(e) => setDestinoWhats(e.target.value)}
-                    placeholder="Ex: 11940609960"
-                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs"
+                    required
+                    value={descricaoItem}
+                    onChange={(e) => setDescricaoItem(e.target.value)}
+                    placeholder="Ex: Chave do apartamento 402 com chaveiro azul, envelope pardo lacrado, capacete preto..."
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition shadow-2xs"
                   />
                 </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">
+                    Foto Obrigatória do Objeto Retido *
+                  </label>
+                  
+                  {fotoEntradaUrl ? (
+                    <div className="flex items-center gap-3 bg-white p-3 rounded-2xl border border-emerald-200 shadow-2xs">
+                      <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-emerald-500 shrink-0 shadow-xs">
+                        <img src={fotoEntradaUrl} alt="Objeto Guardado" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                      </div>
+                      <div className="space-y-1">
+                        <span className="inline-flex items-center gap-1 text-xs font-black text-emerald-700">
+                          <CheckCircle2 className="w-4 h-4" /> Foto anexada com sucesso
+                        </span>
+                        <p className="text-[11px] text-slate-500">Imagem registrada como evidência na custódia.</p>
+                        <label className="inline-block text-xs font-bold text-slate-700 hover:text-emerald-700 underline cursor-pointer">
+                          Tirar outra foto
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            onChange={(e) => uploadFotoStorage(e.target.files ? e.target.files[0] : null, 'custodia_entrada', setFotoEntradaUrl)}
+                            className="hidden"
+                            disabled={uploadingFoto}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 px-4 rounded-xl cursor-pointer flex items-center justify-center gap-2.5 transition text-xs shadow-md group">
+                      <Camera className="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform" />
+                      <span>{uploadingFoto ? 'Processando foto...' : '📷 Tirar ou Anexar Foto do Objeto Guardado'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={(e) => uploadFotoStorage(e.target.files ? e.target.files[0] : null, 'custodia_entrada', setFotoEntradaUrl)}
+                        className="hidden"
+                        disabled={uploadingFoto}
+                      />
+                    </label>
+                  )}
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Descrição do Objeto em Custódia *</label>
-                <input
-                  type="text"
-                  required
-                  value={descricaoItem}
-                  onChange={(e) => setDescricaoItem(e.target.value)}
-                  placeholder="Ex: Molho de chaves do portão social, envelope pardo, capacete preto..."
-                  className="w-full p-3 bg-slate-50 border border-slate-300 rounded-lg text-slate-900"
-                />
+              {/* Botões de Ação do Rodapé */}
+              <div className="flex flex-col sm:flex-row items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setAba('saida')}
+                  className="w-full sm:w-auto px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition text-xs cursor-pointer"
+                >
+                  Cancelar e Fechar
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading || uploadingFoto}
+                  className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold rounded-xl transition shadow-md uppercase text-xs flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <PackagePlus className="w-4 h-4" />
+                  <span>Confirmar Entrada e Guardar Objeto</span>
+                </button>
               </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700 uppercase">Foto Obrigatória do Objeto Retido *</label>
-                <label className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 px-4 rounded-xl cursor-pointer flex items-center justify-center gap-2 transition text-xs shadow-sm">
-                  <Camera className="w-5 h-5 text-emerald-400" />
-                  {uploadingFoto ? 'Processando foto...' : '📷 Tirar Foto do Objeto Guardado'}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={(e) => uploadFotoStorage(e.target.files ? e.target.files[0] : null, 'custodia_entrada', setFotoEntradaUrl)}
-                    className="hidden"
-                    disabled={uploadingFoto}
-                  />
-                </label>
-
-                {fotoEntradaUrl && (
-                  <div className="mt-2 relative w-28 h-28 rounded-lg overflow-hidden border-2 border-emerald-500 shadow-sm">
-                    <img src={fotoEntradaUrl} alt="Objeto Guardado" loading="lazy" decoding="async" className="w-full h-full object-cover" />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setAba('saida')}
-                className="w-full sm:w-auto px-5 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition text-xs cursor-pointer"
-              >
-                Cancelar e Fechar
-              </button>
-              <button
-                type="submit"
-                disabled={loading || uploadingFoto}
-                className="flex-1 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-4 rounded-xl transition shadow-md uppercase text-xs flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <PackagePlus className="w-4 h-4" />
-                <span>Confirmar Entrada e Guardar Objeto</span>
-              </button>
-            </div>
-          </form>
+            </form>
 
           {whatsEntradaLink && (
             <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2 max-w-4xl">
