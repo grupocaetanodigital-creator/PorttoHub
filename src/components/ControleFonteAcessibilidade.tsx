@@ -197,12 +197,12 @@ export default function ControleFonteAcessibilidade() {
                 onClick={handlePuxarAtualizacaoGithub}
                 disabled={atualizandoGithub}
                 className="w-full text-left px-2.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center justify-between gap-1.5 cursor-pointer shadow-xs disabled:opacity-60"
-                title="Forçar o app a puxar a última atualização do GitHub, limpar cache e atualizar sem deslogar"
+                title="Forçar o app a puxar a última versão do sistema, limpar cache e atualizar sem deslogar"
               >
                 <div className="flex items-center gap-2">
                   <RefreshCw className={`w-3.5 h-3.5 ${atualizandoGithub ? 'animate-spin' : ''} shrink-0`} />
                   <span className="leading-tight">
-                    {atualizandoGithub ? 'Puxando do GitHub...' : 'Puxar Atualização GitHub'}
+                    {atualizandoGithub ? 'Atualizando...' : 'Atualizar'}
                   </span>
                 </div>
                 <GitBranch className="w-3.5 h-3.5 opacity-80 shrink-0" />
