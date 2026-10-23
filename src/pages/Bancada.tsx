@@ -29,7 +29,8 @@ import {
   MapPin,
   Archive,
   ListChecks,
-  PenTool
+  PenTool,
+  PackagePlus
 } from 'lucide-react';
 import {
   ItemBancada,
@@ -880,7 +881,7 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
                       </span>
                       <div className="flex items-center justify-between mt-2 pt-1 border-t border-black/10">
                         <span className={`text-[10px] font-bold uppercase ${isAtiva ? 'text-amber-200' : 'text-slate-500'}`}>
-                          Volumes:
+                          Vol.:
                         </span>
                         <span
                           className={`text-xs font-black px-1.5 py-0.2 rounded-full ${
@@ -906,10 +907,10 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
             <div className="bg-white p-4 rounded-2xl border-2 border-amber-500/50 shadow-md">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-black uppercase text-amber-900 tracking-wider flex items-center gap-1.5">
-                  <span className="w-5 h-5 rounded-full bg-amber-500 text-white font-black text-xs flex items-center justify-center">
-                    2
+                  <span className="w-6 h-6 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                    <PackagePlus className="w-3.5 h-3.5 stroke-[2.5]" />
                   </span>
-                  Lançamento de {rotuloUnidade} na {estruturaSelecionada || rotuloBloco}
+                  <span>Lançamento Encomenda Bancada</span>
                 </span>
               </div>
 
@@ -946,7 +947,7 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
                           tocarNumeroVirtual(e.key.toUpperCase());
                         }
                       }}
-                      className="w-full text-2xl sm:text-3xl font-black font-mono uppercase text-slate-900 bg-amber-50/50 border-2 border-amber-400 focus:border-amber-600 focus:bg-white rounded-xl py-3 px-4 shadow-inner outline-none transition placeholder:text-slate-400 placeholder:text-xs sm:placeholder:text-sm placeholder:font-normal cursor-pointer select-none text-center"
+                      className="w-full h-[47px] text-2xl sm:text-3xl font-black font-mono uppercase text-slate-900 bg-amber-50/50 border-2 border-amber-400 focus:border-amber-600 focus:bg-white rounded-xl py-1 px-4 shadow-inner outline-none transition placeholder:text-slate-400 placeholder:text-xs sm:placeholder:text-sm placeholder:font-normal cursor-pointer select-none text-center"
                     />
 
                     {unidadeDigitada && (
@@ -1069,7 +1070,7 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
                           key={loc.id}
                           type="button"
                           onClick={() => setLocalSelecionadoId(loc.id)}
-                          className={`h-12 sm:h-13 rounded-xl px-2 text-xs font-black flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer border shadow-2xs select-none touch-manipulation ${
+                          className={`h-[41px] rounded-xl px-2 text-xs font-black flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer border shadow-2xs select-none touch-manipulation ${
                             ativo
                               ? 'bg-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-400/50'
                               : 'bg-white hover:bg-amber-50 text-slate-700 border-slate-300'
