@@ -943,28 +943,9 @@ export default function App() {
               <div className="h-7 w-px bg-slate-800 hidden sm:block shrink-0" />
 
               <div className="min-w-0 flex-1">
-                {eAcessoMultiCondominio && !eSindico ? (
-                  <select
-                    value={condominioAtivoId}
-                    onChange={(e) => {
-                      const novoId = e.target.value;
-                      setCondominioAtivoId(novoId);
-                      localStorage.setItem('infport_condominio_ativo_id', novoId);
-                      const cObj = listaCondominios.find(c => c.id === novoId);
-                      if (cObj) setCondominio(cObj);
-                    }}
-                    className="bg-slate-800/90 text-emerald-400 font-bold text-xs px-2.5 py-1 rounded-lg border border-slate-700/80 hover:border-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 max-w-full truncate shadow-2xs cursor-pointer"
-                  >
-                    <option value="">🏢 Todos os Condomínios (Visão Global)</option>
-                    {listaCondominios.map((c) => (
-                      <option key={c.id} value={c.id}>🏢 {c.nome}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <h1 className="font-bold text-xs sm:text-sm text-slate-200 truncate leading-tight tracking-tight">
-                    {operadorContextoGlobal.condominio_nome || 'Condomínio'}
-                  </h1>
-                )}
+                <h1 className="font-bold text-xs sm:text-sm text-slate-200 truncate leading-tight tracking-tight">
+                  {operadorContextoGlobal.condominio_nome || 'Condomínio'}
+                </h1>
                 <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium truncate mt-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
                   <span>Operador:</span>
