@@ -241,6 +241,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
   const [locaisArmazenamento, setLocaisArmazenamento] = useState<any[]>([]);
   const [localArmazenamentoTriagem, setLocalArmazenamentoTriagem] = useState('PRAT-A1 - Prateleira A1 - Caixas Pequenas');
   const [alertaAgrupamento, setAlertaAgrupamento] = useState<any | null>(null);
+  const [agrupandoTodosLocais, setAgrupandoTodosLocais] = useState(false);
   const [itemTriadoWhats, setItemTriadoWhats] = useState<any | null>(null);
 
   const [modalLeitor, setModalLeitor] = useState(false);
@@ -1623,6 +1624,53 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     }
   };
 
+  const handleAgruparTodosEmLocal = async (novoLocal: string) => {
+    if (!novoLocal) return;
+    setLocalArmazenamentoTriagem(novoLocal);
+
+    if (!alertaAgrupamento?.itens || alertaAgrupamento.itens.length === 0) {
+      return;
+    }
+
+    setAgrupandoTodosLocais(true);
+    try {
+      const ids = alertaAgrupamento.itens.map((i: any) => i.id);
+      const { error } = await supabase
+        .from('encomendas_itens')
+        .update({ local_armazenamento: novoLocal })
+        .in('id', ids);
+
+      if (error && (error.message?.includes('local_armazenamento') || (error as any).code === '42703')) {
+        ids.forEach((id: string) => localStorage.setItem(`infport_item_local_${id}`, novoLocal));
+      } else if (error) {
+        throw error;
+      }
+
+      setTodosItensRetidos(prev => prev.map(item => {
+        if (ids.includes(item.id)) {
+          return { ...item, local_armazenamento: novoLocal };
+        }
+        return item;
+      }));
+
+      setAlertaAgrupamento((prev: any) => prev ? {
+        ...prev,
+        locais: [novoLocal],
+        itens: prev.itens.map((it: any) => ({ ...it, local_armazenamento: novoLocal }))
+      } : null);
+
+      tocarBipSucesso();
+      setMensagem({
+        tipo: 'sucesso',
+        texto: `✅ Todos os ${ids.length} pacote(s) anteriores foram agrupados em "${novoLocal}"!`
+      });
+    } catch (err: any) {
+      console.warn('Erro ao agrupar pacotes:', err);
+    } finally {
+      setAgrupandoTodosLocais(false);
+    }
+  };
+
   const salvarItemEntrada = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!podeFazerEntrada) {
@@ -1638,6 +1686,20 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     try {
       const localArmazenar = localArmazenamentoTriagem || 'Bancada Principal';
       const condoAlvo = idCondominioAtivo || usuarioLogado?.condominio_id || 'aa205bfb-55cc-42fe-ab25-9c16ac943851';
+
+      // Se já existiam pacotes retidos para esta unidade e o operador definiu um novo local, agrupa todos no novo local
+      if (alertaAgrupamento?.itens && alertaAgrupamento.itens.length > 0) {
+        const idsAntigos = alertaAgrupamento.itens.map((i: any) => i.id);
+        supabase
+          .from('encomendas_itens')
+          .update({ local_armazenamento: localArmazenar })
+          .in('id', idsAntigos)
+          .then(({ error: errAgrupar }) => {
+            if (!errAgrupar) {
+              setTodosItensRetidos(prev => prev.map(it => idsAntigos.includes(it.id) ? { ...it, local_armazenamento: localArmazenar } : it));
+            }
+          });
+      }
       const blocoFinal = eEstruturaCasas ? 'Casa' : (blocoTriagem || '').trim();
       const unidadeFinal = autoCorrigirZeroEsquerda(unidadeTriagem.trim());
 
@@ -4677,43 +4739,6 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                   </div>
                 </div>
 
-                {/* ALERTA INTELIGENTE DE AGRUPAMENTO FÍSICO */}
-                {alertaAgrupamento && (
-                  <div className="bg-amber-50 text-amber-950 p-2 sm:p-2.5 rounded-xl border border-amber-300 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-start sm:items-center gap-2 flex-1 min-w-0">
-                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 sm:mt-0" />
-                      <div className="text-[11px] leading-tight">
-                        <p className="font-bold text-amber-900">
-                          Já existem {alertaAgrupamento.qtd} pacote(s) retido(s) para unidade.
-                        </p>
-                        <div className="flex items-center gap-1 flex-wrap pt-0.5">
-                          <span className="text-amber-800 font-semibold">Local atual:</span>
-                          {alertaAgrupamento.locais && alertaAgrupamento.locais.map((loc: string, idx: number) => {
-                            const sigla = loc ? loc.split(' - ')[0].trim() : loc;
-                            return (
-                              <span key={idx} className="bg-amber-200/80 text-amber-950 px-1.5 py-0.2 rounded font-mono font-bold text-[10px]" title={loc}>
-                                {sigla}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-
-                    {alertaAgrupamento.locais && alertaAgrupamento.locais.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setLocalArmazenamentoTriagem(alertaAgrupamento.locais[0])}
-                        className="bg-amber-600 hover:bg-amber-700 text-white font-bold py-1 px-2.5 rounded-lg text-[11px] flex items-center justify-center gap-1 transition cursor-pointer shrink-0 shadow-2xs self-end sm:self-center"
-                        title={`Agrupar no local: ${alertaAgrupamento.locais[0]}`}
-                      >
-                        <Boxes className="w-3.5 h-3.5" />
-                        <span>Agrupar</span>
-                      </button>
-                    )}
-                  </div>
-                )}
-
                 {/* SELETOR DE DESTINATÁRIO */}
                 {moradoresDaUnidade.length > 0 && (
                   <div className="space-y-1 bg-blue-50/80 p-2 rounded-xl border border-blue-200">
@@ -4730,31 +4755,102 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                   </div>
                 )}
 
-                {/* SELETOR DO LOCAL FÍSICO DE ARMAZENAMENTO */}
-                <div className="space-y-1">
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase flex items-center gap-1">
-                    <Boxes className="w-3.5 h-3.5 text-emerald-600" />
-                    Local de Armazenamento na Portaria *
-                  </label>
-                  <select
-                    value={localArmazenamentoTriagem}
-                    onChange={(e) => setLocalArmazenamentoTriagem(e.target.value)}
-                    required
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 font-bold text-xs focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900 transition"
-                  >
-                    {locaisArmazenamento.filter(l => l.ativo !== false).map((loc: any) => {
-                      const valorFormatado = loc.codigo && loc.nome ? `${loc.codigo} - ${loc.nome}` : loc.nome || loc;
-                      return (
-                        <option key={loc.id || loc.codigo || loc} value={valorFormatado}>
-                          📦 {valorFormatado}
-                        </option>
-                      );
-                    })}
-                    {locaisArmazenamento.length === 0 && (
-                      <option value="Bancada Principal">📦 Bancada Principal de Triagem</option>
-                    )}
-                  </select>
-                </div>
+                {/* LOCAL DE ARMAZENAMENTO E ALERTA DE AGRUPAMENTO (INTEGRADOS ABAIXO DO DESTINATÁRIO) */}
+                {alertaAgrupamento ? (
+                  <div className="bg-amber-50 text-amber-950 p-2.5 rounded-xl border border-amber-300 shadow-2xs space-y-2">
+                    <div className="flex items-start sm:items-center justify-between gap-2">
+                      <div className="flex items-start sm:items-center gap-2 flex-1 min-w-0">
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 sm:mt-0" />
+                        <div className="text-[11px] leading-tight">
+                          <p className="font-bold text-amber-900">
+                            Já existem {alertaAgrupamento.qtd} pacote(s) retido(s) para unidade.
+                          </p>
+                          <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                            <span className="text-amber-800 font-semibold">Local atual:</span>
+                            {alertaAgrupamento.locais && alertaAgrupamento.locais.map((loc: string, idx: number) => {
+                              const sigla = loc ? loc.split(' - ')[0].trim() : loc;
+                              return (
+                                <span key={idx} className="bg-amber-200/80 text-amber-950 px-1.5 py-0.2 rounded font-mono font-bold text-[10px]" title={loc}>
+                                  {sigla}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SELETOR DE LOCAL INTEGRADO DENTRO DO ALERTA DE AGRUPAMENTO */}
+                    <div className="pt-2 border-t border-amber-200/80 space-y-1">
+                      <label className="block text-[11px] font-bold text-amber-950 uppercase flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <Boxes className="w-3.5 h-3.5 text-amber-700" />
+                          Local de Armazenamento / Agrupar *
+                        </span>
+                        <span className="text-[10px] text-amber-800 font-medium">
+                          Agrupa anteriores e este pacote
+                        </span>
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={localArmazenamentoTriagem}
+                          onChange={(e) => setLocalArmazenamentoTriagem(e.target.value)}
+                          required
+                          className="flex-1 p-2 bg-white border border-amber-300 rounded-xl text-slate-900 font-bold text-xs focus:outline-hidden focus:ring-2 focus:ring-amber-500 transition"
+                        >
+                          {locaisArmazenamento.filter(l => l.ativo !== false).map((loc: any) => {
+                            const valorFormatado = loc.codigo && loc.nome ? `${loc.codigo} - ${loc.nome}` : loc.nome || loc;
+                            return (
+                              <option key={loc.id || loc.codigo || loc} value={valorFormatado}>
+                                📦 {valorFormatado}
+                              </option>
+                            );
+                          })}
+                          {locaisArmazenamento.length === 0 && (
+                            <option value="Bancada Principal">📦 Bancada Principal de Triagem</option>
+                          )}
+                        </select>
+
+                        <button
+                          type="button"
+                          disabled={agrupandoTodosLocais}
+                          onClick={() => handleAgruparTodosEmLocal(localArmazenamentoTriagem || alertaAgrupamento.locais[0])}
+                          className="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0 shadow-2xs"
+                          title="Agrupar todos os pacotes anteriores e o novo neste local"
+                        >
+                          <Boxes className="w-3.5 h-3.5" />
+                          <span>{agrupandoTodosLocais ? 'Agrupando...' : 'Agrupar'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* SELETOR NORMAL QUANDO NÃO HÁ ENCOMENDA RETIDA ANTERIOR */
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase flex items-center gap-1">
+                      <Boxes className="w-3.5 h-3.5 text-emerald-600" />
+                      Local de Armazenamento na Portaria *
+                    </label>
+                    <select
+                      value={localArmazenamentoTriagem}
+                      onChange={(e) => setLocalArmazenamentoTriagem(e.target.value)}
+                      required
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 font-bold text-xs focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900 transition"
+                    >
+                      {locaisArmazenamento.filter(l => l.ativo !== false).map((loc: any) => {
+                        const valorFormatado = loc.codigo && loc.nome ? `${loc.codigo} - ${loc.nome}` : loc.nome || loc;
+                        return (
+                          <option key={loc.id || loc.codigo || loc} value={valorFormatado}>
+                            📦 {valorFormatado}
+                          </option>
+                        );
+                      })}
+                      {locaisArmazenamento.length === 0 && (
+                        <option value="Bancada Principal">📦 Bancada Principal de Triagem</option>
+                      )}
+                    </select>
+                  </div>
+                )}
 
                 {/* CÓDIGO DE BARRAS / RASTREIO */}
                 <div className="space-y-1">
