@@ -223,6 +223,7 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
 
   // Busca e visualização com aba direcionada de checklist
   const [termoBusca, setTermoBusca] = useState<string>('');
+  const [mostrarBuscaConsolidado, setMostrarBuscaConsolidado] = useState<boolean>(false);
   const [abaVisualizacao, setAbaVisualizacao] = useState<'lancamento' | 'visao_geral' | 'checklist' | 'historico'>(() => {
     if (typeof window !== 'undefined') {
       const abaSalva = sessionStorage.getItem('bancada_aba_ativa');
@@ -664,18 +665,13 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
     }
   };
 
-  // Filtro para a Visão Geral
+  // Filtro para a Visão Geral (apenas por unidade)
   const itensFiltradosVisaoGeral = useMemo(() => {
     if (!termoBusca.trim()) return itensAgrupados;
     const termo = termoBusca.toLowerCase().trim();
     return itensAgrupados
       .map(g => {
-        const itensMatch = g.itens.filter(
-          it =>
-            it.unidade.toLowerCase().includes(termo) ||
-            it.estrutura.toLowerCase().includes(termo) ||
-            (it.observacao && it.observacao.toLowerCase().includes(termo))
-        );
+        const itensMatch = g.itens.filter(it => it.unidade.toLowerCase().includes(termo));
         return {
           ...g,
           itens: itensMatch,
@@ -691,68 +687,70 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
       {/* CABEÇALHO COM IDENTIFICAÇÃO E AÇÕES RÁPIDAS */}
       <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 text-white p-3.5 sm:p-4 rounded-2xl shadow-md border border-amber-500/30">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div>
+          <div className="flex items-center gap-2.5 flex-wrap">
             <h1 className="text-lg sm:text-xl font-black flex items-center gap-2 tracking-tight">
               <Layers className="w-5 h-5 text-amber-200" />
               Conferência de Bancada
             </h1>
+
+            {/* BOTÃO COMPARTILHAR EM FRENTE DO NOME */}
+            <button
+              type="button"
+              onClick={handleCopiarWhatsApp}
+              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition active:scale-95 cursor-pointer border border-emerald-400/30"
+              title="Copiar lista estruturada para o grupo de WhatsApp"
+            >
+              {copiadoWhats ? <Check className="w-3.5 h-3.5 text-emerald-200" /> : <Share2 className="w-3.5 h-3.5" />}
+              <span>{copiadoWhats ? 'Copiado!' : 'Compartilhar'}</span>
+            </button>
           </div>
 
-          {/* BOTÕES DE AÇÃO PRINCIPAIS */}
-          <div className="flex flex-wrap items-center gap-2">
+          {/* BOTÕES DE AÇÃO: ENC. RETIDAS, ZERAR AO LADO, HISTÓRICO */}
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               onClick={handleSincronizarRE}
               disabled={sincronizandoRE}
-              className="px-3 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md transition active:scale-95 cursor-pointer border border-purple-400/30"
+              className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition active:scale-95 cursor-pointer border border-purple-400/30"
               title="Importar e sincronizar encomendas retidas do Módulo 02 com a bancada"
             >
-              <RefreshCw className={`w-4 h-4 ${sincronizandoRE ? 'animate-spin' : ''}`} />
-              <span>{sincronizandoRE ? 'Sincronizando...' : 'Enco (RE)'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleCopiarWhatsApp}
-              className="p-2 sm:px-3 sm:py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-md transition active:scale-95 cursor-pointer border border-emerald-400/30"
-              title="Copiar lista estruturada para o grupo de WhatsApp"
-            >
-              {copiadoWhats ? <Check className="w-4 h-4 text-emerald-200" /> : <Share2 className="w-4 h-4" />}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleAbrirHistorico}
-              className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer border border-white/20"
-              title="Ver histórico de conferências e trocas de plantão"
-            >
-              <History className="w-4 h-4" />
-              Histórico
+              <Package className={`w-3.5 h-3.5 ${sincronizandoRE ? 'animate-spin' : ''}`} />
+              <span>{sincronizandoRE ? 'Sincronizando...' : 'Enc. Retidas'}</span>
             </button>
 
             <button
               type="button"
               onClick={() => setModalZerarAberto(true)}
-              className="px-3 py-2 bg-rose-600/90 hover:bg-rose-600 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition active:scale-95 cursor-pointer border border-rose-400/40 shadow-sm"
+              className="px-3 py-1.5 bg-rose-600/90 hover:bg-rose-600 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition active:scale-95 cursor-pointer border border-rose-400/40 shadow-xs"
               title="Zerar balcão para iniciar nova contagem"
             >
-              <RotateCcw className="w-4 h-4" />
+              <RotateCcw className="w-3.5 h-3.5" />
               <span>Zerar</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleAbrirHistorico}
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer border border-white/20"
+              title="Ver histórico de conferências e trocas de plantão"
+            >
+              <History className="w-3.5 h-3.5" />
+              <span>Histórico</span>
             </button>
           </div>
         </div>
 
-        {/* CARDS DE ESTATÍSTICAS DA BANCADA */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mt-4 pt-4 border-t border-amber-500/40">
+        {/* CARDS DE ESTATÍSTICAS DA BANCADA: TOTAL, UNIDADES, BLOCOS */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-3 pt-3 border-t border-amber-500/40">
           <div className="bg-amber-900/40 border border-amber-400/30 rounded-xl p-2.5 sm:p-3">
             <span className="text-[11px] font-bold text-amber-200 uppercase tracking-wider block">
               Total
             </span>
             <div className="flex items-baseline gap-1 mt-0.5">
-              <span className="text-2xl sm:text-3xl font-black text-white">
+              <span className="text-xl sm:text-2xl font-black text-white">
                 {estatisticas.totalVolumes}
               </span>
-              <span className="text-xs text-amber-200 font-bold">volumes</span>
+              <span className="text-xs text-amber-200 font-bold">vol</span>
             </div>
           </div>
 
@@ -761,10 +759,9 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
               Unidades
             </span>
             <div className="flex items-baseline gap-1 mt-0.5">
-              <span className="text-2xl sm:text-3xl font-black text-white">
+              <span className="text-xl sm:text-2xl font-black text-white">
                 {estatisticas.totalUnidades}
               </span>
-              <span className="text-xs text-amber-200 font-bold">{rotuloUnidade.toLowerCase()}s</span>
             </div>
           </div>
 
@@ -773,22 +770,10 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
               Blocos
             </span>
             <div className="flex items-baseline gap-1 mt-0.5">
-              <span className="text-2xl sm:text-3xl font-black text-white">
+              <span className="text-xl sm:text-2xl font-black text-white">
                 {estatisticas.estruturasComVolumes}
               </span>
               <span className="text-xs text-amber-200 font-bold">de {estruturasDisponiveis.length}</span>
-            </div>
-          </div>
-
-          <div className="bg-amber-900/40 border border-amber-400/30 rounded-xl p-2.5 sm:p-3">
-            <span className="text-[11px] font-bold text-amber-200 uppercase tracking-wider block">
-              Operador
-            </span>
-            <div className="flex items-center gap-1.5 mt-1 truncate">
-              <User className="w-4 h-4 text-amber-300 flex-shrink-0" />
-              <span className="text-sm font-black text-white truncate" title={nomeOperador}>
-                {nomeOperador}
-              </span>
             </div>
           </div>
         </div>
@@ -1384,27 +1369,74 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
       {/* ========================================================================= */}
       {abaVisualizacao === 'visao_geral' && (
         <div className="space-y-4">
-          {/* BARRA DE FILTRO E BUSCA RÁPIDA */}
-          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="relative w-full sm:w-80">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder={`Buscar unidade ou ${rotuloBloco.toLowerCase()}...`}
-                value={termoBusca}
-                onChange={e => setTermoBusca(e.target.value)}
-                className="w-full text-xs font-medium pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-amber-500 outline-none"
-              />
+          {/* BARRA DE RESUMO COM ÍCONE DE BUSCA POR UNIDADE */}
+          <div className="bg-white p-2.5 sm:p-3 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-slate-600">Resumo:</span>
+              <span className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-black">
+                {estatisticas.totalVolumes} vol. em {estatisticas.totalUnidades} un.
+              </span>
+
+              {/* ÍCONE DE PESQUISA POR UNIDADE AO LADO DO RESUMO */}
+              <button
+                type="button"
+                onClick={() => setMostrarBuscaConsolidado(!mostrarBuscaConsolidado)}
+                className={`p-1.5 rounded-lg border transition cursor-pointer flex items-center gap-1.5 ${
+                  mostrarBuscaConsolidado || termoBusca.trim()
+                    ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                }`}
+                title={mostrarBuscaConsolidado ? "Fechar pesquisa por unidade" : "Pesquisar por unidade"}
+              >
+                <Search className="w-3.5 h-3.5" />
+                {termoBusca.trim() ? (
+                  <span className="text-[10px] font-black font-mono bg-white/20 px-1 rounded">
+                    {termoBusca}
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-bold sm:hidden">Buscar</span>
+                )}
+              </button>
             </div>
 
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
-                <span>Resumo:</span>
-                <span className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-lg font-black">
-                  {estatisticas.totalVolumes} vol. em {estatisticas.totalUnidades} un.
-                </span>
+            {/* CAMPO NUMÉRICO DE BUSCA POR UNIDADE (EXPANSÍVEL) */}
+            {(mostrarBuscaConsolidado || termoBusca.trim()) && (
+              <div className="flex items-center gap-1.5 w-full sm:w-auto animate-in fade-in duration-150">
+                <div className="relative flex-1 sm:w-48">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoFocus
+                    placeholder="Nº da Unidade..."
+                    value={termoBusca}
+                    onChange={e => setTermoBusca(e.target.value.replace(/\D/g, ''))}
+                    className="w-full text-xs font-bold px-2.5 py-1.5 bg-slate-50 border border-amber-400 rounded-lg focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500 font-mono"
+                  />
+                  {termoBusca && (
+                    <button
+                      type="button"
+                      onClick={() => setTermoBusca('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMostrarBuscaConsolidado(false);
+                    setTermoBusca('');
+                  }}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
+                  title="Fechar busca"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
-            </div>
+            )}
           </div>
 
           {/* GRID DE CARDS POR ESTRUTURA */}
