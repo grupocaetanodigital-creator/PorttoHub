@@ -29,6 +29,17 @@
         };
       })();
 
+      // Inicialização imediata do tema para prevenir flicker visual
+      try {
+        var temaSalvo = localStorage.getItem('infport_tema_visual_v2') || 'escuro';
+        if (temaSalvo === 'escuro') {
+          document.documentElement.classList.add('dark');
+          document.documentElement.classList.remove('light');
+        } else {
+          document.documentElement.classList.add('light');
+          document.documentElement.classList.remove('dark');
+        }
+      } catch (e) {}
     </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -47,7 +58,7 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
   </head>
-  <body class="bg-slate-900 text-slate-100 antialiased select-none">
+  <body class="antialiased select-none">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

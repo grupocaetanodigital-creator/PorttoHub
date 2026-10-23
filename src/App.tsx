@@ -16,10 +16,8 @@ import HistoricoAbsoluto from './pages/HistoricoAbsoluto';
 import PainelSindico from './pages/PainelSindico';
 import AlertaRondaGlobal from './components/AlertaRondaGlobal';
 import { OfflineIndicator } from './components/OfflineIndicator';
-import { PWAInstallButton } from './components/PWAInstallButton';
-import ControleFonteAcessibilidade from './components/ControleFonteAcessibilidade';
 import SeletorTema from './components/SeletorTema';
-import BotaoAtualizarApp from './components/BotaoAtualizarApp';
+import { NOME_APLICACAO, VERSAO_BUILD_ATUAL } from './services/versaoService';
 import AlertaNovaVersaoPWA from './components/AlertaNovaVersaoPWA';
 import IndicadorConectividade from './components/IndicadorConectividade';
 import EmblemaInfport from './components/EmblemaInfport';
@@ -644,7 +642,7 @@ export default function App() {
 
   if (operador) {
     return (
-      <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row font-sans pb-16 md:pb-0 text-slate-900 antialiased">
+      <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex flex-col md:flex-row font-sans pb-16 md:pb-0 text-slate-900 dark:text-slate-100 antialiased transition-colors duration-200">
         
         {/* SIDEBAR DESKTOP */}
         <aside className={`hidden md:flex bg-slate-900 text-white flex-col justify-between transition-all duration-300 z-30 ${
@@ -965,7 +963,7 @@ export default function App() {
           </header>
 
           {moduloAtual !== 'dashboard' && !eSindico && (
-            <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-2 flex flex-wrap items-center justify-between gap-2 shadow-xs">
+            <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-2 flex flex-wrap items-center justify-between gap-2 shadow-xs transition-colors">
               <button 
                 onClick={() => mudarModulo('dashboard')}
                 className="flex items-center gap-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-800 dark:border-slate-700 px-3.5 py-2 rounded-xl shadow-xs transition cursor-pointer"
@@ -975,28 +973,46 @@ export default function App() {
                 <span className="text-white font-bold">Voltar ao Painel</span>
               </button>
 
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                <ControleFonteAcessibilidade />
-                <BotaoAtualizarApp />
-                <PWAInstallButton />
+              <div className="flex items-center gap-3">
+                <div className="hidden sm:flex flex-col text-right leading-none">
+                  <span className="font-extrabold text-xs text-slate-800 dark:text-slate-100">
+                    {NOME_APLICACAO}
+                  </span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono font-bold mt-0.5">
+                    VERSÃO {VERSAO_BUILD_ATUAL}
+                  </span>
+                </div>
+                <SeletorTema />
               </div>
             </div>
           )}
 
-          <main className="flex-1 p-2.5 sm:p-4 overflow-y-auto text-slate-900 dark:text-slate-100">
+          <main className="flex-1 p-2.5 sm:p-4 overflow-y-auto text-slate-900 dark:text-slate-100 bg-slate-100 dark:bg-slate-950 transition-colors duration-200">
             
             {moduloAtual === 'dashboard' && (
               <div className="max-w-4xl mx-auto space-y-3">
                 
-                {/* Bloco Utilitário: Botão Instalar App, Atualizar e Acessibilidade */}
-                <div className="flex items-center justify-end flex-wrap gap-1.5 sm:gap-2 p-1">
-                  <SeletorTema />
-                  <ControleFonteAcessibilidade />
-                  <BotaoAtualizarApp />
-                  <PWAInstallButton />
+                {/* Topo do Painel: INFPORT com Versão e Seletor de Tema Modo Claro / Modo Escuro */}
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 flex items-center justify-between flex-wrap gap-2.5 shadow-2xs transition-colors">
+                  <div className="flex items-center gap-2.5">
+                    <EmblemaInfport tamanho="sm" comBrilho />
+                    <div className="flex flex-col leading-none">
+                      <span className="font-black text-sm sm:text-base text-slate-900 dark:text-white tracking-wide flex items-center gap-1.5">
+                        {NOME_APLICACAO}
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block"></span>
+                      </span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono tracking-tight font-bold uppercase mt-1">
+                        VERSÃO {VERSAO_BUILD_ATUAL}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <SeletorTema />
+                  </div>
                 </div>
 
-                {/* Grid dos Módulos Operacionais Otimizado (Ícones Compactos e Fáceis de Clicar) */}
+                {/* Grid dos Módulos Operacionais Otimizado */}
                 <div>
                   <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 mb-2 px-1">
                     Módulos Operacionais
@@ -1008,12 +1024,12 @@ export default function App() {
                         <button
                           key={item.id}
                           onClick={() => mudarModulo(item.id)}
-                          className="bg-white hover:bg-slate-50 active:scale-[0.98] p-2.5 sm:p-3 rounded-xl border border-slate-200 hover:border-slate-300 shadow-2xs flex flex-col items-center justify-center text-center gap-1.5 transition group cursor-pointer"
+                          className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-[0.98] p-2.5 sm:p-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-2xs flex flex-col items-center justify-center text-center gap-1.5 transition group cursor-pointer"
                         >
                           <div className={`p-2 rounded-lg border ${item.cor} group-hover:scale-105 transition duration-150`}>
                             <Icone className="w-5 h-5 sm:w-6 sm:h-6" />
                           </div>
-                          <span className="text-xs font-bold text-slate-800 leading-tight line-clamp-1">
+                          <span className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-tight line-clamp-1">
                             {item.titulo}
                           </span>
                         </button>
@@ -1258,28 +1274,36 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 text-slate-900 antialiased relative">
-      {/* Barra Superior de Acessibilidade, Atualização e Instalação na Tela de Login */}
-      <div className="absolute top-4 right-4 flex items-center gap-2 z-20">
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex flex-col items-center justify-center p-4 text-slate-900 dark:text-slate-100 antialiased relative transition-colors duration-200">
+      {/* Barra Superior com Marca, Versão e Tema */}
+      <div className="absolute top-4 right-4 flex items-center gap-3 z-20">
+        <div className="flex flex-col text-right leading-none">
+          <span className="font-extrabold text-xs text-slate-800 dark:text-slate-100">
+            {NOME_APLICACAO}
+          </span>
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono font-bold mt-0.5">
+            VERSÃO {VERSAO_BUILD_ATUAL}
+          </span>
+        </div>
         <SeletorTema />
-        <ControleFonteAcessibilidade />
-        <BotaoAtualizarApp />
-        <PWAInstallButton />
       </div>
 
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 sm:p-8 my-auto">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md p-6 sm:p-8 my-auto border border-slate-200 dark:border-slate-800 transition-colors">
         <div className="text-center mb-6">
           <div className="w-20 h-20 mx-auto mb-3 flex items-center justify-center">
             <EmblemaInfport tamanho="xl" comBrilho />
           </div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">INFPORT 1.0</h1>
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mt-0.5">
+          <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">{NOME_APLICACAO}</h1>
+          <p className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-1 uppercase tracking-wider">
+            VERSÃO {VERSAO_BUILD_ATUAL}
+          </p>
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1">
             Sistema Integrado de Portaria & Segurança Patrimonial
           </p>
         </div>
 
         {erro && (
-          <div className="bg-red-50 text-red-700 p-3.5 rounded-xl text-sm mb-4 border border-red-200 break-words font-semibold">
+          <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3.5 rounded-xl text-sm mb-4 border border-red-200 dark:border-red-900/50 break-words font-semibold">
             {erro}
           </div>
         )}
