@@ -688,18 +688,12 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
   return (
     <div className="space-y-4 max-w-6xl mx-auto pb-16">
       {/* CABEÇALHO COM IDENTIFICAÇÃO E AÇÕES RÁPIDAS */}
-      <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 text-white p-4 sm:p-5 rounded-2xl shadow-lg border border-amber-500/30">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 text-white p-3.5 sm:p-4 rounded-2xl shadow-md border border-amber-500/30">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="bg-emerald-400/20 text-emerald-200 border border-emerald-300/30 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                Em Tempo Real
-              </span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-black flex items-center gap-2 tracking-tight">
-              <Layers className="w-6 h-6 text-amber-200" />
-              Bancada de Portaria & Conferência de Balcão
+            <h1 className="text-lg sm:text-xl font-black flex items-center gap-2 tracking-tight">
+              <Layers className="w-5 h-5 text-amber-200" />
+              Conferência de Bancada
             </h1>
           </div>
 
@@ -1518,32 +1512,29 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
       {/* ========================================================================= */}
       {abaVisualizacao === 'checklist' && (
         <div className="space-y-4 animate-fadeIn">
-          {/* CABEÇALHO DO CHECKLIST COM IDENTIFICAÇÃO E AÇÕES RÁPIDAS */}
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+          {/* CABEÇALHO DO CHECKLIST (LIMPO E INTUITIVO) */}
+          <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                  <ListChecks className="w-3.5 h-3.5 text-emerald-600" />
-                  Módulo de Auditoria & Conferência
-                </span>
-                <span className="text-[11px] text-slate-400 font-semibold">
-                  Operador: <strong className="text-slate-700">{nomeOperador}</strong>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  <ListChecks className="w-5 h-5 text-emerald-600" />
+                  Checklist Físico de Balcão
+                </h2>
+                <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">
+                  Operador: {nomeOperador}
                 </span>
               </div>
-              <h2 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                Checklist Físico de Balcão
-              </h2>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
-                Confira fisicamente se os volumes na portaria batem exatamente com os registros da bancada.
+                Audite e confirme se os volumes físicos na portaria batem com a bancada.
               </p>
             </div>
 
-            {/* BOTÕES DE AÇÃO DO CHECKLIST */}
-            <div className="flex flex-wrap items-center gap-2">
+            {/* AÇÕES ESSENCIAIS DO CHECKLIST */}
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={handleCopiarRelatorioChecklistWhats}
-                className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition active:scale-95 cursor-pointer border border-emerald-500"
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-2xs transition active:scale-95 cursor-pointer border border-emerald-500"
                 title="Copiar relatório formatado de auditoria para o WhatsApp"
               >
                 <Share2 className="w-3.5 h-3.5" />
@@ -1553,21 +1544,11 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
               <button
                 type="button"
                 onClick={handleReiniciarChecklist}
-                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer border border-slate-300"
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer border border-slate-300"
                 title="Reiniciar e desmarcar todos os itens conferidos"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Zerar Checklist</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setAbaVisualizacao('lancamento')}
-                className="px-3 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition active:scale-95 cursor-pointer"
-                title="Voltar para a tela de lançamento rápido"
-              >
-                <ArrowRight className="w-3.5 h-3.5 rotate-180" />
-                <span>Voltar ao Lançamento</span>
+                <span>Reiniciar</span>
               </button>
             </div>
           </div>
@@ -1633,77 +1614,29 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
             </div>
           </div>
 
-          {/* PAINEL DE MÉTRICAS E PROGRESSO EM TEMPO REAL */}
-          <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white p-4 sm:p-5 rounded-2xl shadow-lg border border-slate-700/60">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                <span className="text-sm font-black uppercase tracking-wider">
-                  Progresso da Auditoria {estruturaChecklist === 'todas' ? '(Toda a Bancada)' : `(${estruturaChecklist})`}
+          {/* PROGRESSO E RESUMO DA CONFERÊNCIA (COMPACTO E ELEGANTE) */}
+          <div className="bg-slate-900 text-white p-3 sm:p-4 rounded-2xl shadow-sm border border-slate-800 flex flex-col gap-2.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span className="text-xs sm:text-sm font-black uppercase tracking-wider">
+                  Progresso {estruturaChecklist === 'todas' ? '(Toda a Bancada)' : `(${estruturaChecklist})`}
+                </span>
+                <span className="text-xs text-slate-400 font-mono">
+                  • <strong>{estatisticasChecklistEstruturaAtual.conferidos}</strong> de <strong>{estatisticasChecklistEstruturaAtual.totalItens}</strong> conferidos ({estatisticasChecklistEstruturaAtual.totalVolumes} volumes)
                 </span>
               </div>
-              <span className="text-xs font-black text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-3 py-1 rounded-full">
+              <span className="text-xs font-black text-emerald-300 bg-emerald-950/80 border border-emerald-700/50 px-2.5 py-0.5 rounded-full font-mono">
                 {estatisticasChecklistEstruturaAtual.porcentagem}% Concluído
               </span>
             </div>
 
-            {/* BARRA DE PROGRESSO COM ANIMAÇÃO */}
-            <div className="w-full bg-slate-700/60 h-3 rounded-full overflow-hidden p-0.5 mb-4 border border-slate-600">
+            {/* BARRA DE PROGRESSO REFINADA */}
+            <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-700">
               <div
                 className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500 shadow-sm"
                 style={{ width: `${estatisticasChecklistEstruturaAtual.porcentagem}%` }}
               />
-            </div>
-
-            {/* 4 CARDS DE INDICADORES */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
-              <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300 block">
-                  A Conferir
-                </span>
-                <div className="flex items-baseline gap-1 mt-1">
-                  <span className="text-2xl font-black text-white">
-                    {estatisticasChecklistEstruturaAtual.totalItens}
-                  </span>
-                  <span className="text-[11px] text-slate-400 font-bold">unidades</span>
-                </div>
-              </div>
-
-              <div className="bg-emerald-900/30 border border-emerald-500/30 rounded-xl p-3">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 block">
-                  Conferidos ✓
-                </span>
-                <div className="flex items-baseline gap-1 mt-1">
-                  <span className="text-2xl font-black text-emerald-400">
-                    {estatisticasChecklistEstruturaAtual.conferidos}
-                  </span>
-                  <span className="text-[11px] text-emerald-300/80 font-bold">unidades</span>
-                </div>
-              </div>
-
-              <div className="bg-amber-900/30 border border-amber-500/30 rounded-xl p-3">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 block">
-                  Pendentes ⏳
-                </span>
-                <div className="flex items-baseline gap-1 mt-1">
-                  <span className="text-2xl font-black text-amber-400">
-                    {estatisticasChecklistEstruturaAtual.pendentes}
-                  </span>
-                  <span className="text-[11px] text-amber-300/80 font-bold">restantes</span>
-                </div>
-              </div>
-
-              <div className="bg-purple-900/30 border border-purple-500/30 rounded-xl p-3">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300 block">
-                  Volumes Físicos
-                </span>
-                <div className="flex items-baseline gap-1 mt-1">
-                  <span className="text-2xl font-black text-purple-300">
-                    {estatisticasChecklistEstruturaAtual.totalVolumes}
-                  </span>
-                  <span className="text-[11px] text-purple-300/80 font-bold">volumes</span>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -1880,18 +1813,11 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
                             }`}>
                               {item.volumes} vol
                             </span>
-                            {item.local_armazenamento && (
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border flex items-center gap-0.5 ${
-                                item.local_armazenamento.toLowerCase().includes('chão') || item.local_armazenamento.toLowerCase().includes('chao')
-                                  ? 'bg-purple-100 text-purple-900 border-purple-300'
-                                  : item.local_armazenamento.toLowerCase().includes('fora')
-                                  ? 'bg-slate-200 text-slate-800 border-slate-300'
-                                  : 'bg-amber-100 text-amber-900 border-amber-300'
-                              }`}>
-                                <MapPin className="w-3 h-3 text-amber-700" />
-                                {item.local_armazenamento}
-                              </span>
-                            )}
+                            {/* LOCAL DE ARMAZENAMENTO DESTACADO NO CHECKLIST */}
+                            <span className="px-2 py-0.5 rounded-md text-[10.5px] font-black border flex items-center gap-1 bg-amber-50 text-amber-950 border-amber-300 shadow-2xs" title="Local de armazenamento do volume">
+                              <Box className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <span>{item.local_armazenamento || 'Bancada'}</span>
+                            </span>
                           </div>
 
                           {item.observacao && (

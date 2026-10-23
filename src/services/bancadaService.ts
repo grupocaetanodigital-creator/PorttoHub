@@ -516,7 +516,7 @@ export async function sincronizarComEncomendasRetidas(
   try {
     const { data, error } = await supabase
       .from('encomendas_itens')
-      .select('id, bloco, unidade, observacoes, created_at')
+      .select('id, bloco, unidade, observacoes, local_armazenamento, created_at')
       .eq('condominio_id', condominioId)
       .eq('status', 'retido');
 
@@ -544,8 +544,8 @@ export async function sincronizarComEncomendasRetidas(
     return { importados: 0, totalAtual: itensAtuais.reduce((a, b) => a + (b.volumes || 1), 0), itens: itensAtuais };
   }
 
-  // Agrupa as encomendas retidas por estrutura e unidade
-  const mapaRetidas = new Map<string, { volumes: number; observacoes: string[]; estrutura: string; unidade: string }>();
+  // Agrupa as encomendas retidas por estrutura e unidade, preservando locais de armazenamento
+  const mapaRetidas = new Map<string, { volumes: number; observacoes: string[]; locais: string[]; estrutura: string; unidade: string }>();
 
   encomendasRetidas.forEach(enc => {
     const estr = (enc.bloco || 'Torre A').trim();
@@ -557,6 +557,7 @@ export async function sincronizarComEncomendasRetidas(
       mapaRetidas.set(chave, {
         volumes: 0,
         observacoes: [],
+        locais: [],
         estrutura: estr,
         unidade: uni
       });
@@ -565,6 +566,10 @@ export async function sincronizarComEncomendasRetidas(
     reg.volumes += 1;
     if (enc.observacoes && !reg.observacoes.includes(enc.observacoes)) {
       reg.observacoes.push(enc.observacoes);
+    }
+    const loc = (enc.local_armazenamento || 'Bancada').trim();
+    if (loc && !reg.locais.includes(loc)) {
+      reg.locais.push(loc);
     }
   });
 
@@ -594,11 +599,14 @@ export async function sincronizarComEncomendasRetidas(
         it.unidade.toLowerCase() === val.unidade.toLowerCase()
     );
 
+    const localFinal = val.locais.length > 0 ? val.locais.join(', ') : 'Bancada';
+
     if (idxExistente >= 0) {
       const itemExistente = itensAtuais[idxExistente];
       const volAnterior = itemExistente.volumes;
       itemExistente.volumes = val.volumes;
       itemExistente.updated_at = new Date().toISOString();
+      itemExistente.local_armazenamento = localFinal;
       if (val.observacoes.length > 0) {
         itemExistente.observacao = val.observacoes.join(' | ');
       }
@@ -613,6 +621,7 @@ export async function sincronizarComEncomendasRetidas(
           .update({ 
             volumes: val.volumes, 
             observacao: itemExistente.observacao, 
+            local_armazenamento: localFinal,
             status: 'ativo',
             updated_at: new Date().toISOString() 
           })
@@ -627,6 +636,7 @@ export async function sincronizarComEncomendasRetidas(
         unidade: val.unidade,
         volumes: val.volumes,
         observacao: val.observacoes.length > 0 ? val.observacoes.join(' | ') : undefined,
+        local_armazenamento: localFinal,
         tipo_volume: 'Encomenda RE',
         operador_nome: operadorNome,
         created_at: new Date().toISOString()
@@ -642,6 +652,7 @@ export async function sincronizarComEncomendasRetidas(
           unidade: novoItem.unidade,
           volumes: novoItem.volumes,
           observacao: novoItem.observacao,
+          local_armazenamento: localFinal,
           tipo_volume: novoItem.tipo_volume,
           operador_nome: operadorNome,
           status: 'ativo',
