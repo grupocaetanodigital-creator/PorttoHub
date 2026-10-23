@@ -502,31 +502,27 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
             <ShieldCheck className="w-5 h-5 text-emerald-400" />
           </div>
           <div className="min-w-0">
-            <h2 className="text-sm font-extrabold text-slate-900 truncate flex items-center gap-2">
-              <span>Custódia de Itens</span>
-              {aba === 'saida' && (
-                <span className="text-[10px] bg-blue-100 text-blue-800 font-black px-2 py-0.5 rounded-full">
-                  {itensGuardados.length} {itensGuardados.length === 1 ? 'pendente' : 'pendentes'}
-                </span>
-              )}
-              {aba === 'entrada' && (
-                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-black px-2 py-0.5 rounded-full">
-                  Recebimento
-                </span>
-              )}
-              {aba === 'auditoria' && (
-                <span className="text-[10px] bg-purple-100 text-purple-800 font-black px-2 py-0.5 rounded-full">
-                  Histórico
-                </span>
-              )}
+            <h2 className="text-sm font-extrabold text-slate-900 truncate">
+              Custódia de Itens
             </h2>
-            <p className="text-[11px] text-slate-500 truncate">
-              {aba === 'saida'
-                ? 'Painel principal: itens guardados na guarita e baixas'
-                : aba === 'entrada'
-                ? `Novo item: ${fluxo === 'M-M' ? 'Morador ➔ Morador' : fluxo === 'M-T' ? 'Morador ➔ Terceiro' : 'Terceiro ➔ Morador'}`
-                : 'Auditoria e histórico completo de registros'}
-            </p>
+            {aba === 'saida' && (
+              <p className="text-[11px] font-bold text-blue-600 flex items-center gap-1.5 leading-tight mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                <span>{itensGuardados.length} {itensGuardados.length === 1 ? 'item pendente' : 'itens pendentes'}</span>
+              </p>
+            )}
+            {aba === 'entrada' && (
+              <p className="text-[11px] font-bold text-emerald-600 flex items-center gap-1.5 leading-tight mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                <span>Receber ({fluxo === 'M-M' ? 'Morador ➔ Morador' : fluxo === 'M-T' ? 'Morador ➔ Terceiro' : 'Terceiro ➔ Morador'})</span>
+              </p>
+            )}
+            {aba === 'auditoria' && (
+              <p className="text-[11px] font-bold text-purple-600 flex items-center gap-1.5 leading-tight mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
+                <span>Histórico & Auditoria</span>
+              </p>
+            )}
           </div>
         </div>
 
@@ -927,13 +923,10 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
 
       {aba === 'saida' && (
         <div className="bg-white p-3 sm:p-4 rounded-xl shadow-2xs border border-slate-200 space-y-3">
-          <div className="border-b pb-2">
+          <div className="border-b pb-2 flex items-center justify-between">
             <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
               <PackageCheck className="w-4 h-4 text-blue-600" /> Devolução de Objeto em Custódia
             </h3>
-            <p className="text-[11px] text-slate-500">
-              Localize o item na portaria e registre a retirada colhendo a foto e nome de quem recebeu.
-            </p>
           </div>
 
           <div className="relative">
@@ -1704,12 +1697,12 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
         </div>
       )}
 
-      {/* Botão Flutuante de Receber no Canto Inferior Esquerdo (FAB) */}
-      <div className="fixed bottom-5 left-5 z-40">
+      {/* Botão Flutuante de Receber no Canto Direito Inferior (Logo acima da barra de menus) */}
+      <div className="fixed bottom-16 md:bottom-8 right-4 sm:right-6 z-50">
         <button
           type="button"
           onClick={() => setModalSelecaoFluxoAberto(true)}
-          className="group flex items-center gap-2.5 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-200 border-2 border-emerald-400 cursor-pointer"
+          className="group flex items-center gap-2.5 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl shadow-2xl hover:scale-105 active:scale-95 transition-all duration-200 border-2 border-emerald-400 cursor-pointer"
           title="Receber novo item em custódia"
         >
           <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
