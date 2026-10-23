@@ -2571,32 +2571,30 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
           </div>
         ) : (
         <div className="space-y-2">
-          {/* BARRA DE AÇÕES: ÍCONE DO DOSSIÊ (DOCI) */}
-          <div className="flex items-center justify-between gap-2 px-1 pt-0.5">
-            <button
-              type="button"
-              onClick={() => {
-                if (!podeVerDossie) {
-                  setMensagem({ tipo: 'erro', texto: 'Acesso restrito: A visualização do Dossiê Completo de Auditoria exige permissão adequada.' });
-                  return;
-                }
-                setEtapa('4');
-                carregarDossie();
-              }}
-              className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 hover:border-purple-300 rounded-xl font-bold text-xs shadow-2xs transition-all cursor-pointer group"
-              title="Dossiê Completo de Auditoria e Histórico de Encomendas (DOCI)"
-            >
-              <FileText className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />
-              <span>Dossiê (DOCI)</span>
-            </button>
-          </div>
-
           <div className="bg-white p-2.5 sm:p-3 rounded-xl shadow-2xs border border-slate-200 space-y-2">
           <div className="border-b border-slate-100 pb-2 flex items-center justify-between gap-1.5 flex-wrap">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5 shrink-0">
-                <UserCheck className="w-4 h-4 text-slate-800" /> Entrega de Pacotes (Saída)
+                <UserCheck className="w-4 h-4 text-slate-800" /> Entrega de Pacotes
               </h3>
+
+              {/* Botão Dossiê ao lado de Entrega de Pacotes */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (!podeVerDossie) {
+                    setMensagem({ tipo: 'erro', texto: 'Acesso restrito: A visualização do Dossiê Completo de Auditoria exige permissão adequada.' });
+                    return;
+                  }
+                  setEtapa('4');
+                  carregarDossie();
+                }}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 hover:border-purple-300 rounded-lg font-bold text-xs shadow-2xs transition-all cursor-pointer group"
+                title="Dossiê Completo de Auditoria e Histórico de Encomendas"
+              >
+                <FileText className="w-3.5 h-3.5 text-purple-600 group-hover:scale-110 transition-transform" />
+                <span>Dossiê</span>
+              </button>
             </div>
 
             {/* Botão de Pesquisa em frente a Entrega de Pacotes (Saída) */}
