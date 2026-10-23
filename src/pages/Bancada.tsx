@@ -498,8 +498,8 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
       // Feedback visual rápido
       setFeedbackUltimoLancamento({
         mensagem: res.incrementou
-          ? `+${qtdVolumes} vol. adicionado ao ${rotuloUnidade} ${unidadeLimpa} [Local: ${localFinal}] (${res.itemAdicionado.volumes} vol. total)`
-          : `${rotuloUnidade} ${unidadeLimpa} registrado: ${qtdVolumes} vol. no local ${localFinal}`,
+          ? `+${qtdVolumes} vol. • ${formatarIdentificacaoUnidade(unidadeLimpa)} [Local: ${localFinal}] (${res.itemAdicionado.volumes} vol. total)`
+          : `${formatarIdentificacaoUnidade(unidadeLimpa)} registrado: ${qtdVolumes} vol. no local ${localFinal}`,
         tipo: res.incrementou ? 'incremento' : 'novo',
         unidade: unidadeLimpa,
         estrutura: estruturaSelecionada
@@ -870,7 +870,7 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
                         setEstruturaSelecionada(estr);
                         inputUnidadeRef.current?.focus();
                       }}
-                      className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all active:scale-95 cursor-pointer ${
+                      className={`p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all active:scale-95 cursor-pointer h-[68px] min-w-[112px] ${
                         isAtiva
                           ? 'bg-amber-600 text-white border-amber-600 shadow-md ring-2 ring-amber-300'
                           : 'bg-slate-50 text-slate-800 border-slate-200 hover:bg-amber-50 hover:border-amber-300'
