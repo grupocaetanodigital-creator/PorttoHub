@@ -939,19 +939,6 @@ export default function App() {
                   </span>
                 </div>
               </div>
-
-              <div className="h-7 w-px bg-slate-800 hidden sm:block shrink-0" />
-
-              <div className="min-w-0 flex-1">
-                <h1 className="font-bold text-xs sm:text-sm text-slate-200 truncate leading-tight tracking-tight">
-                  {operadorContextoGlobal.condominio_nome || 'Condomínio'}
-                </h1>
-                <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium truncate mt-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-                  <span>Operador:</span>
-                  <span className="text-slate-200 font-bold">{operador.nome || 'Caetano'}</span>
-                </div>
-              </div>
             </div>
 
             {/* Ações no Topo Superior Direito: Alerta de Presentes no Condomínio e Notificações */}
@@ -997,14 +984,21 @@ export default function App() {
 
                 {/* Grid dos Módulos Operacionais Otimizado e Profissional */}
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between px-1">
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-4 bg-emerald-500 rounded-full" />
-                      <h2 className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                        Módulos Operacionais
-                      </h2>
+                  <div className="flex items-center justify-between px-1 gap-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-1.5 h-4 bg-emerald-500 rounded-full shrink-0" />
+                        <h1 className="text-xs sm:text-sm font-black text-slate-800 dark:text-white truncate tracking-tight">
+                          {operadorContextoGlobal.condominio_nome || 'Condomínio'}
+                        </h1>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium truncate">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 hidden sm:inline-block" />
+                        <span>Operador:</span>
+                        <span className="text-slate-700 dark:text-slate-200 font-bold">{operador.nome || 'Caetano'}</span>
+                      </div>
                     </div>
-                    {/* Menu de Controle de Fontes movido para o local da descrição de módulos ativos */}
+                    {/* Menu de Controle de Fontes */}
                     <ControleFonteAcessibilidade />
                   </div>
 
