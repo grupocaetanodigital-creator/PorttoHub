@@ -575,24 +575,40 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
       )}
 
       {aba === 'entrada' && (
-        <div className="bg-white p-3 sm:p-4 rounded-xl shadow-2xs border border-slate-200 space-y-3">
-          <div className="border-b pb-2 flex items-center justify-between gap-2">
-            <div>
-              <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" /> Receber Objeto em Custódia
-              </h3>
-              <p className="text-[11px] text-slate-500">
-                Fluxo atual: <strong className="text-slate-800">{fluxo === 'M-M' ? 'Morador ➔ Morador' : fluxo === 'M-T' ? 'Morador ➔ Terceiro' : 'Terceiro ➔ Morador'}</strong>
-              </p>
+        <div className="fixed inset-0 z-[60] bg-slate-950/80 backdrop-blur-sm overflow-y-auto p-2 sm:p-4 md:p-6 flex justify-center items-start animate-in fade-in duration-150">
+          <div className="bg-white my-auto sm:my-4 p-4 sm:p-6 rounded-2xl shadow-2xl border border-slate-200 space-y-4 w-full max-w-4xl relative animate-in zoom-in-95 duration-150">
+            <div className="border-b pb-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                  <ShieldCheck className="w-6 h-6 text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                    Receber Objeto em Custódia
+                  </h3>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[11px] text-slate-500 font-medium">Fluxo selecionado:</span>
+                    <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-md ${
+                      fluxo === 'M-M' 
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                        : fluxo === 'M-T'
+                        ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                        : 'bg-amber-100 text-amber-800 border border-amber-300'
+                    }`}>
+                      {fluxo === 'M-M' ? '🏢 Morador ➔ Morador' : fluxo === 'M-T' ? '🚚 Morador ➔ Terceiro' : '📦 Terceiro ➔ Morador'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAba('saida')}
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition flex items-center gap-1 text-xs font-bold cursor-pointer"
+                title="Fechar formulário"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setAba('saida')}
-              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-            >
-              <span>← Voltar para Baixas</span>
-            </button>
-          </div>
 
           <form onSubmit={salvarEntradaCustodia} className="space-y-3 max-w-4xl">
             <div>
@@ -890,7 +906,7 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
                 onClick={() => setAba('saida')}
                 className="w-full sm:w-auto px-5 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition text-xs cursor-pointer"
               >
-                Cancelar e Voltar
+                Cancelar e Fechar
               </button>
               <button
                 type="submit"
@@ -918,11 +934,39 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
               </a>
             </div>
           )}
+          </div>
         </div>
       )}
 
       {aba === 'saida' && (
         <div className="bg-white p-3 sm:p-4 rounded-xl shadow-2xs border border-slate-200 space-y-3">
+          {whatsEntradaLink && (
+            <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl space-y-1.5 animate-in fade-in">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  Custódia <strong>{whatsEntradaLink.codigo}</strong> cadastrada com sucesso!
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setWhatsEntradaLink(null)}
+                  className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                  title="Fechar"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <a
+                href={whatsEntradaLink.link}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition"
+              >
+                <MessageCircle className="w-4 h-4" /> Enviar Notificação no WhatsApp <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          )}
+
           <div className="border-b pb-2 flex items-center justify-between">
             <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
               <PackageCheck className="w-4 h-4 text-blue-600" /> Devolução de Objeto em Custódia
@@ -1697,8 +1741,10 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
         </div>
       )}
 
-      {/* Botão Flutuante de Receber no Canto Direito Inferior (Logo acima da barra de menus) */}
-      <div className="fixed bottom-16 md:bottom-8 right-4 sm:right-6 z-50">
+      {/* Botão Flutuante de Receber no Canto Direito Inferior (Fica atrás de qualquer formulário ou modal para evitar cliques indevidos) */}
+      <div className={`fixed bottom-16 md:bottom-8 right-4 sm:right-6 transition-all duration-200 ${
+        aba === 'entrada' || modalSelecaoFluxoAberto ? 'z-20 opacity-0 pointer-events-none' : 'z-30 opacity-100'
+      }`}>
         <button
           type="button"
           onClick={() => setModalSelecaoFluxoAberto(true)}
@@ -1719,9 +1765,9 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
         </button>
       </div>
 
-      {/* Modal de Seleção de Fluxo */}
+      {/* Modal de Seleção de Fluxo (Fica acima de todos os menus) */}
       {modalSelecaoFluxoAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-5 space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
