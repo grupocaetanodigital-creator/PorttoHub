@@ -4679,20 +4679,23 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
 
                 {/* ALERTA INTELIGENTE DE AGRUPAMENTO FÍSICO */}
                 {alertaAgrupamento && (
-                  <div className="bg-amber-50 text-amber-950 p-2.5 rounded-xl border border-amber-300 space-y-1.5 shadow-2xs">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                      <div className="text-[11px] flex-1">
+                  <div className="bg-amber-50 text-amber-950 p-2 sm:p-2.5 rounded-xl border border-amber-300 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-start sm:items-center gap-2 flex-1 min-w-0">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 sm:mt-0" />
+                      <div className="text-[11px] leading-tight">
                         <p className="font-bold text-amber-900">
-                          Já existem {alertaAgrupamento.qtd} pacote(s) retido(s) para esta unidade na portaria.
+                          Já existem {alertaAgrupamento.qtd} pacote(s) retido(s) para unidade.
                         </p>
                         <div className="flex items-center gap-1 flex-wrap pt-0.5">
                           <span className="text-amber-800 font-semibold">Local atual:</span>
-                          {alertaAgrupamento.locais && alertaAgrupamento.locais.map((loc: string, idx: number) => (
-                            <span key={idx} className="bg-amber-200/80 text-amber-950 px-1.5 py-0.2 rounded font-mono font-bold text-[10px]">
-                              {loc}
-                            </span>
-                          ))}
+                          {alertaAgrupamento.locais && alertaAgrupamento.locais.map((loc: string, idx: number) => {
+                            const sigla = loc ? loc.split(' - ')[0].trim() : loc;
+                            return (
+                              <span key={idx} className="bg-amber-200/80 text-amber-950 px-1.5 py-0.2 rounded font-mono font-bold text-[10px]" title={loc}>
+                                {sigla}
+                              </span>
+                            );
+                          })}
                         </div>
                       </div>
                     </div>
@@ -4701,10 +4704,11 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                       <button
                         type="button"
                         onClick={() => setLocalArmazenamentoTriagem(alertaAgrupamento.locais[0])}
-                        className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-1.5 px-2.5 rounded-lg text-[11px] flex items-center justify-center gap-1.5 transition cursor-pointer"
+                        className="bg-amber-600 hover:bg-amber-700 text-white font-bold py-1 px-2.5 rounded-lg text-[11px] flex items-center justify-center gap-1 transition cursor-pointer shrink-0 shadow-2xs self-end sm:self-center"
+                        title={`Agrupar no local: ${alertaAgrupamento.locais[0]}`}
                       >
                         <Boxes className="w-3.5 h-3.5" />
-                        Agrupar no mesmo local ({alertaAgrupamento.locais[0]})
+                        <span>Agrupar</span>
                       </button>
                     )}
                   </div>
