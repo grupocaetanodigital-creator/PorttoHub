@@ -16,7 +16,10 @@ import {
   Sliders,
   Wrench,
   AlertCircle,
-  ShieldAlert
+  ShieldAlert,
+  Server,
+  Cloud,
+  Terminal
 } from 'lucide-react';
 import { 
   CANONICAL_SCHEMA_MAP, 
@@ -28,6 +31,11 @@ import {
   repairAllCondominiosConfigs,
   CondominioConfigDiagnostic
 } from '../services/databaseDoctor';
+import { 
+  salvarConfiguracaoOCI, 
+  limparConfiguracaoOCI, 
+  obterStatusConexaoBanco 
+} from '../services/supabase';
 
 interface SupabaseDoctorModalProps {
   isOpen: boolean;
@@ -39,7 +47,11 @@ export default function SupabaseDoctorModal({ isOpen, onClose }: SupabaseDoctorM
   const [diagnostics, setDiagnostics] = useState<TableDiagnostic[]>(CANONICAL_SCHEMA_MAP);
   const [orphanedCount, setOrphanedCount] = useState(0);
   const [copiado, setCopiado] = useState(false);
-  const [abaAtiva, setAbaAtiva] = useState<'condominios' | 'auditoria' | 'script' | 'storage'>('condominios');
+  const [copiadoOCI, setCopiadoOCI] = useState(false);
+  const [copiadoComandoOCI, setCopiadoComandoOCI] = useState(false);
+  const [abaAtiva, setAbaAtiva] = useState<'condominios' | 'auditoria' | 'script' | 'storage' | 'oci'>('condominios');
+  const [inputUrlOci, setInputUrlOci] = useState(() => obterStatusConexaoBanco().url);
+  const [statusOci, setStatusOci] = useState(() => obterStatusConexaoBanco());
 
   // Estados da integridade de condomínios
   const [condoDiagnostics, setCondoDiagnostics] = useState<CondominioConfigDiagnostic[]>([]);
@@ -211,6 +223,19 @@ export default function SupabaseDoctorModal({ isOpen, onClose }: SupabaseDoctorM
             }`}
           >
             📁 Buckets de Storage
+          </button>
+
+          <button
+            onClick={() => setAbaAtiva('oci')}
+            className={`py-2.5 px-4 rounded-t-xl transition border-b-2 flex items-center gap-1.5 whitespace-nowrap font-black ${
+              abaAtiva === 'oci'
+                ? 'bg-white border-blue-600 text-blue-700 shadow-sm ring-1 ring-blue-100'
+                : 'border-transparent text-blue-700 hover:bg-blue-50/60'
+            }`}
+          >
+            <Cloud className="w-4 h-4 text-blue-600" />
+            <span>Máquina Virtual Oracle Cloud (OCI)</span>
+            <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded-full font-bold">100% Free</span>
           </button>
         </div>
 
@@ -610,6 +635,144 @@ export default function SupabaseDoctorModal({ isOpen, onClose }: SupabaseDoctorM
                 <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-emerald-900 text-[11px]">
                   ✅ <strong>Tudo OK no Storage:</strong> O aplicativo já está configurado para salvar todas as fotos dos módulos (chaves, rondas, encomendas, avarias, etc.) no bucket público <code>encomendas</code>, mantendo links seguros e acessíveis sem quebras de imagem.
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ABA 5: ORACLE CLOUD (OCI) */}
+          {abaAtiva === 'oci' && (
+            <div className="space-y-4">
+              {/* Status da Conexão Atual */}
+              <div className={`p-4 rounded-2xl border flex items-center justify-between ${
+                statusOci.tipo === 'oci' 
+                  ? 'bg-blue-50 border-blue-200 text-blue-900' 
+                  : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className={`p-2.5 rounded-xl ${statusOci.tipo === 'oci' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'}`}>
+                    <Cloud className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black uppercase tracking-wider">Servidor Ativo:</span>
+                      <span className={`text-xs font-black px-2 py-0.5 rounded-md ${
+                        statusOci.tipo === 'oci' ? 'bg-blue-200 text-blue-900' : 'bg-emerald-200 text-emerald-900'
+                      }`}>
+                        {statusOci.tipo === 'oci' ? '☁️ Oracle Cloud (VM Própria)' : '⚡ Supabase Nuvem'}
+                      </span>
+                      {statusOci.customizado && (
+                        <span className="text-[10px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded font-bold">
+                          Configurado no Navegador
+                        </span>
+                      )}
+                    </div>
+                    <code className="text-[11px] font-mono mt-0.5 block opacity-85">
+                      {statusOci.url}
+                    </code>
+                  </div>
+                </div>
+
+                {statusOci.customizado && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      limparConfiguracaoOCI();
+                    }}
+                    className="px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-xl text-xs font-bold transition"
+                  >
+                    Restaurar Padrão
+                  </button>
+                )}
+              </div>
+
+              {/* Conectar à Máquina Virtual da Oracle Cloud */}
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
+                <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                  <Server className="w-4 h-4 text-blue-600" />
+                  Conectar o PorttoHub à sua VM na Oracle Cloud
+                </h4>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Informe o IP Público ou o domínio da sua Máquina Virtual (com a porta 8000 do PostgREST).
+                  Ao salvar, o aplicativo passa a se comunicar instantaneamente com seu banco de dados na Oracle Cloud.
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      placeholder="Ex: http://129.153.xx.xx:8000 ou https://api.meudominio.com"
+                      value={inputUrlOci}
+                      onChange={e => setInputUrlOci(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-xl py-2 px-3 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!inputUrlOci.trim().startsWith('http')) {
+                        alert('Por favor, informe uma URL válida iniciando com http:// ou https://');
+                        return;
+                      }
+                      salvarConfiguracaoOCI(inputUrlOci.trim());
+                    }}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shrink-0"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Salvar e Conectar</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Comando de Instalação na VM em 1 Linha */}
+              <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Terminal className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs font-bold text-slate-200">
+                      Comando de Instalação Automática na sua VM (Ubuntu / Debian)
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cmd = 'curl -sSL https://raw.githubusercontent.com/grupocaetanodigital-creator/PorttoHub/main/scripts/instalar_oci.sh | bash';
+                      navigator.clipboard.writeText(cmd);
+                      setCopiadoComandoOCI(true);
+                      setTimeout(() => setCopiadoComandoOCI(false), 2500);
+                    }}
+                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg text-xs font-bold transition flex items-center gap-1"
+                  >
+                    {copiadoComandoOCI ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiadoComandoOCI ? 'Copiado!' : 'Copiar'}</span>
+                  </button>
+                </div>
+
+                <pre className="bg-slate-950 p-3 rounded-xl font-mono text-xs text-emerald-400 overflow-x-auto border border-slate-800 select-all">
+                  curl -sSL https://raw.githubusercontent.com/grupocaetanodigital-creator/PorttoHub/main/scripts/instalar_oci.sh | bash
+                </pre>
+                <p className="text-[11px] text-slate-400">
+                  Este comando instala o Docker, configura o Firewall, inicializa o PostgreSQL 16 com persistência de dados e sobe o PostgREST na porta 8000.
+                </p>
+              </div>
+
+              {/* Botão de Cópia do Script SQL da OCI */}
+              <div className="bg-blue-50 border border-blue-200 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div>
+                  <h5 className="font-bold text-xs text-blue-950">Script SQL Oficial: oracle_cloud_postgresql_porttohub.sql</h5>
+                  <p className="text-[11px] text-blue-800">
+                    Contém todas as 29 tabelas, isolamento multi-tenant por condomínio, triggers de updated_at e carga inicial de admin.
+                  </p>
+                </div>
+                <a
+                  href="https://raw.githubusercontent.com/grupocaetanodigital-creator/PorttoHub/main/oracle_cloud_postgresql_porttohub.sql"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Ver Arquivo SQL</span>
+                </a>
               </div>
             </div>
           )}
