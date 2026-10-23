@@ -28,7 +28,8 @@ import {
   Sliders,
   MapPin,
   Archive,
-  ListChecks
+  ListChecks,
+  PenTool
 } from 'lucide-react';
 import {
   ItemBancada,
@@ -804,8 +805,8 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
               : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
-          <Plus className="w-4 h-4" />
-          <span>1. Lançamento por {rotuloBloco}</span>
+          <PenTool className="w-4 h-4" />
+          <span>Manual</span>
         </button>
 
         <button
@@ -817,8 +818,15 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
               : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
-          <Building className="w-4 h-4" />
-          <span>2. Visão Geral ({estatisticas.totalVolumes} vol.)</span>
+          <Layers className="w-4 h-4" />
+          <span>Consolidado</span>
+          {estatisticas.totalVolumes > 0 && (
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+              abaVisualizacao === 'visao_geral' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {estatisticas.totalVolumes} vol
+            </span>
+          )}
         </button>
 
         <button
@@ -831,7 +839,12 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
           }`}
         >
           <ListChecks className="w-4 h-4" />
-          <span>3. Checklist de Balcão ({estatisticasChecklistGeral.conferidos}/{estatisticasChecklistGeral.totalItens})</span>
+          <span>Checklist</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+            abaVisualizacao === 'checklist' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+          }`}>
+            {estatisticasChecklistGeral.conferidos}/{estatisticasChecklistGeral.totalItens}
+          </span>
         </button>
       </div>
 
