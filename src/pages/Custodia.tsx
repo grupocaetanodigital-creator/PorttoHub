@@ -44,7 +44,8 @@ interface CustodiaProps {
 }
 
 export default function Custodia({ usuarioLogado }: CustodiaProps) {
-  const [aba, setAba] = useState<'entrada' | 'saida' | 'auditoria'>('entrada');
+  const [aba, setAba] = useState<'entrada' | 'saida' | 'auditoria'>('saida');
+  const [modalSelecaoFluxoAberto, setModalSelecaoFluxoAberto] = useState(false);
   const [loading, setLoading] = useState(false);
   const [uploadingFoto, setUploadingFoto] = useState(false);
   const [mensagem, setMensagem] = useState({ tipo: '', texto: '' });
@@ -261,6 +262,7 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
       setDestinoUnidade(''); setDestinoBloco(''); setDestinoNome(''); setDestinoWhats('');
       setDescricaoItem(''); setFotoEntradaUrl('');
       carregarDados();
+      setAba('saida');
       setMensagem({ tipo: 'sucesso', texto: `Item guardado com sucesso! Código: ${codigoCustodia}` });
     } catch (err: any) {
       setMensagem({ tipo: 'erro', texto: err.message });
@@ -493,59 +495,78 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 bg-slate-100 p-1 rounded-xl border border-slate-200 gap-1 shadow-2xs">
-        <button
-          type="button"
-          onClick={() => setAba('entrada')}
-          className={`py-2 px-2 sm:px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
-            aba === 'entrada'
-              ? 'bg-white text-emerald-700 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          <PackagePlus className={`w-4 h-4 shrink-0 ${aba === 'entrada' ? 'text-emerald-600' : 'text-slate-500'}`} />
-          <span className="truncate">Receber</span>
-        </button>
+      {/* Barra Superior com Título e Botão de Histórico */}
+      <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shrink-0 shadow-xs">
+            <ShieldCheck className="w-5 h-5 text-emerald-400" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-sm font-extrabold text-slate-900 truncate flex items-center gap-2">
+              <span>Custódia de Itens</span>
+              {aba === 'saida' && (
+                <span className="text-[10px] bg-blue-100 text-blue-800 font-black px-2 py-0.5 rounded-full">
+                  {itensGuardados.length} {itensGuardados.length === 1 ? 'pendente' : 'pendentes'}
+                </span>
+              )}
+              {aba === 'entrada' && (
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-black px-2 py-0.5 rounded-full">
+                  Recebimento
+                </span>
+              )}
+              {aba === 'auditoria' && (
+                <span className="text-[10px] bg-purple-100 text-purple-800 font-black px-2 py-0.5 rounded-full">
+                  Histórico
+                </span>
+              )}
+            </h2>
+            <p className="text-[11px] text-slate-500 truncate">
+              {aba === 'saida'
+                ? 'Painel principal: itens guardados na guarita e baixas'
+                : aba === 'entrada'
+                ? `Novo item: ${fluxo === 'M-M' ? 'Morador ➔ Morador' : fluxo === 'M-T' ? 'Morador ➔ Terceiro' : 'Terceiro ➔ Morador'}`
+                : 'Auditoria e histórico completo de registros'}
+            </p>
+          </div>
+        </div>
 
-        <button
-          type="button"
-          onClick={() => setAba('saida')}
-          className={`py-2 px-2 sm:px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
-            aba === 'saida'
-              ? 'bg-white text-blue-700 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          <PackageCheck className={`w-4 h-4 shrink-0 ${aba === 'saida' ? 'text-blue-600' : 'text-slate-500'}`} />
-          <span className="truncate">Baixar</span>
-          {itensGuardados.length > 0 && (
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
-              aba === 'saida' ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-700'
-            }`}>
-              {itensGuardados.length}
-            </span>
+        <div className="flex items-center gap-2 shrink-0">
+          {aba !== 'saida' && (
+            <button
+              type="button"
+              onClick={() => setAba('saida')}
+              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <PackageCheck className="w-4 h-4 text-blue-600" />
+              <span>Ver Baixas</span>
+              {itensGuardados.length > 0 && (
+                <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.2 rounded-full font-black">
+                  {itensGuardados.length}
+                </span>
+              )}
+            </button>
           )}
-        </button>
 
-        <button
-          type="button"
-          onClick={() => setAba('auditoria')}
-          className={`py-2 px-2 sm:px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
-            aba === 'auditoria'
-              ? 'bg-white text-purple-700 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          <History className={`w-4 h-4 shrink-0 ${aba === 'auditoria' ? 'text-purple-600' : 'text-slate-500'}`} />
-          <span className="truncate">Histórico</span>
-          {historicoCompleto.length > 0 && (
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
-              aba === 'auditoria' ? 'bg-purple-100 text-purple-800' : 'bg-slate-200 text-slate-700'
-            }`}>
-              {historicoCompleto.length}
-            </span>
-          )}
-        </button>
+          <button
+            type="button"
+            onClick={() => setAba(aba === 'auditoria' ? 'saida' : 'auditoria')}
+            className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer ${
+              aba === 'auditoria'
+                ? 'bg-purple-600 text-white hover:bg-purple-700'
+                : 'bg-slate-900 text-white hover:bg-slate-800'
+            }`}
+          >
+            <History className="w-4 h-4 text-purple-400" />
+            <span>{aba === 'auditoria' ? 'Voltar para Baixas' : 'Histórico'}</span>
+            {historicoCompleto.length > 0 && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                aba === 'auditoria' ? 'bg-purple-800 text-purple-100' : 'bg-slate-800 text-slate-300'
+              }`}>
+                {historicoCompleto.length}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
       {mensagem.texto && (
@@ -559,13 +580,22 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
 
       {aba === 'entrada' && (
         <div className="bg-white p-3 sm:p-4 rounded-xl shadow-2xs border border-slate-200 space-y-3">
-          <div className="border-b pb-2">
-            <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" /> Custódia de Itens na Portaria
-            </h3>
-            <p className="text-[11px] text-slate-500">
-              Registre o objeto deixado na guarita identificando quem entregou e quem está autorizado a retirar.
-            </p>
+          <div className="border-b pb-2 flex items-center justify-between gap-2">
+            <div>
+              <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" /> Receber Objeto em Custódia
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                Fluxo atual: <strong className="text-slate-800">{fluxo === 'M-M' ? 'Morador ➔ Morador' : fluxo === 'M-T' ? 'Morador ➔ Terceiro' : 'Terceiro ➔ Morador'}</strong>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAba('saida')}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+            >
+              <span>← Voltar para Baixas</span>
+            </button>
           </div>
 
           <form onSubmit={salvarEntradaCustodia} className="space-y-3 max-w-4xl">
@@ -858,13 +888,23 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
               </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading || uploadingFoto}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl transition shadow-md uppercase text-sm"
-            >
-              Confirmar Entrada e Guardar Objeto
-            </button>
+            <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setAba('saida')}
+                className="w-full sm:w-auto px-5 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition text-xs cursor-pointer"
+              >
+                Cancelar e Voltar
+              </button>
+              <button
+                type="submit"
+                disabled={loading || uploadingFoto}
+                className="flex-1 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-4 rounded-xl transition shadow-md uppercase text-xs flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <PackagePlus className="w-4 h-4" />
+                <span>Confirmar Entrada e Guardar Objeto</span>
+              </button>
+            </div>
           </form>
 
           {whatsEntradaLink && (
@@ -1659,6 +1699,144 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
               >
                 Abrir imagem original <ExternalLink className="w-3 h-3" />
               </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Botão Flutuante de Receber no Canto Inferior Esquerdo (FAB) */}
+      <div className="fixed bottom-5 left-5 z-40">
+        <button
+          type="button"
+          onClick={() => setModalSelecaoFluxoAberto(true)}
+          className="group flex items-center gap-2.5 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-200 border-2 border-emerald-400 cursor-pointer"
+          title="Receber novo item em custódia"
+        >
+          <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+            <PackagePlus className="w-5 h-5 text-white" />
+          </div>
+          <div className="text-left pr-1">
+            <span className="block text-[10px] font-black uppercase tracking-wider text-emerald-200 leading-none">
+              Novo Registro
+            </span>
+            <span className="block text-sm font-extrabold text-white leading-tight">
+              Receber Item
+            </span>
+          </div>
+        </button>
+      </div>
+
+      {/* Modal de Seleção de Fluxo */}
+      {modalSelecaoFluxoAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-5 space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  <PackagePlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-sm">Receber Item em Custódia</h3>
+                  <p className="text-[11px] text-slate-500">Selecione o fluxo para abrir o formulário</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalSelecaoFluxoAberto(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5">
+              {/* Opção 1: Morador para Morador */}
+              <button
+                type="button"
+                onClick={() => {
+                  setFluxo('M-M');
+                  setModalSelecaoFluxoAberto(false);
+                  setAba('entrada');
+                }}
+                className="w-full p-3.5 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition-all text-left flex items-center justify-between group cursor-pointer shadow-2xs hover:shadow-sm"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-base shrink-0 group-hover:scale-105 transition-transform">
+                    🏢
+                  </div>
+                  <div>
+                    <h4 className="font-black text-slate-900 text-xs sm:text-sm group-hover:text-emerald-800 transition-colors">
+                      Morador ➔ Morador
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      De um morador para outro morador da mesma comunidade
+                    </p>
+                  </div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-emerald-600 group-hover:translate-x-1 transition-all shrink-0" />
+              </button>
+
+              {/* Opção 2: Morador para Terceiro */}
+              <button
+                type="button"
+                onClick={() => {
+                  setFluxo('M-T');
+                  setModalSelecaoFluxoAberto(false);
+                  setAba('entrada');
+                }}
+                className="w-full p-3.5 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/50 transition-all text-left flex items-center justify-between group cursor-pointer shadow-2xs hover:shadow-sm"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center font-bold text-base shrink-0 group-hover:scale-105 transition-transform">
+                    🚚
+                  </div>
+                  <div>
+                    <h4 className="font-black text-slate-900 text-xs sm:text-sm group-hover:text-blue-800 transition-colors">
+                      Morador ➔ Terceiro
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      De morador para prestador, visitante ou entregador externo
+                    </p>
+                  </div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all shrink-0" />
+              </button>
+
+              {/* Opção 3: Terceiro para Morador */}
+              <button
+                type="button"
+                onClick={() => {
+                  setFluxo('T-M');
+                  setModalSelecaoFluxoAberto(false);
+                  setAba('entrada');
+                }}
+                className="w-full p-3.5 rounded-xl border border-slate-200 hover:border-amber-500 hover:bg-amber-50/50 transition-all text-left flex items-center justify-between group cursor-pointer shadow-2xs hover:shadow-sm"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-base shrink-0 group-hover:scale-105 transition-transform">
+                    📦
+                  </div>
+                  <div>
+                    <h4 className="font-black text-slate-900 text-xs sm:text-sm group-hover:text-amber-800 transition-colors">
+                      Terceiro ➔ Morador
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      De visitante, entregador ou prestador para um morador
+                    </p>
+                  </div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-amber-600 group-hover:translate-x-1 transition-all shrink-0" />
+              </button>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setModalSelecaoFluxoAberto(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+              >
+                Cancelar
+              </button>
             </div>
           </div>
         </div>
