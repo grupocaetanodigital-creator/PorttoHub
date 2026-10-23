@@ -994,24 +994,23 @@ export default function App() {
             {moduloAtual === 'dashboard' && (
               <div className="max-w-4xl mx-auto space-y-3">
                 
-                {/* Topo do Painel: INFPORT com Versão e Menu de Fonte, Modo Claro/Escuro e Atualização GitHub */}
+                {/* Topo do Painel: INFPORT ampliado com Versão sobre o Menu de Controle de Fonte e Atualização */}
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 flex items-center justify-between flex-wrap gap-2.5 shadow-2xs transition-colors">
-                  <div className="flex items-center gap-2.5">
-                    <EmblemaInfport tamanho="sm" comBrilho />
-                    <div className="flex flex-col leading-none">
-                      <span className="font-black text-sm sm:text-base text-slate-900 dark:text-white tracking-wide flex items-center gap-1.5">
-                        {NOME_APLICACAO}
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block"></span>
-                      </span>
-                      <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono tracking-tight font-bold uppercase mt-1">
-                        VERSÃO {VERSAO_BUILD_ATUAL}
-                      </span>
-                    </div>
+                  <div className="flex items-center">
+                    <h1 className="font-black text-xl sm:text-2xl md:text-3xl text-slate-900 dark:text-white tracking-wider flex items-center gap-2">
+                      {NOME_APLICACAO}
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse inline-block" title="Sistema Ativo"></span>
+                    </h1>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <ControleFonteAcessibilidade />
-                    <BotaoAtualizarApp />
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-mono tracking-tight font-bold uppercase">
+                      VERSÃO {VERSAO_BUILD_ATUAL}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <ControleFonteAcessibilidade />
+                      <BotaoAtualizarApp />
+                    </div>
                   </div>
                 </div>
 
