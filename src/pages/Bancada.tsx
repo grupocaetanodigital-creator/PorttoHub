@@ -960,6 +960,25 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
                       </button>
                     )}
                   </div>
+
+                  {/* AVISO / FEEDBACK DO ÚLTIMO LANÇAMENTO LOGO ABAIXO DO CAMPO DE DIGITAÇÃO */}
+                  {feedbackUltimoLancamento && (
+                    <div
+                      className={`mt-2 p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold animate-fadeIn ${
+                        feedbackUltimoLancamento.tipo === 'incremento'
+                          ? 'bg-blue-50 text-blue-900 border-blue-300'
+                          : 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                        {feedbackUltimoLancamento.mensagem}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* QUANTIDADE DE VOLUMES (MANTER QTD + TELINHA DE QTD CONFIGURÁVEL COM + E -) */}
@@ -1104,25 +1123,6 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
                   </div>
                 </div>
               </form>
-
-              {/* FEEDBACK DO ÚLTIMO LANÇAMENTO */}
-              {feedbackUltimoLancamento && (
-                <div
-                  className={`mt-3 p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold animate-fadeIn ${
-                    feedbackUltimoLancamento.tipo === 'incremento'
-                      ? 'bg-blue-50 text-blue-900 border-blue-300'
-                      : 'bg-emerald-50 text-emerald-900 border-emerald-300'
-                  }`}
-                >
-                  <span className="flex items-center gap-1.5">
-                    <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                    {feedbackUltimoLancamento.mensagem}
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-mono">
-                    {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                  </span>
-                </div>
-              )}
             </div>
           </div>
 
