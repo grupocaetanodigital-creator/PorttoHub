@@ -8,13 +8,96 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 
 dotenv.config();
 
 const app = express();
 const port = 3000;
 
-app.use(express.json({ limit: '20mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Diretório persistente para armazenamento de fotos de encomendas, assinaturas e comprovantes
+const uploadsDir = path.resolve(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+['etiquetas', 'assinaturas_encomendas', 'comprovantes_baixa'].forEach(folder => {
+  const p = path.join(uploadsDir, folder);
+  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+});
+
+// Servir diretório de uploads diretamente antes do Vite
+app.use('/uploads', express.static(uploadsDir, {
+  maxAge: '1y',
+  immutable: true
+}));
+
+// Rotas de compatibilidade direta
+app.use('/etiquetas', express.static(path.join(uploadsDir, 'etiquetas'), { maxAge: '1y' }));
+app.use('/comprovantes_baixa', express.static(path.join(uploadsDir, 'comprovantes_baixa'), { maxAge: '1y' }));
+app.use('/assinaturas_encomendas', express.static(path.join(uploadsDir, 'assinaturas_encomendas'), { maxAge: '1y' }));
+
+/**
+ * Rota Oficial de Armazenamento Persistente de Fotos
+ * Salva a foto em disco e gera URL pública estável e permanente
+ */
+app.post('/api/upload-foto', async (req, res) => {
+  try {
+    const { imagemBase64, pasta = 'etiquetas', fileName } = req.body;
+    if (!imagemBase64) {
+      return res.status(400).json({ erro: 'Imagem não fornecida' });
+    }
+
+    const pastaLimpa = (pasta || 'etiquetas').replace(/[^a-zA-Z0-9_-]/g, '') || 'etiquetas';
+    const pastaDestino = path.join(uploadsDir, pastaLimpa);
+    if (!fs.existsSync(pastaDestino)) {
+      fs.mkdirSync(pastaDestino, { recursive: true });
+    }
+
+    const sufixoAleatorio = Math.random().toString(36).substring(2, 8);
+    const nomeArquivo = (fileName && typeof fileName === 'string' && fileName.endsWith('.jpg'))
+      ? path.basename(fileName)
+      : `${Date.now()}_${sufixoAleatorio}.jpg`;
+
+    const caminhoArquivo = path.join(pastaDestino, nomeArquivo);
+    const base64Data = imagemBase64.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    fs.writeFileSync(caminhoArquivo, buffer);
+
+    const relativeUrl = `/uploads/${pastaLimpa}/${nomeArquivo}`;
+    const host = req.get('host') || `localhost:${port}`;
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const fullUrl = `${protocol}://${host}${relativeUrl}`;
+
+    return res.json({
+      sucesso: true,
+      publicUrl: fullUrl,
+      relativeUrl,
+      fileName: `${pastaLimpa}/${nomeArquivo}`,
+      tamanhoKb: Math.round(buffer.length / 1024)
+    });
+  } catch (err: any) {
+    console.error('[API Upload Foto] Erro:', err);
+    return res.status(500).json({ erro: err.message || 'Falha ao salvar foto' });
+  }
+});
+
+// Endpoint com resposta direta e headers adequados
+app.get('/api/foto/:pasta/:nome', (req, res) => {
+  const pastaLimpa = req.params.pasta.replace(/[^a-zA-Z0-9_-]/g, '');
+  const nomeLimpo = path.basename(req.params.nome);
+  const caminho = path.join(uploadsDir, pastaLimpa, nomeLimpo);
+
+  if (fs.existsSync(caminho)) {
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    return res.sendFile(caminho);
+  }
+  return res.status(404).send('Foto não encontrada');
+});
 
 /**
  * Rota de Alta Precisão: OCR de Documentos Brasileiros (CNH e RG)

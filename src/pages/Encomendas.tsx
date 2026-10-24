@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '../services/supabase';
 import { registrarAtividade } from '../services/auditoriaService';
-import { uploadFotoComprimidaStorage, comprimirImagemBase64 } from '../services/imageUtils';
+import { uploadFotoComprimidaStorage, comprimirImagemBase64, formatarUrlFoto } from '../services/imageUtils';
 import { 
   Package, 
   Truck, 
@@ -1008,28 +1008,33 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     canvas.toBlob((blob) => {
       if (!blob) return;
       const file = new File([blob], `etiqueta_${Date.now()}.jpg`, { type: 'image/jpeg' });
-      
-      const previewUrl = URL.createObjectURL(blob);
       const targetAtual = alvoCapturaCamera;
 
-      if (targetAtual === 'principal') {
-        setFotoEtiquetaUrl(previewUrl);
-      } else {
-        setEncomendasAdicionais(prev => prev.map(it => it.id === targetAtual ? { ...it, fotoEtiquetaUrl: previewUrl } : it));
-      }
+      // Gera preview imediato via FileReader para estabilidade instantânea
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64Preview = (reader.result as string) || (blob ? URL.createObjectURL(blob) : '');
+        if (targetAtual === 'principal') {
+          setFotoEtiquetaUrl(base64Preview);
+        } else {
+          setEncomendasAdicionais(prev => prev.map(it => it.id === targetAtual ? { ...it, fotoEtiquetaUrl: base64Preview } : it));
+        }
+      };
+      reader.readAsDataURL(blob);
 
       // Fecha a câmera de captura ao vivo
       fecharCameraFotoEtiqueta();
 
-      // Abre imediatamente o menu de entrada de encomenda já com a foto e o código de rastreio preenchidos
+      // Abre imediatamente o menu de entrada de encomenda já com a foto preenchida
       setModalEntradaAberta(true);
 
-      // Inicia upload seguro para o storage e o OCR ultra-rápido (< 5s) em segundo plano
+      // Inicia upload seguro para o storage permanente e OCR ultra-rápido em segundo plano
       uploadFotoStorage(file, 'etiquetas', (urlFinal) => {
+        const urlSegura = formatarUrlFoto(urlFinal);
         if (targetAtual === 'principal') {
-          setFotoEtiquetaUrl(urlFinal);
+          setFotoEtiquetaUrl(urlSegura);
         } else {
-          setEncomendasAdicionais(prev => prev.map(it => it.id === targetAtual ? { ...it, fotoEtiquetaUrl: urlFinal } : it));
+          setEncomendasAdicionais(prev => prev.map(it => it.id === targetAtual ? { ...it, fotoEtiquetaUrl: urlSegura } : it));
         }
       });
       processarOcrEtiqueta(file, targetAtual);
@@ -1823,7 +1828,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
           unidade: unidadeFinal,
           morador_id: moradorSelecionado?.id || null,
           codigo_barras: codigoBarras.trim(),
-          foto_etiqueta_url: fotoEtiquetaUrl.trim(),
+          foto_etiqueta_url: formatarUrlFoto(fotoEtiquetaUrl.trim()),
           observacoes: observacoes.trim(),
           local_armazenamento: localArmazenar,
           status: 'retido'
@@ -1835,7 +1840,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
           unidade: unidadeFinal,
           morador_id: adic.moradorId || moradorSelecionado?.id || null,
           codigo_barras: (adic.codigoBarras || '').trim(),
-          foto_etiqueta_url: (adic.fotoEtiquetaUrl || '').trim(),
+          foto_etiqueta_url: formatarUrlFoto((adic.fotoEtiquetaUrl || '').trim()),
           observacoes: (adic.observacoes || '').trim(),
           local_armazenamento: localArmazenar,
           status: 'retido'
@@ -1900,13 +1905,15 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
 
       let textoWhatsMorador = '';
       if (pacotesParaSalvar.length === 1) {
-        textoWhatsMorador = `Olá, ${nomeDestinatario} (${labelUnidadeFormatada})! 📦\n\nSua encomenda acabou de chegar na Portaria.\n• Destinatário: ${nomeDestinatario}\n• Cód. Rastreio: ${codigoBarras || 'N/A'}\n• Local Físico de Guarda: ${localArmazenar}\n• Observação: ${observacoes || 'Nenhuma'}\n• Foto do Pacote: ${fotoEtiquetaUrl || 'Registrada na portaria'}\n\nPor favor, retire na portaria informando ${orientacaoRetirada}!`;
+        const fotoWhats = formatarUrlFoto(fotoEtiquetaUrl.trim());
+        textoWhatsMorador = `Olá, ${nomeDestinatario} (${labelUnidadeFormatada})! 📦\n\nSua encomenda acabou de chegar na Portaria.\n• Destinatário: ${nomeDestinatario}\n• Cód. Rastreio: ${codigoBarras || 'N/A'}\n• Local Físico de Guarda: ${localArmazenar}\n• Observação: ${observacoes || 'Nenhuma'}\n• Foto do Pacote: ${fotoWhats || 'Registrada na portaria'}\n\nPor favor, retire na portaria informando ${orientacaoRetirada}!`;
       } else {
         const totalP = pacotesParaSalvar.length;
         const linhas = pacotesParaSalvar.map((p, idx) => {
           const m = moradoresDaUnidade.find(mor => mor.id === p.morador_id) || moradorSelecionado;
           const dest = m?.nome || nomeDestinatario;
-          return `📦 *PACOTE ${idx + 1} de ${totalP}*:\n• Destinatário: ${dest}\n• Cód. Rastreio: ${p.codigo_barras || 'N/A'}\n• Foto: ${p.foto_etiqueta_url || 'Registrada na portaria'}${p.observacoes ? `\n• Obs: ${p.observacoes}` : ''}`;
+          const fotoWhats = formatarUrlFoto(p.foto_etiqueta_url);
+          return `📦 *PACOTE ${idx + 1} de ${totalP}*:\n• Destinatário: ${dest}\n• Cód. Rastreio: ${p.codigo_barras || 'N/A'}\n• Foto: ${fotoWhats || 'Registrada na portaria'}${p.observacoes ? `\n• Obs: ${p.observacoes}` : ''}`;
         }).join('\n\n');
 
         textoWhatsMorador = `Olá, moradores da unidade *${labelUnidadeFormatada}*! 📦✨\n\nChegaram *${totalP} encomendas* para a sua unidade na Portaria:\n\n${linhas}\n\n📍 *Local Físico de Guarda:* ${localArmazenar}\nPor favor, retirem na portaria informando ${orientacaoRetirada}!`;
@@ -2498,7 +2505,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setModalFotoAmpliada(item.foto_etiqueta_url);
+                          setModalFotoAmpliada(formatarUrlFoto(item.foto_etiqueta_url));
                         }}
                         className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-1.5 py-0.5 rounded transition cursor-pointer"
                       >
@@ -3081,11 +3088,15 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                             </span>
                             {item.foto_etiqueta_url && (
                               <a 
-                                href={item.foto_etiqueta_url} 
+                                href={formatarUrlFoto(item.foto_etiqueta_url)} 
                                 target="_blank" 
                                 rel="noreferrer" 
-                                onClick={e => e.stopPropagation()} 
-                                className="inline-flex items-center gap-0.5 text-blue-600 hover:text-blue-800 font-bold shrink-0"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setModalFotoAmpliada(formatarUrlFoto(item.foto_etiqueta_url));
+                                }} 
+                                className="inline-flex items-center gap-0.5 text-blue-600 hover:text-blue-800 font-bold shrink-0 cursor-pointer"
+                                title="Visualizar foto da etiqueta/encomenda"
                               >
                                 <ExternalLink className="w-2.5 h-2.5" /> Foto
                               </a>
@@ -4169,12 +4180,12 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                               <div className="space-y-1">
                                 <span className="font-bold text-purple-900 block truncate">1. Recebimento</span>
                                 <div 
-                                  onClick={() => item.foto_etiqueta_url && setModalFotoAmpliada(item.foto_etiqueta_url)}
+                                  onClick={() => item.foto_etiqueta_url && setModalFotoAmpliada(formatarUrlFoto(item.foto_etiqueta_url))}
                                   className="h-20 bg-slate-200 rounded-md overflow-hidden flex items-center justify-center cursor-pointer border border-slate-300 relative group"
                                 >
                                   {item.foto_etiqueta_url ? (
                                     <>
-                                      <img src={item.foto_etiqueta_url} alt="Etiqueta" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition" />
+                                      <img src={formatarUrlFoto(item.foto_etiqueta_url)} alt="Etiqueta" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition" />
                                       <span className="absolute bottom-1 right-1 bg-slate-900/80 text-white text-[8.5px] font-bold px-1 rounded flex items-center gap-0.5">
                                         <Eye className="w-2 h-2" /> Ver
                                       </span>
@@ -4372,7 +4383,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
 
                   <div className="bg-slate-900 rounded-xl overflow-hidden h-56 flex items-center justify-center border border-slate-300">
                     {itemModalDossie.foto_etiqueta_url ? (
-                      <img src={itemModalDossie.foto_etiqueta_url} alt="Etiqueta no Recebimento" loading="lazy" decoding="async" className="w-full h-full object-contain" />
+                      <img src={formatarUrlFoto(itemModalDossie.foto_etiqueta_url)} alt="Etiqueta no Recebimento" loading="lazy" decoding="async" className="w-full h-full object-contain" />
                     ) : (
                       <div className="text-slate-500 text-center text-xs">
                         <Package className="w-8 h-8 mx-auto mb-1 opacity-40" />
@@ -4520,7 +4531,15 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
             <div className="flex justify-center bg-slate-100 rounded-xl overflow-hidden max-h-[70vh] border border-slate-200">
               <img src={modalFotoAmpliada} alt="Etiqueta Ampliada" loading="lazy" decoding="async" className="w-full h-auto object-contain max-h-[70vh]" />
             </div>
-            <div className="flex justify-end pt-1">
+            <div className="flex justify-between items-center pt-1">
+              <a
+                href={modalFotoAmpliada}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 hover:underline"
+              >
+                <ExternalLink className="w-3.5 h-3.5" /> Abrir imagem original
+              </a>
               <button
                 type="button"
                 onClick={() => setModalFotoAmpliada(null)}

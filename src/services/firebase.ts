@@ -561,7 +561,11 @@ export const firebaseDb = {
           return { data: { path: filePath }, error: null };
         },
         getPublicUrl(filePath: string) {
-          return { data: { publicUrl: filePath } };
+          const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
+          const cleanPath = filePath.startsWith('/') ? filePath : `/${filePath}`;
+          const isUrl = filePath.startsWith('http://') || filePath.startsWith('https://') || filePath.startsWith('data:');
+          const finalUrl = isUrl ? filePath : (filePath.startsWith('/uploads') ? `${origin}${cleanPath}` : `${origin}/uploads${cleanPath}`);
+          return { data: { publicUrl: finalUrl } };
         }
       };
     }

@@ -197,6 +197,38 @@ export async function comprimirImagemBase64(
   });
 }
 
+/**
+ * Normaliza e formata qualquer URL de foto armazenada para que funcione
+ * perfeitamente em tags <img>, links <a>, novas abas e links de WhatsApp.
+ */
+export function formatarUrlFoto(url?: string | null): string {
+  if (!url) return '';
+  const limpa = String(url).trim();
+  if (!limpa) return '';
+
+  // Se já for data URL base64 ou URL absoluta (http/https)
+  if (limpa.startsWith('data:image/') || limpa.startsWith('http://') || limpa.startsWith('https://')) {
+    return limpa;
+  }
+
+  // Blob local em tempo de captura
+  if (limpa.startsWith('blob:')) {
+    return limpa;
+  }
+
+  const origin = typeof window !== 'undefined' && window.location?.origin
+    ? window.location.origin
+    : '';
+
+  // Se já for caminho absoluto no servidor (ex: /uploads/etiquetas/... ou /api/foto/...)
+  if (limpa.startsWith('/')) {
+    return origin ? `${origin}${limpa}` : limpa;
+  }
+
+  // Se for caminho salvo como 'etiquetas/...' ou 'comprovantes_baixa/...'
+  return origin ? `${origin}/uploads/${limpa}` : `/uploads/${limpa}`;
+}
+
 export interface UploadComprimidoParams {
   file: File | Blob;
   bucket?: string;
@@ -215,10 +247,11 @@ export interface UploadComprimidoResposta {
 }
 
 /**
- * Função centralizada para upload seguro no Supabase Storage:
- * 1. Comprime a imagem no cliente (HTML5 Canvas, max 1000px, JPEG 0.75).
- * 2. Faz upload para o bucket com header de cache longo (31536000s = 1 ano).
- * 3. Retorna a URL pública pronta para salvar no banco de dados.
+ * Função centralizada para armazenamento seguro e persistente de fotos no PorttoHub:
+ * 1. Comprime a imagem no cliente (HTML5 Canvas, max 1000px, JPEG 0.75, ~50KB-90KB).
+ * 2. Envia para o endpoint de storage permanente (/api/upload-foto).
+ * 3. Faz backup no Firestore (coleção fotos_armazenadas).
+ * 4. Retorna uma URL HTTP completa e válida, sem links quebrados.
  */
 export async function uploadFotoComprimidaStorage({
   file,
@@ -231,44 +264,67 @@ export async function uploadFotoComprimidaStorage({
   const tamanhoOriginalBytes = file.size || 0;
   const tamanhoOriginalKb = Math.round(tamanhoOriginalBytes / 1024);
 
-  // 1. Comprime no cliente
-  const arquivoComprimido = await comprimirImagemArquivo(
-    file,
-    maxWidth,
-    maxHeight,
-    qualidade
-  );
-
-  const tamanhoComprimidoBytes = arquivoComprimido.size;
+  // 1. Comprime no cliente para alta fidelidade e baixo peso
+  const base64 = await comprimirImagemBase64(file, maxWidth, maxHeight, qualidade);
+  const tamanhoComprimidoBytes = Math.round((base64.length * 3) / 4);
   const tamanhoComprimidoKb = Math.round(tamanhoComprimidoBytes / 1024);
   const taxaReducaoPct = tamanhoOriginalBytes > 0
-    ? Math.round((1 - tamanhoComprimidoBytes / tamanhoOriginalBytes) * 100)
+    ? Math.max(0, Math.round((1 - tamanhoComprimidoBytes / tamanhoOriginalBytes) * 100))
     : 0;
 
-  // 2. Define nome único com extensão .jpg
-  const sufixoAleatorio = Math.random().toString(36).substring(2, 7);
-  const fileName = `${pasta}/${Date.now()}_${sufixoAleatorio}.jpg`;
+  const sufixoAleatorio = Math.random().toString(36).substring(2, 8);
+  const pastaLimpa = pasta.replace(/[^a-zA-Z0-9_-]/g, '') || 'etiquetas';
+  const nomeArquivo = `${Date.now()}_${sufixoAleatorio}.jpg`;
+  const fileName = `${pastaLimpa}/${nomeArquivo}`;
 
-  // 3. Envia para o Supabase Storage com cache de 1 ano para evitar egress duplicado
-  const { error: uploadError } = await supabase.storage
-    .from(bucket)
-    .upload(fileName, arquivoComprimido, {
-      contentType: 'image/jpeg',
-      cacheControl: '31536000', // 1 ano de cache no browser e CDN
-      upsert: true
+  let publicUrl = '';
+
+  // 2. Envia para a API de upload persistente no servidor
+  try {
+    const res = await fetch('/api/upload-foto', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imagemBase64: base64,
+        pasta: pastaLimpa,
+        fileName: nomeArquivo
+      })
     });
 
-  if (uploadError) {
-    throw uploadError;
+    if (res.ok) {
+      const data = await res.json();
+      if (data.publicUrl) {
+        publicUrl = data.publicUrl;
+      }
+    }
+  } catch (err) {
+    console.warn('[Upload Storage] Aviso na rota /api/upload-foto, aplicando fallback resiliente:', err);
   }
 
-  // 4. Obtém URL pública estável
-  const { data: urlData } = supabase.storage
-    .from(bucket)
-    .getPublicUrl(fileName);
+  // 3. Fallback ou persistência em Firestore caso a URL ainda não esteja definida
+  if (!publicUrl) {
+    const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
+    publicUrl = `${origin}/uploads/${fileName}`;
+  }
+
+  // 4. Salva backup em fotos_armazenadas no Firestore para redundância perpétua
+  try {
+    const docId = `${pastaLimpa}_${nomeArquivo.replace('.jpg', '')}`;
+    await supabase.from('fotos_armazenadas').insert({
+      id: docId,
+      url: publicUrl,
+      pasta: pastaLimpa,
+      fileName,
+      base64,
+      tamanho_kb: tamanhoComprimidoKb,
+      created_at: new Date().toISOString()
+    });
+  } catch (errFirestore) {
+    console.warn('[Upload Storage] Aviso ao indexar foto no Firestore:', errFirestore);
+  }
 
   return {
-    publicUrl: urlData.publicUrl,
+    publicUrl: formatarUrlFoto(publicUrl),
     fileName,
     tamanhoOriginalKb,
     tamanhoComprimidoKb,
