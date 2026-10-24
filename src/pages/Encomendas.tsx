@@ -45,7 +45,8 @@ import {
   Sparkles,
   ScanLine,
   Tag,
-
+  ArrowRightLeft,
+  Database,
   ChevronDown,
   ChevronUp,
   ChevronLeft,
@@ -53,6 +54,7 @@ import {
   Eraser
 } from 'lucide-react';
 import CampoAssinaturaDigital from '../components/CampoAssinaturaDigital';
+import ModalMigracaoSupabase from '../components/ModalMigracaoSupabase';
 import { verificarPermissao, carregarNiveisAcesso } from '../services/permissoesService';
 import { 
   carregarCondominioConfig, 
@@ -103,6 +105,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
   const [etapa, setEtapa] = useState<'1' | '2' | '3' | '4'>('3');
   const [mostrarDossie, setMostrarDossie] = useState(false);
   const [modalEntradaAberta, setModalEntradaAberta] = useState(false);
+  const [modalMigracaoAberta, setModalMigracaoAberta] = useState(false);
   const [loading, setLoading] = useState(false);
   const [uploadingFoto, setUploadingFoto] = useState(false);
   const [mensagem, setMensagem] = useState({ tipo: '', texto: '' });
@@ -713,11 +716,22 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
         qualidade: 0.75
       });
 
-      setUrlCallback(publicUrl);
-      const detalheEconomia = taxaReducaoPct > 0 ? ` (otimizada: ${tamanhoOriginalKb}KB ➔ ${tamanhoComprimidoKb}KB, -${taxaReducaoPct}%)` : '';
-      setMensagem({ tipo: 'sucesso', texto: `Foto capturada e salva com sucesso!${detalheEconomia}` });
+      if (publicUrl) {
+        setUrlCallback(publicUrl);
+        const detalheEconomia = taxaReducaoPct > 0 ? ` (otimizada: ${tamanhoOriginalKb}KB ➔ ${tamanhoComprimidoKb}KB, -${taxaReducaoPct}%)` : '';
+        setMensagem({ tipo: 'sucesso', texto: `Foto capturada e salva com sucesso!${detalheEconomia}` });
+      } else {
+        throw new Error('URL da foto não gerada.');
+      }
     } catch (err: any) {
-      setMensagem({ tipo: 'erro', texto: 'Falha ao salvar foto: ' + err.message });
+      console.warn('[Upload Foto] Erro no upload direto, aplicando fallback base64:', err);
+      try {
+        const base64 = await comprimirImagemBase64(file, 800, 800, 0.75);
+        setUrlCallback(base64);
+        setMensagem({ tipo: 'sucesso', texto: 'Foto capturada e armazenada com segurança!' });
+      } catch (errFallback) {
+        setMensagem({ tipo: 'erro', texto: 'Falha ao salvar foto: ' + (err.message || 'Erro desconhecido') });
+      }
     } finally {
       setUploadingFoto(false);
     }
@@ -1798,11 +1812,15 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       setMensagem({ tipo: 'erro', texto: 'Por favor, informe a unidade / número para registrar a entrada.' });
       return;
     }
+    if (uploadingFoto) {
+      setMensagem({ tipo: 'info', texto: 'Aguarde o processamento da foto ser concluído...' });
+      return;
+    }
     setLoading(true);
 
     try {
       const localArmazenar = localArmazenamentoTriagem || 'Bancada Principal';
-      const condoAlvo = idCondominioAtivo || usuarioLogado?.condominio_id || 'aa205bfb-55cc-42fe-ab25-9c16ac943851';
+      const condoAlvo = idCondominioAtivo || usuarioLogado?.condominio_id || 'a0000000-0000-0000-0000-000000000001';
 
       // Se já existiam pacotes retidos para esta unidade e o operador definiu um novo local, agrupa todos no novo local
       if (alertaAgrupamento?.itens && alertaAgrupamento.itens.length > 0) {
@@ -1820,6 +1838,31 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       const blocoFinal = eEstruturaCasas ? 'Casa' : (blocoTriagem || '').trim();
       const unidadeFinal = autoCorrigirZeroEsquerda(unidadeTriagem.trim());
 
+      // Converte URLs do tipo blob para base64 para nunca se perderem
+      let fotoPrincipal = fotoEtiquetaUrl.trim();
+      if (fotoPrincipal.startsWith('blob:')) {
+        try {
+          const respB = await fetch(fotoPrincipal);
+          const blobB = await respB.blob();
+          fotoPrincipal = await comprimirImagemBase64(blobB, 800, 800, 0.75);
+        } catch {}
+      }
+
+      const adicionaisTratados = await Promise.all(encomendasAdicionais.map(async (adic) => {
+        let fAdic = (adic.fotoEtiquetaUrl || '').trim();
+        if (fAdic.startsWith('blob:')) {
+          try {
+            const respB = await fetch(fAdic);
+            const blobB = await respB.blob();
+            fAdic = await comprimirImagemBase64(blobB, 800, 800, 0.75);
+          } catch {}
+        }
+        return {
+          ...adic,
+          fotoEtiquetaUrl: fAdic
+        };
+      }));
+
       const pacotesParaSalvar: any[] = [
         {
           lote_re_id: loteAtivo?.id || null, // Não vincula lote obrigatoriamente
@@ -1828,19 +1871,19 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
           unidade: unidadeFinal,
           morador_id: moradorSelecionado?.id || null,
           codigo_barras: codigoBarras.trim(),
-          foto_etiqueta_url: formatarUrlFoto(fotoEtiquetaUrl.trim()),
+          foto_etiqueta_url: formatarUrlFoto(fotoPrincipal),
           observacoes: observacoes.trim(),
           local_armazenamento: localArmazenar,
           status: 'retido'
         },
-        ...encomendasAdicionais.map(adic => ({
+        ...adicionaisTratados.map(adic => ({
           lote_re_id: loteAtivo?.id || null,
           condominio_id: condoAlvo,
           bloco: blocoFinal,
           unidade: unidadeFinal,
           morador_id: adic.moradorId || moradorSelecionado?.id || null,
           codigo_barras: (adic.codigoBarras || '').trim(),
-          foto_etiqueta_url: formatarUrlFoto((adic.fotoEtiquetaUrl || '').trim()),
+          foto_etiqueta_url: formatarUrlFoto(adic.fotoEtiquetaUrl),
           observacoes: (adic.observacoes || '').trim(),
           local_armazenamento: localArmazenar,
           status: 'retido'
@@ -2755,6 +2798,17 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                 <FileText className="w-3.5 h-3.5 text-purple-600 group-hover:scale-110 transition-transform" />
                 <span>Dossiê</span>
               </button>
+
+              {/* Botão para Puxar Dados do Supabase Antigo para o Novo */}
+              <button
+                type="button"
+                onClick={() => setModalMigracaoAberta(true)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white border border-blue-600 hover:border-blue-700 rounded-lg font-bold text-xs shadow-2xs transition-all cursor-pointer group"
+                title="Puxar encomendas, moradores e dados do Supabase antigo para o novo banco de dados"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5 text-white group-hover:rotate-180 transition-transform duration-300" />
+                <span>Puxar Dados Supabase Antigo</span>
+              </button>
             </div>
 
             {/* Botão de Pesquisa em frente a Entrega de Pacotes (Saída) */}
@@ -2891,6 +2945,33 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
               </button>
             ))}
           </div>
+
+          {/* BANNER DE MIGRAÇÃO RÁPIDA DE DADOS DO SUPABASE ANTIGO */}
+          {todosItensRetidos.length === 0 && (
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/90 rounded-xl p-2.5 flex items-center justify-between gap-2.5 flex-wrap">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="p-1.5 bg-blue-600 text-white rounded-lg shrink-0 shadow-2xs">
+                  <ArrowRightLeft className="w-4 h-4" />
+                </div>
+                <div className="text-xs">
+                  <span className="font-bold text-blue-950 block">
+                    Suas encomendas estavam no Supabase antigo?
+                  </span>
+                  <span className="text-[11px] text-blue-700">
+                    Transfira encomendas, moradores e dados do banco antigo para o novo Supabase com 1 clique.
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalMigracaoAberta(true)}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-2xs shrink-0 cursor-pointer"
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>Puxar Dados do Supabase Antigo</span>
+              </button>
+            </div>
+          )}
 
           {/* RESUMO VISUAL DE ENCOMENDAS PENDENTES POR UNIDADE (BADGES / CONTADORES) */}
           <div className="bg-slate-50/90 p-2 sm:p-2.5 rounded-xl border border-slate-200 space-y-2">
@@ -5224,8 +5305,14 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                           alt="Etiqueta" 
                           loading="lazy" 
                           decoding="async" 
-                          className="max-h-28 rounded-lg object-contain shadow-xs border border-slate-200" 
+                          className="max-h-28 rounded-lg object-contain shadow-xs border border-slate-200 bg-white" 
                         />
+                        {uploadingFoto && (
+                          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs rounded-lg flex items-center justify-center text-white text-[11px] font-bold gap-1.5 animate-pulse">
+                            <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" />
+                            <span>Salvando foto no storage...</span>
+                          </div>
+                        )}
                         <button 
                           type="button" 
                           onClick={() => {
@@ -5238,6 +5325,20 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                           title="Remover foto e limpar sugestões"
                         >
                           <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="w-full flex items-center justify-between text-[10px] text-slate-600 px-1">
+                        <span className="flex items-center gap-1 font-semibold text-emerald-700">
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>{uploadingFoto ? 'Enviando foto...' : 'Foto salva com sucesso'}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => abrirCameraFotoEtiqueta('principal')}
+                          className="text-[10px] text-emerald-700 hover:text-emerald-900 font-bold underline cursor-pointer flex items-center gap-0.5"
+                        >
+                          <Camera className="w-3 h-3" /> Tirar outra foto
                         </button>
                       </div>
 
@@ -5625,6 +5726,19 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
           </div>
         </div>
       )}
+
+      {/* MODAL DE MIGRAÇÃO: PUXAR DADOS DO SUPABASE ANTIGO */}
+      <ModalMigracaoSupabase
+        aberto={modalMigracaoAberta}
+        onFechar={() => setModalMigracaoAberta(false)}
+        onMigracaoConcluida={() => {
+          carregarDadosBase();
+          setMensagem({
+            tipo: 'sucesso',
+            texto: '✅ Dados do banco antigo puxados com sucesso! Suas encomendas e cadastros foram sincronizados com o Novo Supabase.'
+          });
+        }}
+      />
     </div>
   );
 }
