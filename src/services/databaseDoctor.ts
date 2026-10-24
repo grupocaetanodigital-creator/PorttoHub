@@ -274,7 +274,7 @@ export async function runDatabaseAudit(): Promise<{
           .from(legacyName)
           .select('*', { count: 'exact', head: true });
 
-        if (!error && count !== null) {
+        if (!error && typeof count === 'number') {
           diag.legacyCounts[legacyName] = count;
           if (count > 0) {
             diag.status = 'needs_migration';

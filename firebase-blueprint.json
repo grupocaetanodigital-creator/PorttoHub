@@ -1,0 +1,829 @@
+{
+  "entities": {
+    "Condominio": {
+      "title": "Condominio",
+      "description": "Entidade de condomínio do sistema PorttoHub",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do condomínio" },
+        "nome": { "type": "string", "description": "Nome do condomínio", "maxLength": 150 },
+        "cnpj": { "type": "string", "description": "CNPJ do condomínio", "maxLength": 20 },
+        "endereco": { "type": "string", "description": "Endereço completo", "maxLength": 255 },
+        "cidade": { "type": "string", "description": "Cidade", "maxLength": 100 },
+        "uf": { "type": "string", "description": "UF Estado", "maxLength": 2 },
+        "telefone_portaria": { "type": "string", "description": "Telefone da portaria", "maxLength": 20 },
+        "sindico_nome": { "type": "string", "description": "Nome do síndico", "maxLength": 150 },
+        "sindico_telefone": { "type": "string", "description": "Telefone do síndico", "maxLength": 20 },
+        "sindico_email": { "type": "string", "description": "Email do síndico", "maxLength": 100 },
+        "total_unidades": { "type": "number", "description": "Total de unidades" },
+        "total_blocos": { "type": "number", "description": "Total de blocos" },
+        "ativo": { "type": "boolean", "description": "Condomínio ativo" },
+        "created_at": { "type": "string", "description": "Data de criação ISO" },
+        "updated_at": { "type": "string", "description": "Data de atualização ISO" }
+      },
+      "required": ["nome"]
+    },
+    "Configuracao": {
+      "title": "Configuracao",
+      "description": "Configurações gerais e módulos ativados do condomínio",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID da configuração" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "niveis_acesso": { "type": "object", "description": "Configuração dos níveis de acesso" },
+        "feature_flags": { "type": "object", "description": "Bandeiras de recursos ativos" },
+        "locais_armazenamento": { "type": "object", "description": "Lista de locais de armazenamento" },
+        "setores_ronda": { "type": "object", "description": "Lista de setores de ronda" },
+        "turnos_plantao": { "type": "object", "description": "Turnos de plantão" },
+        "dados_tenant": { "type": "object", "description": "Dados do tenant" },
+        "created_at": { "type": "string", "description": "Data de criação ISO" },
+        "updated_at": { "type": "string", "description": "Data de atualização ISO" }
+      },
+      "required": ["condominio_id"]
+    },
+    "Operador": {
+      "title": "Operador",
+      "description": "Usuário operador da portaria, porteiro, supervisor, síndico ou admin",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do operador" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio associado" },
+        "nome": { "type": "string", "description": "Nome completo", "maxLength": 150 },
+        "login": { "type": "string", "description": "Login de acesso", "maxLength": 50 },
+        "senha": { "type": "string", "description": "Senha ou hash de acesso" },
+        "funcao": { "type": "string", "description": "Função ou cargo", "maxLength": 50 },
+        "telefone": { "type": "string", "description": "Telefone de contato", "maxLength": 20 },
+        "turno_padrao": { "type": "string", "description": "Turno padrão", "maxLength": 50 },
+        "turno": { "type": "string", "description": "Turno", "maxLength": 50 },
+        "nivel_acesso": { "type": "number", "description": "Nível de acesso numérico" },
+        "nivel_acesso_custom_id": { "type": "string", "description": "ID do nível customizado" },
+        "perfil": { "type": "string", "description": "Perfil textual", "maxLength": 50 },
+        "foto_url": { "type": "string", "description": "Foto de perfil" },
+        "ativo": { "type": "boolean", "description": "Conta ativa" },
+        "email": { "type": "string", "description": "Email", "maxLength": 100 },
+        "cargo": { "type": "string", "description": "Cargo", "maxLength": 50 },
+        "ultimo_acesso": { "type": "string", "description": "Data do último acesso" },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["nome", "login"]
+    },
+    "Morador": {
+      "title": "Morador",
+      "description": "Cadastro de morador e unidade",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do morador" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "nome": { "type": "string", "description": "Nome completo", "maxLength": 150 },
+        "bloco": { "type": "string", "description": "Bloco ou torre", "maxLength": 30 },
+        "unidade": { "type": "string", "description": "Número do apartamento ou casa", "maxLength": 30 },
+        "telefone": { "type": "string", "description": "Telefone fixo ou móvel", "maxLength": 20 },
+        "whatsapp": { "type": "string", "description": "WhatsApp para notificações", "maxLength": 20 },
+        "email": { "type": "string", "description": "Email de contato", "maxLength": 100 },
+        "cpf": { "type": "string", "description": "CPF", "maxLength": 20 },
+        "rg": { "type": "string", "description": "RG", "maxLength": 30 },
+        "tipo": { "type": "string", "description": "Tipo de ocupante", "maxLength": 30 },
+        "veiculos": { "type": "array", "description": "Lista de veículos cadastrados" },
+        "dependentes": { "type": "array", "description": "Lista de dependentes cadastrados" },
+        "tags_acesso": { "type": "array", "description": "Tags de controle de acesso" },
+        "foto_url": { "type": "string", "description": "Foto do morador" },
+        "ativo": { "type": "boolean", "description": "Cadastro ativo" },
+        "observacoes": { "type": "string", "description": "Observações cadastrais", "maxLength": 500 },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["nome", "unidade"]
+    },
+    "Entregador": {
+      "title": "Entregador",
+      "description": "Entregador ou courier de transportadora",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do entregador" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "nome": { "type": "string", "description": "Nome do entregador", "maxLength": 150 },
+        "documento": { "type": "string", "description": "RG ou CPF do entregador", "maxLength": 30 },
+        "empresa": { "type": "string", "description": "Transportadora ou empresa", "maxLength": 100 },
+        "foto_url": { "type": "string", "description": "Foto do entregador" },
+        "created_at": { "type": "string", "description": "Data de criação" }
+      },
+      "required": ["nome"]
+    },
+    "LoteRE": {
+      "title": "LoteRE",
+      "description": "Lote de Recebimento de Encomendas",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do lote" },
+        "codigo_re": { "type": "string", "description": "Código RE identificador", "maxLength": 50 },
+        "codigo_lote": { "type": "string", "description": "Código do lote", "maxLength": 50 },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "entregador_id": { "type": "string", "description": "ID do entregador" },
+        "entregador_nome": { "type": "string", "description": "Nome do entregador", "maxLength": 150 },
+        "entregador_documento": { "type": "string", "description": "Documento do entregador", "maxLength": 30 },
+        "transportadora": { "type": "string", "description": "Nome da transportadora", "maxLength": 100 },
+        "qtd_declarada": { "type": "number", "description": "Quantidade declarada" },
+        "qtd_triada": { "type": "number", "description": "Quantidade triada" },
+        "total_volumes": { "type": "number", "description": "Total de volumes" },
+        "status": { "type": "string", "description": "Status do lote", "maxLength": 30 },
+        "operador_id": { "type": "string", "description": "ID do operador" },
+        "operador_nome": { "type": "string", "description": "Nome do operador", "maxLength": 150 },
+        "observacoes": { "type": "string", "description": "Observações do lote", "maxLength": 500 },
+        "fotos": { "type": "array", "description": "Fotos do lote" },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["codigo_re"]
+    },
+    "EncomendaItem": {
+      "title": "EncomendaItem",
+      "description": "Pacote ou volume individual recebido na portaria",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID da encomenda" },
+        "lote_re_id": { "type": "string", "description": "ID do lote RE pai" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "bloco": { "type": "string", "description": "Bloco da unidade", "maxLength": 30 },
+        "unidade": { "type": "string", "description": "Unidade destino", "maxLength": 30 },
+        "morador_id": { "type": "string", "description": "ID do morador" },
+        "morador_nome": { "type": "string", "description": "Nome do morador", "maxLength": 150 },
+        "codigo_barras": { "type": "string", "description": "Código de barras ou rastreio", "maxLength": 100 },
+        "numero_nf": { "type": "string", "description": "Número da Nota Fiscal", "maxLength": 50 },
+        "foto_etiqueta_url": { "type": "string", "description": "Foto da etiqueta" },
+        "local_armazenamento_id": { "type": "string", "description": "ID do local de armazenamento" },
+        "localizacao_detalhe": { "type": "string", "description": "Detalhe da localização", "maxLength": 100 },
+        "tipo_volume": { "type": "string", "description": "Tipo de volume (caixa, envelope, pacote)", "maxLength": 50 },
+        "transportadora": { "type": "string", "description": "Nome da transportadora", "maxLength": 100 },
+        "status": { "type": "string", "description": "Status da encomenda (pendente, entregue)", "maxLength": 30 },
+        "data_recebimento": { "type": "string", "description": "Data de recebimento" },
+        "data_retirada": { "type": "string", "description": "Data de retirada" },
+        "operador_recebimento_id": { "type": "string", "description": "ID operador recebimento" },
+        "operador_recebimento_nome": { "type": "string", "description": "Nome operador recebimento", "maxLength": 150 },
+        "operador_entrega_id": { "type": "string", "description": "ID operador entrega" },
+        "operador_entrega_nome": { "type": "string", "description": "Nome operador entrega", "maxLength": 150 },
+        "retirado_por_nome": { "type": "string", "description": "Nome de quem retirou", "maxLength": 150 },
+        "retirado_por_documento": { "type": "string", "description": "Documento de quem retirou", "maxLength": 30 },
+        "foto_comprovante_url": { "type": "string", "description": "Foto de comprovante" },
+        "assinatura_digital_url": { "type": "string", "description": "Assinatura digitalizada" },
+        "notificacao_whatsapp_enviada": { "type": "boolean", "description": "WhatsApp enviado" },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["unidade", "status"]
+    },
+    "LocalArmazenamento": {
+      "title": "LocalArmazenamento",
+      "description": "Local de guarda temporária na portaria",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do local" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "codigo": { "type": "string", "description": "Código do local", "maxLength": 50 },
+        "nome": { "type": "string", "description": "Nome do local", "maxLength": 100 },
+        "categoria": { "type": "string", "description": "Categoria", "maxLength": 50 },
+        "capacidade": { "type": "number", "description": "Capacidade de itens" },
+        "observacao": { "type": "string", "description": "Observação", "maxLength": 300 },
+        "descricao": { "type": "string", "description": "Descrição", "maxLength": 300 },
+        "ativo": { "type": "boolean", "description": "Local ativo" },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["nome"]
+    },
+    "Custodia": {
+      "title": "Custodia",
+      "description": "Itens mantidos sob custódia na portaria",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID da custódia" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "codigo_custodia": { "type": "string", "description": "Código da custódia", "maxLength": 50 },
+        "fluxo": { "type": "string", "description": "Fluxo entrada/saída", "maxLength": 30 },
+        "origem_tipo": { "type": "string", "description": "Tipo de origem", "maxLength": 50 },
+        "origem_unidade": { "type": "string", "description": "Unidade de origem", "maxLength": 30 },
+        "origem_bloco": { "type": "string", "description": "Bloco de origem", "maxLength": 30 },
+        "origem_nome_doc": { "type": "string", "description": "Nome e documento de origem", "maxLength": 150 },
+        "tipo_item": { "type": "string", "description": "Tipo de item sob custódia", "maxLength": 100 },
+        "descricao_item": { "type": "string", "description": "Descrição detalhada do item", "maxLength": 500 },
+        "local_guarda": { "type": "string", "description": "Local de guarda", "maxLength": 100 },
+        "status": { "type": "string", "description": "Status da custódia", "maxLength": 30 },
+        "foto_item_url": { "type": "string", "description": "Foto do item" },
+        "foto_comprovante_url": { "type": "string", "description": "Foto do comprovante" },
+        "assinatura_digital_url": { "type": "string", "description": "Assinatura digitalizada" },
+        "operador_entrada_id": { "type": "string", "description": "ID operador entrada" },
+        "operador_entrada_nome": { "type": "string", "description": "Nome operador entrada", "maxLength": 150 },
+        "operador_saida_id": { "type": "string", "description": "ID operador saída" },
+        "operador_saida_nome": { "type": "string", "description": "Nome operador saída", "maxLength": 150 },
+        "data_hora_entrada": { "type": "string", "description": "Data/hora entrada" },
+        "data_hora_saida": { "type": "string", "description": "Data/hora saída" },
+        "observacoes": { "type": "string", "description": "Observações", "maxLength": 500 },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["codigo_custodia", "status"]
+    },
+    "MaterialPosto": {
+      "title": "MaterialPosto",
+      "description": "Equipamentos e materiais patrimoniais do posto da guarita",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do material" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "nome": { "type": "string", "description": "Nome do equipamento", "maxLength": 150 },
+        "categoria": { "type": "string", "description": "Categoria", "maxLength": 50 },
+        "codigo_patrimonio": { "type": "string", "description": "Código patrimonial", "maxLength": 50 },
+        "estado": { "type": "string", "description": "Estado de conservação", "maxLength": 50 },
+        "estado_conservacao": { "type": "string", "description": "Estado detalhado", "maxLength": 50 },
+        "quantidade_total": { "type": "number", "description": "Quantidade total" },
+        "quantidade_disponivel": { "type": "number", "description": "Quantidade disponível" },
+        "localizacao": { "type": "string", "description": "Localização no posto", "maxLength": 100 },
+        "observacao_avaria": { "type": "string", "description": "Avaria registrada", "maxLength": 500 },
+        "observacoes": { "type": "string", "description": "Observações gerais", "maxLength": 500 },
+        "foto_avaria_url": { "type": "string", "description": "Foto da avaria" },
+        "foto_url": { "type": "string", "description": "Foto do material" },
+        "operador_atualizacao": { "type": "string", "description": "Operador da atualização", "maxLength": 150 },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["nome"]
+    },
+    "Chave": {
+      "title": "Chave",
+      "description": "Item do claviculário / quadro de chaves",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID da chave" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "codigo_chave": { "type": "string", "description": "Código identificador da chave", "maxLength": 50 },
+        "nome_chave": { "type": "string", "description": "Nome da chave ou local", "maxLength": 150 },
+        "bloco": { "type": "string", "description": "Bloco associado", "maxLength": 30 },
+        "unidade": { "type": "string", "description": "Unidade associada", "maxLength": 30 },
+        "setor": { "type": "string", "description": "Setor do condomínio", "maxLength": 50 },
+        "categoria": { "type": "string", "description": "Categoria da chave", "maxLength": 50 },
+        "tempo_limite_horas": { "type": "number", "description": "Tempo limite de devolução em horas" },
+        "status": { "type": "string", "description": "Status (disponivel, retirada, extraviada)", "maxLength": 30 },
+        "observacoes": { "type": "string", "description": "Observações da chave", "maxLength": 500 },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["codigo_chave", "nome_chave", "status"]
+    },
+    "MovimentacaoChave": {
+      "title": "MovimentacaoChave",
+      "description": "Retirada e devolução de chaves da portaria",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID da movimentação" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "chave_id": { "type": "string", "description": "ID da chave" },
+        "retirante_nome": { "type": "string", "description": "Nome do retirante", "maxLength": 150 },
+        "retirante_doc": { "type": "string", "description": "Documento do retirante", "maxLength": 30 },
+        "retirante_telefone": { "type": "string", "description": "Telefone do retirante", "maxLength": 20 },
+        "retirado_por_tipo": { "type": "string", "description": "Tipo de pessoa", "maxLength": 50 },
+        "data_hora_retirada": { "type": "string", "description": "Data/hora retirada" },
+        "previsao_devolucao": { "type": "string", "description": "Previsão de devolução" },
+        "operador_retirada_id": { "type": "string", "description": "ID operador retirada" },
+        "operador_retirada_nome": { "type": "string", "description": "Nome operador retirada", "maxLength": 150 },
+        "foto_retirada_url": { "type": "string", "description": "Foto na retirada" },
+        "assinatura_retirada_url": { "type": "string", "description": "Assinatura digitalizada" },
+        "data_hora_devolucao": { "type": "string", "description": "Data/hora devolução" },
+        "operador_devolucao_id": { "type": "string", "description": "ID operador devolução" },
+        "operador_devolucao_nome": { "type": "string", "description": "Nome operador devolução", "maxLength": 150 },
+        "foto_devolucao_url": { "type": "string", "description": "Foto na devolução" },
+        "status": { "type": "string", "description": "Status da movimentação", "maxLength": 30 },
+        "observacoes": { "type": "string", "description": "Observações", "maxLength": 500 },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["chave_id", "retirante_nome", "status"]
+    },
+    "ChamadoManutencao": {
+      "title": "ChamadoManutencao",
+      "description": "Chamado de manutenção predial",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do chamado" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "titulo": { "type": "string", "description": "Título do chamado", "maxLength": 150 },
+        "localizacao": { "type": "string", "description": "Localização", "maxLength": 150 },
+        "categoria": { "type": "string", "description": "Categoria", "maxLength": 50 },
+        "prioridade": { "type": "string", "description": "Prioridade (baixa, media, alta, urgente)", "maxLength": 30 },
+        "descricao": { "type": "string", "description": "Descrição do problema", "maxLength": 1000 },
+        "status": { "type": "string", "description": "Status (aberto, em_andamento, concluido)", "maxLength": 30 },
+        "operador_abertura_id": { "type": "string", "description": "ID operador abertura" },
+        "operador_abertura_nome": { "type": "string", "description": "Nome operador abertura", "maxLength": 150 },
+        "responsavel_execucao": { "type": "string", "description": "Responsável pela execução", "maxLength": 150 },
+        "foto_antes_url": { "type": "string", "description": "Foto antes do reparo" },
+        "foto_depois_url": { "type": "string", "description": "Foto após reparo" },
+        "data_conclusao": { "type": "string", "description": "Data de conclusão" },
+        "custo_estimado": { "type": "number", "description": "Custo estimado" },
+        "custo_real": { "type": "number", "description": "Custo real" },
+        "observacoes": { "type": "string", "description": "Observações", "maxLength": 500 },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["titulo", "status"]
+    },
+    "ChecklistManutencao": {
+      "title": "ChecklistManutencao",
+      "description": "Item de vistoria preventiva periódica",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do checklist" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "titulo": { "type": "string", "description": "Título do item preventivo", "maxLength": 150 },
+        "descricao": { "type": "string", "description": "Descrição da vistoria", "maxLength": 500 },
+        "periodicidade": { "type": "string", "description": "Periodicidade", "maxLength": 50 },
+        "frequencia": { "type": "string", "description": "Frequência", "maxLength": 50 },
+        "prioridade": { "type": "string", "description": "Prioridade", "maxLength": 30 },
+        "status": { "type": "string", "description": "Status da vistoria", "maxLength": 30 },
+        "ultimo_check": { "type": "string", "description": "Data última checagem" },
+        "proximo_check": { "type": "string", "description": "Data próxima checagem" },
+        "responsavel_nome": { "type": "string", "description": "Responsável", "maxLength": 150 },
+        "observacoes": { "type": "string", "description": "Observações", "maxLength": 500 },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["titulo", "status"]
+    },
+    "RondaSetor": {
+      "title": "RondaSetor",
+      "description": "Setor de ronda patrimonial",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do setor" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "codigo": { "type": "string", "description": "Código do setor", "maxLength": 50 },
+        "titulo": { "type": "string", "description": "Título do setor", "maxLength": 150 },
+        "descricao": { "type": "string", "description": "Descrição", "maxLength": 500 },
+        "itens": { "type": "array", "description": "Itens ou pontos associados" },
+        "ativo": { "type": "boolean", "description": "Setor ativo" },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["titulo"]
+    },
+    "RondaPonto": {
+      "title": "RondaPonto",
+      "description": "Ponto de checagem física da ronda (QR Code / NFC)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do ponto" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "setor_id": { "type": "string", "description": "ID do setor" },
+        "nome_ponto": { "type": "string", "description": "Nome do ponto", "maxLength": 150 },
+        "codigo_tag": { "type": "string", "description": "Código da tag ou QR", "maxLength": 100 },
+        "localizacao_descricao": { "type": "string", "description": "Descrição da localização", "maxLength": 300 },
+        "latitude": { "type": "number", "description": "Latitude GPS" },
+        "longitude": { "type": "number", "description": "Longitude GPS" },
+        "ordem": { "type": "number", "description": "Ordem na rota" },
+        "instrucoes": { "type": "string", "description": "Instruções ao vigilante", "maxLength": 500 },
+        "ativo": { "type": "boolean", "description": "Ponto ativo" },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["nome_ponto"]
+    },
+    "RondaExecucao": {
+      "title": "RondaExecucao",
+      "description": "Sessão de ronda realizada por um operador",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID da execução" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "setor_id": { "type": "string", "description": "ID do setor" },
+        "operador_id": { "type": "string", "description": "ID do operador" },
+        "operador_nome": { "type": "string", "description": "Nome do operador", "maxLength": 150 },
+        "status": { "type": "string", "description": "Status (em_andamento, concluida)", "maxLength": 30 },
+        "data_inicio": { "type": "string", "description": "Início da ronda" },
+        "data_fim": { "type": "string", "description": "Fim da ronda" },
+        "duracao_segundos": { "type": "number", "description": "Duração em segundos" },
+        "pontos_totais": { "type": "number", "description": "Total de pontos esperados" },
+        "pontos_lidos": { "type": "number", "description": "Pontos confirmados" },
+        "resumo_detalhado": { "type": "string", "description": "Resumo detalhado", "maxLength": 1000 },
+        "observacoes": { "type": "string", "description": "Observações gerais", "maxLength": 500 },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["status", "data_inicio"]
+    },
+    "RondaRegistro": {
+      "title": "RondaRegistro",
+      "description": "Registro individual de leitura de ponto em uma ronda",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do registro" },
+        "ronda_id": { "type": "string", "description": "ID da execução da ronda" },
+        "ponto_id": { "type": "string", "description": "ID do ponto lido" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "ponto_nome": { "type": "string", "description": "Nome do ponto lido", "maxLength": 150 },
+        "operador_id": { "type": "string", "description": "ID do operador" },
+        "operador_nome": { "type": "string", "description": "Nome do operador", "maxLength": 150 },
+        "data_hora": { "type": "string", "description": "Data/hora da leitura" },
+        "latitude": { "type": "number", "description": "Latitude GPS do momento" },
+        "longitude": { "type": "number", "description": "Longitude GPS do momento" },
+        "metodo_leitura": { "type": "string", "description": "Método (qr_code, nfc, manual)", "maxLength": 30 },
+        "foto_evidencia_url": { "type": "string", "description": "Foto de evidência" },
+        "observacao": { "type": "string", "description": "Observações do ponto", "maxLength": 500 },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["ronda_id", "data_hora"]
+    },
+    "PassagemPosto": {
+      "title": "PassagemPosto",
+      "description": "Troca de plantão e conferência de passagem de serviço",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID da passagem" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "codigo": { "type": "string", "description": "Código da passagem", "maxLength": 50 },
+        "operador_sainte_nome": { "type": "string", "description": "Operador sainte", "maxLength": 150 },
+        "operador_saint_id": { "type": "string", "description": "ID operador sainte" },
+        "operador_entrante_nome": { "type": "string", "description": "Operador entrante", "maxLength": 150 },
+        "operador_entran_id": { "type": "string", "description": "ID operador entrante" },
+        "turno": { "type": "string", "description": "Turno", "maxLength": 50 },
+        "data_passagem": { "type": "string", "description": "Data da passagem" },
+        "status_posto": { "type": "string", "description": "Status geral do posto", "maxLength": 50 },
+        "materiais_conferidos": { "type": "boolean", "description": "Materiais conferidos" },
+        "chaves_conferidas": { "type": "boolean", "description": "Chaves conferidas" },
+        "ocorrencias_resumo": { "type": "string", "description": "Resumo de ocorrências do plantão", "maxLength": 1000 },
+        "checklist": { "type": "object", "description": "Checklist de conferência detalhado" },
+        "checklist_resumo": { "type": "object", "description": "Resumo do checklist" },
+        "pendencias": { "type": "string", "description": "Pendências deixadas", "maxLength": 1000 },
+        "observacoes": { "type": "string", "description": "Observações", "maxLength": 1000 },
+        "divergencia": { "type": "string", "description": "Divergências registradas", "maxLength": 1000 },
+        "assinatura_saint_url": { "type": "string", "description": "Assinatura do sainte" },
+        "assinatura_entran_url": { "type": "string", "description": "Assinatura do entrante" },
+        "status": { "type": "string", "description": "Status da passagem", "maxLength": 30 },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["operador_sainte_nome", "operador_entrante_nome"]
+    },
+    "Ocorrencia": {
+      "title": "Ocorrencia",
+      "description": "Registro no livro digital de ocorrências",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID da ocorrência" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "titulo": { "type": "string", "description": "Título da ocorrência", "maxLength": 150 },
+        "descricao": { "type": "string", "description": "Descrição detalhada do fato", "maxLength": 2000 },
+        "tipo": { "type": "string", "description": "Tipo de ocorrência", "maxLength": 50 },
+        "prioridade": { "type": "string", "description": "Prioridade ou gravidade", "maxLength": 30 },
+        "status": { "type": "string", "description": "Status (aberta, em_analise, resolvida)", "maxLength": 30 },
+        "bloco": { "type": "string", "description": "Bloco envolvido", "maxLength": 30 },
+        "unidade": { "type": "string", "description": "Unidade envolvida", "maxLength": 30 },
+        "unidade_bloco": { "type": "string", "description": "Identificação unidade/bloco", "maxLength": 50 },
+        "envolvidos": { "type": "string", "description": "Pessoas ou veículos envolvidos", "maxLength": 500 },
+        "foto_url": { "type": "string", "description": "Foto da ocorrência" },
+        "fotos": { "type": "array", "description": "Fotos anexas" },
+        "data_ocorrencia": { "type": "string", "description": "Data/hora do fato" },
+        "operador_id": { "type": "string", "description": "ID do operador relator" },
+        "operador_nome": { "type": "string", "description": "Nome do operador relator", "maxLength": 150 },
+        "providencias": { "type": "string", "description": "Providências tomadas", "maxLength": 1000 },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["titulo", "descricao", "status"]
+    },
+    "Prestador": {
+      "title": "Prestador",
+      "description": "Prestador de serviço ou visitante cadastrado",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do prestador" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "perfil_acesso": { "type": "string", "description": "Perfil de acesso", "maxLength": 50 },
+        "nome_profissional": { "type": "string", "description": "Nome profissional", "maxLength": 150 },
+        "nome_completo": { "type": "string", "description": "Nome completo", "maxLength": 150 },
+        "documento": { "type": "string", "description": "Documento (CPF ou RG)", "maxLength": 30 },
+        "tipo_documento": { "type": "string", "description": "Tipo do documento", "maxLength": 20 },
+        "empresa": { "type": "string", "description": "Empresa", "maxLength": 100 },
+        "parentesco_vinculo": { "type": "string", "description": "Vínculo ou parentesco", "maxLength": 100 },
+        "telefone": { "type": "string", "description": "Telefone de contato", "maxLength": 20 },
+        "placa_veiculo": { "type": "string", "description": "Placa do veículo", "maxLength": 20 },
+        "foto_rosto": { "type": "string", "description": "Foto 3x4 do rosto" },
+        "foto_documento": { "type": "string", "description": "Foto do documento" },
+        "tipo_servico": { "type": "string", "description": "Tipo de serviço prestado", "maxLength": 100 },
+        "atende_condominio": { "type": "boolean", "description": "Presta serviço geral ao condomínio" },
+        "unidade": { "type": "string", "description": "Unidade de destino", "maxLength": 30 },
+        "bloco": { "type": "string", "description": "Bloco de destino", "maxLength": 30 },
+        "unidade_destino": { "type": "string", "description": "Unidade destino", "maxLength": 30 },
+        "autorizado": { "type": "boolean", "description": "Autorização concedida" },
+        "autorizado_por": { "type": "string", "description": "Nome de quem autorizou", "maxLength": 150 },
+        "tipo_validade": { "type": "string", "description": "Tipo de validade (avulso, periodo, permanente)", "maxLength": 30 },
+        "data_validade_inicio": { "type": "string", "description": "Início da validade" },
+        "data_validade_fim": { "type": "string", "description": "Fim da validade" },
+        "status_acesso": { "type": "string", "description": "Status de acesso (ativo, bloqueado)", "maxLength": 30 },
+        "observacoes": { "type": "string", "description": "Observações cadastrais", "maxLength": 500 },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["nome_completo"]
+    },
+    "PrestadorAcesso": {
+      "title": "PrestadorAcesso",
+      "description": "Registro de entrada e saída na guarita",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do acesso" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "prestador_id": { "type": "string", "description": "ID do prestador cadastrado" },
+        "perfil_acesso": { "type": "string", "description": "Perfil de acesso", "maxLength": 50 },
+        "nome_completo": { "type": "string", "description": "Nome completo", "maxLength": 150 },
+        "documento": { "type": "string", "description": "Documento", "maxLength": 30 },
+        "empresa": { "type": "string", "description": "Empresa", "maxLength": 100 },
+        "parentesco_vinculo": { "type": "string", "description": "Vínculo", "maxLength": 100 },
+        "unidade": { "type": "string", "description": "Unidade destino", "maxLength": 30 },
+        "bloco": { "type": "string", "description": "Bloco destino", "maxLength": 30 },
+        "foto_rosto": { "type": "string", "description": "Foto do rosto" },
+        "cracha": { "type": "string", "description": "Número do crachá entregue", "maxLength": 30 },
+        "placa_veiculo": { "type": "string", "description": "Placa do veículo", "maxLength": 20 },
+        "data_hora_entrada": { "type": "string", "description": "Data/hora entrada" },
+        "data_hora_saida": { "type": "string", "description": "Data/hora saída" },
+        "tempo_maximo_minutos": { "type": "number", "description": "Tempo máximo de permanência" },
+        "limite_permanencia_ate": { "type": "string", "description": "Limite máximo horário" },
+        "status_acesso": { "type": "string", "description": "Status (em_permanencia, saida_registrada)", "maxLength": 30 },
+        "operador_entrada_nome": { "type": "string", "description": "Operador entrada", "maxLength": 150 },
+        "operador_saida_nome": { "type": "string", "description": "Operador saída", "maxLength": 150 },
+        "foto_entrada_url": { "type": "string", "description": "Foto na entrada" },
+        "foto_saida_url": { "type": "string", "description": "Foto na saída" },
+        "observacoes": { "type": "string", "description": "Observações do acesso", "maxLength": 500 },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["nome_completo", "status_acesso"]
+    },
+    "ObraReforma": {
+      "title": "ObraReforma",
+      "description": "Controle de obras e reformas nas unidades",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID da obra" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "unidade": { "type": "string", "description": "Unidade", "maxLength": 30 },
+        "tipo_obra": { "type": "string", "description": "Tipo de obra", "maxLength": 100 },
+        "responsavel_nome": { "type": "string", "description": "Responsável", "maxLength": 150 },
+        "responsavel_telefone": { "type": "string", "description": "Telefone responsável", "maxLength": 20 },
+        "data_inicio": { "type": "string", "description": "Data de início" },
+        "data_previsao_fim": { "type": "string", "description": "Previsão de término" },
+        "status": { "type": "string", "description": "Status (em_andamento, concluida)", "maxLength": 30 },
+        "dias_horarios_permitidos": { "type": "string", "description": "Horários permitidos", "maxLength": 200 },
+        "observacoes": { "type": "string", "description": "Observações", "maxLength": 500 },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["unidade", "status"]
+    },
+    "TemplateWhatsapp": {
+      "title": "TemplateWhatsapp",
+      "description": "Modelo de mensagem para notificação WhatsApp",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do template" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "codigo_evento": { "type": "string", "description": "Código do evento", "maxLength": 50 },
+        "identificador": { "type": "string", "description": "Identificador", "maxLength": 50 },
+        "titulo": { "type": "string", "description": "Título", "maxLength": 100 },
+        "conteudo": { "type": "string", "description": "Conteúdo da mensagem", "maxLength": 2000 },
+        "corpo_texto": { "type": "string", "description": "Corpo da mensagem", "maxLength": 2000 },
+        "canal_destino": { "type": "string", "description": "Canal destino", "maxLength": 50 },
+        "variaveis": { "type": "array", "description": "Variáveis aceitas" },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["titulo"]
+    },
+    "AgendaEmergencia": {
+      "title": "AgendaEmergencia",
+      "description": "Contatos úteis e telefones de emergência",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do contato" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "categoria": { "type": "string", "description": "Categoria", "maxLength": 50 },
+        "nome_contato": { "type": "string", "description": "Nome do contato", "maxLength": 150 },
+        "nome_descricao": { "type": "string", "description": "Descrição", "maxLength": 150 },
+        "cargo_servico": { "type": "string", "description": "Cargo ou serviço", "maxLength": 100 },
+        "telefone": { "type": "string", "description": "Telefone fixo", "maxLength": 20 },
+        "telefone_principal": { "type": "string", "description": "Telefone principal", "maxLength": 20 },
+        "whatsapp": { "type": "string", "description": "WhatsApp", "maxLength": 20 },
+        "telefone_whatsapp": { "type": "string", "description": "Telefone WhatsApp", "maxLength": 20 },
+        "exibir_menu_flutuante": { "type": "boolean", "description": "Exibir no menu flutuante rápido" },
+        "ordem": { "type": "number", "description": "Ordem de exibição" },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["categoria"]
+    },
+    "HistoricoAbsoluto": {
+      "title": "HistoricoAbsoluto",
+      "description": "Registro inviolável de auditoria global do sistema",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do log" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "operador_id": { "type": "string", "description": "ID do operador responsável" },
+        "operador_nome": { "type": "string", "description": "Nome do operador", "maxLength": 150 },
+        "operador_login": { "type": "string", "description": "Login do operador", "maxLength": 50 },
+        "modulo": { "type": "string", "description": "Módulo onde ocorreu a ação", "maxLength": 50 },
+        "acao": { "type": "string", "description": "Ação executada", "maxLength": 50 },
+        "descricao": { "type": "string", "description": "Descrição textual da operação", "maxLength": 1000 },
+        "detalhes": { "type": "object", "description": "JSON com detalhes da operação" },
+        "ip": { "type": "string", "description": "IP ou origem", "maxLength": 50 },
+        "criado_em": { "type": "string", "description": "Data da ação" },
+        "created_at": { "type": "string", "description": "Data de criação" }
+      },
+      "required": ["modulo", "acao", "descricao", "operador_nome"]
+    },
+    "BancadaVolume": {
+      "title": "BancadaVolume",
+      "description": "Volumes contados e agrupados na bancada de triagem",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do volume bancada" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "estrutura": { "type": "string", "description": "Estrutura ou bloco", "maxLength": 50 },
+        "unidade": { "type": "string", "description": "Unidade", "maxLength": 30 },
+        "volumes": { "type": "number", "description": "Quantidade de volumes" },
+        "observacao": { "type": "string", "description": "Observação", "maxLength": 300 },
+        "tipo_volume": { "type": "string", "description": "Tipo de volume", "maxLength": 50 },
+        "operador_nome": { "type": "string", "description": "Operador", "maxLength": 150 },
+        "data_hora": { "type": "string", "description": "Data/hora" },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["unidade", "volumes"]
+    },
+    "BancadaConferencia": {
+      "title": "BancadaConferencia",
+      "description": "Sessão concluída de conferência na bancada",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID da conferência" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "operador_nome": { "type": "string", "description": "Nome do operador", "maxLength": 150 },
+        "operador_id": { "type": "string", "description": "ID do operador" },
+        "data_hora": { "type": "string", "description": "Data/hora" },
+        "motivo": { "type": "string", "description": "Motivo da conferência", "maxLength": 150 },
+        "total_volumes": { "type": "number", "description": "Total de volumes" },
+        "total_unidades": { "type": "number", "description": "Total de unidades" },
+        "total_blocos": { "type": "number", "description": "Total de blocos" },
+        "estruturas_resumo": { "type": "object", "description": "Resumo por estrutura" },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["operador_nome", "total_volumes"]
+    },
+    "LembretePortaria": {
+      "title": "LembretePortaria",
+      "description": "Lembretes, avisos e recados da portaria",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID do lembrete" },
+        "condominio_id": { "type": "string", "description": "ID do condomínio" },
+        "titulo": { "type": "string", "description": "Título do lembrete", "maxLength": 150 },
+        "descricao": { "type": "string", "description": "Mensagem ou descrição", "maxLength": 1000 },
+        "mensagem": { "type": "string", "description": "Mensagem", "maxLength": 1000 },
+        "unidade_bloco": { "type": "string", "description": "Unidade ou bloco", "maxLength": 50 },
+        "remetente_tipo": { "type": "string", "description": "Tipo de remetente", "maxLength": 50 },
+        "remetente_nome": { "type": "string", "description": "Nome do remetente", "maxLength": 150 },
+        "tipo": { "type": "string", "description": "Tipo de lembrete", "maxLength": 50 },
+        "lido": { "type": "boolean", "description": "Lembrete lido" },
+        "destinatario_tipo": { "type": "string", "description": "Tipo de destinatário", "maxLength": 50 },
+        "destinatario_unidade": { "type": "string", "description": "Unidade destinatária", "maxLength": 50 },
+        "operador_criacao_nome": { "type": "string", "description": "Operador que criou", "maxLength": 150 },
+        "finalizado_por_nome": { "type": "string", "description": "Operador que finalizou", "maxLength": 150 },
+        "finalizado_por_id": { "type": "string", "description": "ID operador finalização" },
+        "data_alvo": { "type": "string", "description": "Data alvo para execução" },
+        "data_limite": { "type": "string", "description": "Data limite" },
+        "prioridade": { "type": "string", "description": "Prioridade", "maxLength": 30 },
+        "status": { "type": "string", "description": "Status (pendente, concluido)", "maxLength": 30 },
+        "created_at": { "type": "string", "description": "Data de criação" },
+        "updated_at": { "type": "string", "description": "Data de atualização" }
+      },
+      "required": ["titulo", "status"]
+    }
+  },
+  "firestore": {
+    "/condominios/{condominioId}": {
+      "schema": { "$ref": "Condominio" },
+      "description": "Coleção raiz de condomínios cadastrados no PorttoHub"
+    },
+    "/configuracoes/{configId}": {
+      "schema": { "$ref": "Configuracao" },
+      "description": "Configurações globais e por condomínio"
+    },
+    "/operadores/{operadorId}": {
+      "schema": { "$ref": "Operador" },
+      "description": "Operadores, porteiros, vigias e administradores"
+    },
+    "/moradores/{moradorId}": {
+      "schema": { "$ref": "Morador" },
+      "description": "Moradores, unidades, veículos e dependentes"
+    },
+    "/entregadores/{entregadorId}": {
+      "schema": { "$ref": "Entregador" },
+      "description": "Entregadores e empresas de transporte cadastradas"
+    },
+    "/lotes_re/{loteId}": {
+      "schema": { "$ref": "LoteRE" },
+      "description": "Lotes RE de recebimento de encomendas na portaria"
+    },
+    "/encomendas_itens/{encomendaId}": {
+      "schema": { "$ref": "EncomendaItem" },
+      "description": "Encomendas e volumes individuais para moradores"
+    },
+    "/locais_armazenamento/{localId}": {
+      "schema": { "$ref": "LocalArmazenamento" },
+      "description": "Locais de armazenamento físico de encomendas na portaria"
+    },
+    "/custodia/{custodiaId}": {
+      "schema": { "$ref": "Custodia" },
+      "description": "Itens sob guarda e custódia temporária na guarita"
+    },
+    "/materiais_posto/{materialId}": {
+      "schema": { "$ref": "MaterialPosto" },
+      "description": "Materiais, rádios e equipamentos patrimoniais do posto"
+    },
+    "/chaves/{chaveId}": {
+      "schema": { "$ref": "Chave" },
+      "description": "Quadro de chaves de áreas comuns e unidades"
+    },
+    "/movimentacao_chaves/{movimentacaoId}": {
+      "schema": { "$ref": "MovimentacaoChave" },
+      "description": "Retiradas e devoluções de chaves com registros"
+    },
+    "/chamados_manutencao/{chamadoId}": {
+      "schema": { "$ref": "ChamadoManutencao" },
+      "description": "Chamados de manutenção preventiva e corretiva predial"
+    },
+    "/checklist_manutencao/{checklistId}": {
+      "schema": { "$ref": "ChecklistManutencao" },
+      "description": "Vistorias periódicas de manutenção preventiva"
+    },
+    "/rondas_setores/{setorId}": {
+      "schema": { "$ref": "RondaSetor" },
+      "description": "Setores cadastrados para rondas patrimoniais"
+    },
+    "/rondas_pontos/{pontoId}": {
+      "schema": { "$ref": "RondaPonto" },
+      "description": "Pontos de verificação física via QR Code ou NFC"
+    },
+    "/rondas_execucao/{execucaoId}": {
+      "schema": { "$ref": "RondaExecucao" },
+      "description": "Sessões e relatórios de rondas realizadas"
+    },
+    "/rondas_registros/{registroId}": {
+      "schema": { "$ref": "RondaRegistro" },
+      "description": "Check-ins de leitura dos pontos de ronda com GPS e fotos"
+    },
+    "/passagens_posto/{passagemId}": {
+      "schema": { "$ref": "PassagemPosto" },
+      "description": "Passagens de serviço e troca de plantão da guarita"
+    },
+    "/ocorrencias/{ocorrenciaId}": {
+      "schema": { "$ref": "Ocorrencia" },
+      "description": "Livro de ocorrências da portaria"
+    },
+    "/prestadores/{prestadorId}": {
+      "schema": { "$ref": "Prestador" },
+      "description": "Cadastros de prestadores de serviço e visitantes"
+    },
+    "/prestadores_acessos/{acessoId}": {
+      "schema": { "$ref": "PrestadorAcesso" },
+      "description": "Registros de entrada e saída de prestadores e crachás"
+    },
+    "/obras_reformas/{obraId}": {
+      "schema": { "$ref": "ObraReforma" },
+      "description": "Controle de obras e reformas nas unidades"
+    },
+    "/templates_whatsapp/{templateId}": {
+      "schema": { "$ref": "TemplateWhatsapp" },
+      "description": "Modelos de mensagens e notificações via WhatsApp"
+    },
+    "/agenda_emergencia/{contatoId}": {
+      "schema": { "$ref": "AgendaEmergencia" },
+      "description": "Contatos rápidos de emergência e concessionárias"
+    },
+    "/historico_absoluto/{historicoId}": {
+      "schema": { "$ref": "HistoricoAbsoluto" },
+      "description": "Histórico absoluto e auditoria inviolável de eventos"
+    },
+    "/bancada_volumes/{volumeId}": {
+      "schema": { "$ref": "BancadaVolume" },
+      "description": "Volumes registrados na bancada de triagem"
+    },
+    "/bancada_conferencias/{conferenciaId}": {
+      "schema": { "$ref": "BancadaConferencia" },
+      "description": "Sessões de conferência da bancada de encomendas"
+    },
+    "/lembretes_portaria/{lembreteId}": {
+      "schema": { "$ref": "LembretePortaria" },
+      "description": "Avisos, recados e lembretes operacionais da portaria"
+    }
+  }
+}

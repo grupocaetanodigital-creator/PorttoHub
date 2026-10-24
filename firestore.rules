@@ -1,0 +1,205 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function hasValidTimestamp() {
+      return request.time != null;
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 1. Condomínios
+    match /condominios/{condominioId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 2. Configurações
+    match /configuracoes/{configId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 3. Operadores
+    match /operadores/{operadorId} {
+      allow read: if true;
+      allow write: if isSignedIn() || request.resource.data.keys().hasAll(['login', 'nome']);
+    }
+
+    // 4. Moradores
+    match /moradores/{moradorId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 5. Entregadores
+    match /entregadores/{entregadorId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 6. Lotes RE (Recebimento de Encomendas)
+    match /lotes_re/{loteId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 7. Encomendas Itens
+    match /encomendas_itens/{encomendaId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 8. Locais de Armazenamento
+    match /locais_armazenamento/{localId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 9. Custódia
+    match /custodia/{custodiaId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 10. Materiais de Posto
+    match /materiais_posto/{materialId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 11. Chaves
+    match /chaves/{chaveId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 12. Movimentação de Chaves
+    match /movimentacao_chaves/{movimentacaoId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 13. Chamados de Manutenção
+    match /chamados_manutencao/{chamadoId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 14. Checklist de Manutenção
+    match /checklist_manutencao/{checklistId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 15. Setores de Ronda
+    match /rondas_setores/{setorId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 16. Pontos de Ronda
+    match /rondas_pontos/{pontoId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 17. Execução de Rondas
+    match /rondas_execucao/{execucaoId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 18. Registros de Ronda
+    match /rondas_registros/{registroId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 19. Passagem de Posto
+    match /passagens_posto/{passagemId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 20. Ocorrências
+    match /ocorrencias/{ocorrenciaId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 21. Prestadores
+    match /prestadores/{prestadorId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 22. Acessos de Prestadores
+    match /prestadores_acessos/{acessoId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 23. Obras e Reformas
+    match /obras_reformas/{obraId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 24. Templates de WhatsApp
+    match /templates_whatsapp/{templateId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 25. Agenda de Emergência
+    match /agenda_emergencia/{contatoId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 26. Histórico Absoluto (Auditoria Global)
+    match /historico_absoluto/{historicoId} {
+      allow read: if true;
+      allow write: if isSignedIn() || request.resource.data.keys().hasAll(['modulo', 'acao', 'descricao']);
+    }
+
+    // 27. Bancada de Volumes
+    match /bancada_volumes/{volumeId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 28. Conferências de Bancada
+    match /bancada_conferencias/{conferenciaId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 29. Lembretes da Portaria
+    match /lembretes_portaria/{lembreteId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+  }
+}

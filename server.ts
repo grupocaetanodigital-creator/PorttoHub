@@ -8,110 +8,13 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import dotenv from 'dotenv';
 import path from 'path';
-import fs from 'fs';
-import pg from 'pg';
 
 dotenv.config();
-
-const OCI_VM_IP = process.env.OCI_VM_IP || '163.176.49.21';
-
-// Credenciais ativas do PorttoHub (com prioridade para Oracle Cloud OCI ou variáveis de ambiente)
-process.env.VITE_SUPABASE_URL = process.env.VITE_OCI_API_URL || process.env.VITE_SUPABASE_URL || `http://${OCI_VM_IP}:8000`;
-process.env.VITE_SUPABASE_ANON_KEY = process.env.VITE_OCI_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtrZWl6aHNjaXZ5ZmpnZXRuYmtlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2ODk5NDUsImV4cCI6MjEwODI2NTk0NX0.hQzzvICbZfNPziWrj8DlD-A8-Vm4xbr25Nr0xQe3BEA';
 
 const app = express();
 const port = 3000;
 
 app.use(express.json({ limit: '20mb' }));
-
-/**
- * Rota para Inicializar o Banco de Dados PostgreSQL na Oracle Cloud
- */
-app.post('/api/init-database', async (req, res) => {
-  const ociIp = req.body?.ip || OCI_VM_IP;
-  const connectionString = req.body?.connectionString || 
-                           process.env.DATABASE_URL || 
-                           `postgres://postgres:porttohub_postgres_root_pwd_2026@${ociIp}:5432/porttohub`;
-
-  const sqlPath = path.resolve(process.cwd(), 'oracle_cloud_postgresql_porttohub.sql');
-  if (!fs.existsSync(sqlPath)) {
-    return res.status(500).json({ sucesso: false, erro: 'Arquivo oracle_cloud_postgresql_porttohub.sql não encontrado.' });
-  }
-
-  const sqlContent = fs.readFileSync(sqlPath, 'utf-8');
-  const client = new pg.Client({
-    connectionString,
-    connectionTimeoutMillis: 6000,
-    ssl: false
-  });
-
-  try {
-    await client.connect();
-    await client.query(sqlContent);
-    const tablesRes = await client.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public' 
-      ORDER BY table_name;
-    `);
-    await client.end();
-
-    const tabelas = tablesRes.rows.map(r => r.table_name);
-    return res.json({
-      sucesso: true,
-      mensagem: `Banco de dados inicializado com sucesso na VM (${ociIp})!`,
-      totalTabelas: tabelas.length,
-      tabelas
-    });
-  } catch (err: any) {
-    try { await client.end(); } catch {}
-    return res.status(500).json({
-      sucesso: false,
-      erro: err.message,
-      dica: `Caso a porta 5432 esteja restrita no firewall da VM (${ociIp}), execute no terminal dela: docker exec -i porttohub_postgres psql -U postgres -d porttohub < oracle_cloud_postgresql_porttohub.sql`
-    });
-  }
-});
-
-/**
- * Rota para Verificar o Status das Tabelas na VM
- */
-app.get('/api/database-status', async (req, res) => {
-  const ociIp = (req.query?.ip as string) || OCI_VM_IP;
-  const connectionString = process.env.DATABASE_URL || `postgres://postgres:porttohub_postgres_root_pwd_2026@${ociIp}:5432/porttohub`;
-
-  const client = new pg.Client({
-    connectionString,
-    connectionTimeoutMillis: 4000,
-    ssl: false
-  });
-
-  try {
-    await client.connect();
-    const tablesRes = await client.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public' 
-      ORDER BY table_name;
-    `);
-    await client.end();
-
-    const tabelas = tablesRes.rows.map(r => r.table_name);
-    return res.json({
-      online: true,
-      totalTabelas: tabelas.length,
-      tabelas,
-      servidor: ociIp
-    });
-  } catch (err: any) {
-    try { await client.end(); } catch {}
-    return res.json({
-      online: false,
-      erro: err.message,
-      servidor: ociIp
-    });
-  }
-});
 
 /**
  * Rota de Alta Precisão: OCR de Documentos Brasileiros (CNH e RG)
@@ -299,7 +202,6 @@ REGRAS RÍGIDAS:
 6. "transportadora": Nome da empresa (Correios, Mercado Livre, Shopee, Amazon, Jadlog, etc.).
 7. "outroCodigo": Apenas 1 outro código curto alternativo caso exista (ex: número de pedido).`;
 
-    // Chamada ultra-otimizada para resposta imediata (< 2-3s)
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [
@@ -364,7 +266,6 @@ REGRAS RÍGIDAS:
     const textoResposta = response.text || '{}';
     const parsed = JSON.parse(textoResposta);
 
-    // Constrói lista com no MÁXIMO 3 códigos, incluindo obrigatoriamente a NF se identificada
     const sugestoes: Array<{
       tipo: 'rastreio' | 'nf' | 'outro';
       label: string;
@@ -373,7 +274,6 @@ REGRAS RÍGIDAS:
     }> = [];
 
     const codRastreio = (parsed.codigoRastreio || '').trim();
-    // Filtra para garantir que não seja chave DANFE de 44 dígitos
     const ehChaveDanfe = (cod: string) => cod.replace(/\D/g, '').length >= 40;
 
     if (codRastreio && !ehChaveDanfe(codRastreio) && codRastreio !== 'null' && codRastreio !== 'undefined') {
@@ -412,7 +312,6 @@ REGRAS RÍGIDAS:
       });
     }
 
-    // Garante que lista tenha NO MÁXIMO 3 códigos
     const listaFinalCodigos = sugestoes.slice(0, 3);
 
     return res.json({
@@ -432,43 +331,6 @@ REGRAS RÍGIDAS:
   }
 });
 
-async function checarEInicializarBancoAutomatico() {
-  const ociIp = process.env.OCI_VM_IP || '163.176.49.21';
-  const connectionString = process.env.DATABASE_URL || `postgres://postgres:porttohub_postgres_root_pwd_2026@${ociIp}:5432/porttohub`;
-  
-  const sqlPath = path.resolve(process.cwd(), 'oracle_cloud_postgresql_porttohub.sql');
-  if (!fs.existsSync(sqlPath)) return;
-
-  const client = new pg.Client({
-    connectionString,
-    connectionTimeoutMillis: 3000,
-    ssl: false
-  });
-
-  try {
-    await client.connect();
-    const checkTables = await client.query(`
-      SELECT COUNT(*) as total 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public';
-    `);
-    const total = parseInt(checkTables.rows[0]?.total || '0', 10);
-    if (total < 10) {
-      console.log(`[DB Auto-Init] Banco com poucas tabelas (${total}). Aplicando schema completo na VM OCI (${ociIp})...`);
-      const sqlContent = fs.readFileSync(sqlPath, 'utf-8');
-      await client.query(sqlContent);
-      console.log(`[DB Auto-Init] ✅ Todas as tabelas dos Módulos 01 a 12 foram criadas com sucesso na VM OCI!`);
-    } else {
-      console.log(`[DB Auto-Init] ✅ Banco de dados na VM OCI já está íntegro com ${total} tabelas ativas.`);
-    }
-    await client.end();
-  } catch (e: any) {
-    // Falha silenciosa para não quebrar inicialização se porta 5432 for privada da VM
-    console.log(`[DB Auto-Init] Info: Conexão direta TCP na porta 5432 da VM (${ociIp}) não efetuada (${e.message}). O frontend conectará via PostgREST na porta 8000.`);
-    try { await client.end(); } catch {}
-  }
-}
-
 async function start() {
   const server = http.createServer(app);
 
@@ -485,7 +347,6 @@ async function start() {
       },
       appType: 'spa',
     });
-    // Garante que o navegador e o iframe do AI Studio sempre recebam a versão atualizada
     app.use((_req, res, next) => {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.setHeader('Pragma', 'no-cache');
@@ -496,8 +357,7 @@ async function start() {
   }
 
   server.listen(port, '0.0.0.0', () => {
-    console.log(`[INFPORT 1.0] Servidor rodando em http://localhost:${port}`);
-    checarEInicializarBancoAutomatico();
+    console.log(`[PorttoHub] Servidor rodando em http://localhost:${port}`);
   });
 }
 

@@ -19,7 +19,8 @@ import {
   ShieldAlert,
   Server,
   Cloud,
-  Terminal
+  Terminal,
+  ArrowRightLeft
 } from 'lucide-react';
 import { 
   CANONICAL_SCHEMA_MAP, 
@@ -41,9 +42,10 @@ interface SupabaseDoctorModalProps {
   isOpen: boolean;
   onClose: () => void;
   abaInicial?: 'condominios' | 'auditoria' | 'script' | 'storage' | 'oci';
+  onAbrirMigrador?: () => void;
 }
 
-export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'oci' }: SupabaseDoctorModalProps) {
+export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'oci', onAbrirMigrador }: SupabaseDoctorModalProps) {
   const [loading, setLoading] = useState(false);
   const [diagnostics, setDiagnostics] = useState<TableDiagnostic[]>(CANONICAL_SCHEMA_MAP);
   const [orphanedCount, setOrphanedCount] = useState(0);
@@ -274,6 +276,20 @@ export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'oci
             <span>Máquina Virtual Oracle Cloud (OCI)</span>
             <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded-full font-bold">100% Free</span>
           </button>
+
+          {onAbrirMigrador && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onAbrirMigrador();
+              }}
+              className="ml-auto my-auto px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer shrink-0"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5" />
+              Migrador Supabase (v1) → v2.0
+            </button>
+          )}
         </div>
 
         {/* Conteúdo com Scroll */}
@@ -681,21 +697,37 @@ export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'oci
             <div className="space-y-4">
               {/* Status da Conexão Atual */}
               <div className={`p-4 rounded-2xl border flex items-center justify-between ${
-                statusOci.tipo === 'oci' 
+                (statusOci.tipo as string) === 'firebase'
+                  ? 'bg-amber-50 border-amber-200 text-amber-900'
+                  : (statusOci.tipo as string) === 'oci' 
                   ? 'bg-blue-50 border-blue-200 text-blue-900' 
                   : 'bg-emerald-50 border-emerald-200 text-emerald-900'
               }`}>
                 <div className="flex items-center gap-3">
-                  <div className={`p-2.5 rounded-xl ${statusOci.tipo === 'oci' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'}`}>
+                  <div className={`p-2.5 rounded-xl ${
+                    (statusOci.tipo as string) === 'firebase'
+                      ? 'bg-amber-600 text-white'
+                      : (statusOci.tipo as string) === 'oci'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-emerald-600 text-white'
+                  }`}>
                     <Cloud className="w-5 h-5" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-black uppercase tracking-wider">Servidor Ativo:</span>
+                      <span className="text-xs font-black uppercase tracking-wider">Banco de Dados Ativo:</span>
                       <span className={`text-xs font-black px-2 py-0.5 rounded-md ${
-                        statusOci.tipo === 'oci' ? 'bg-blue-200 text-blue-900' : 'bg-emerald-200 text-emerald-900'
+                        (statusOci.tipo as string) === 'firebase'
+                          ? 'bg-amber-200 text-amber-900'
+                          : (statusOci.tipo as string) === 'oci'
+                          ? 'bg-blue-200 text-blue-900'
+                          : 'bg-emerald-200 text-emerald-900'
                       }`}>
-                        {statusOci.tipo === 'oci' ? '☁️ Oracle Cloud (VM Própria)' : '⚡ Supabase Nuvem'}
+                        {(statusOci.tipo as string) === 'firebase'
+                          ? '🔥 Firebase Cloud Firestore'
+                          : (statusOci.tipo as string) === 'oci'
+                          ? '☁️ Oracle Cloud (VM Própria)'
+                          : '⚡ Nuvem'}
                       </span>
                       {statusOci.customizado && (
                         <span className="text-[10px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded font-bold">

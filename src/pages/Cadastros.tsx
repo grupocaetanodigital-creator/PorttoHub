@@ -107,6 +107,19 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
   const [mapaConfigsCondos, setMapaConfigsCondos] = useState<Record<string, CondominioConfig>>({});
   const [operadores, setOperadores] = useState<any[]>([]);
   const [moradores, setMoradores] = useState<any[]>([]);
+
+  // O login do admin só deve aparecer no cadastro de operadores e somente para o próprio admin
+  const operadoresVisiveis = operadores.filter(op => {
+    const ehAdminMaster = op.login?.toLowerCase() === 'admin' || op.perfil === 'admin_geral';
+    if (ehAdminMaster) {
+      return usuarioLogado?.login?.toLowerCase() === 'admin';
+    }
+    const ehContaAdmin = op.perfil?.toLowerCase() === 'admin' || Number(op.nivel_acesso) === 0;
+    if (ehContaAdmin && !eAdmin) {
+      return false;
+    }
+    return true;
+  });
   const [loading, setLoading] = useState(false);
   const [mensagem, setMensagem] = useState({ tipo: '', texto: '' });
 
@@ -1395,7 +1408,7 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
             <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
               abaAtiva === 'operadores' ? 'bg-slate-800 text-blue-300' : 'bg-slate-300 text-slate-700'
             }`}>
-              {operadores.length}
+              {operadoresVisiveis.length}
             </span>
           </button>
         )}
@@ -1645,14 +1658,8 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
 
           {/* Grid de Cards dos Operadores - Minimalista & Limpo */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
-            {operadores
+            {operadoresVisiveis
               .filter(op => {
-                // Apenas Administradores podem visualizar e gerenciar contas de Administrador
-                const ehContaAdmin = op.login?.toLowerCase() === 'admin' || op.perfil?.toLowerCase() === 'admin' || Number(op.nivel_acesso) === 0;
-                if (ehContaAdmin && !eAdmin) {
-                  return false;
-                }
-
                 if (!buscaOperador.trim()) return true;
                 const termo = buscaOperador.toLowerCase();
                 return (op.nome || '').toLowerCase().includes(termo) || (op.login || '').toLowerCase().includes(termo);
@@ -1735,7 +1742,7 @@ export default function Cadastros({ usuarioLogado }: CadastrosProps) {
               })}
           </div>
 
-          {operadores.length === 0 && (
+          {operadoresVisiveis.length === 0 && (
             <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 space-y-2">
               <Users className="w-10 h-10 text-slate-300 mx-auto" />
               <p className="text-xs text-slate-500">Nenhum operador encontrado.</p>

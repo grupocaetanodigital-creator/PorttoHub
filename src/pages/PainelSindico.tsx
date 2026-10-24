@@ -23,7 +23,6 @@ import {
   FileSpreadsheet, 
   Filter, 
   Download,
-  Lock,
   ChevronRight,
   Sparkles,
   Camera,
@@ -378,13 +377,7 @@ export default function PainelSindico({
               <div>
                 <h1 className="text-xl sm:text-2xl font-black tracking-tight flex items-center gap-2">
                   Portal de Auditoria do Síndico
-                  <span className="text-xs bg-emerald-500 text-slate-950 font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                    Somente Leitura
-                  </span>
                 </h1>
-                <p className="text-xs sm:text-sm text-emerald-200/80">
-                  Fiscalização e consulta transparente das atividades da portaria em tempo real.
-                </p>
               </div>
             </div>
 
@@ -393,20 +386,10 @@ export default function PainelSindico({
                 <Building2 className="w-4 h-4 text-emerald-400" />
                 {condoNomeAtual}
               </span>
-              <span className="text-slate-600">•</span>
-              <span className="flex items-center gap-1.5 text-slate-400">
-                <Lock className="w-3.5 h-3.5 text-amber-400" />
-                Acesso seguro de fiscalização (sem permissão de edição/exclusão)
-              </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap justify-end">
-            <div className="px-3.5 py-2 bg-slate-900/90 border border-emerald-500/40 rounded-xl text-xs font-bold text-emerald-300 flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-emerald-400" />
-              <span>{condoNomeAtual}</span>
-            </div>
-
             <button
               onClick={carregarDadosSindico}
               disabled={loading}

@@ -42,13 +42,17 @@ import {
   Sun,
   Moon,
   Layers,
-  Scan
+  Scan,
+  ArrowLeft,
+  ChevronRight,
+  LayoutGrid
 } from 'lucide-react';
 import AbaModelosDocumentosOCR from '../components/AbaModelosDocumentosOCR';
 import { obterTemaAtual, aplicarTema, TipoTema } from '../services/themeService';
 import SeletorTema from '../components/SeletorTema';
 import ModalGerenciarSetores from '../components/ModalGerenciarSetores';
 import SupabaseDoctorModal from '../components/SupabaseDoctorModal';
+import ModalMigracaoSupabase from '../components/ModalMigracaoSupabase';
 import GerenciamentoPermissoes from '../components/GerenciamentoPermissoes';
 import { generateMigrationSql } from '../services/databaseDoctor';
 import { SetorRonda, carregarSetoresRonda } from '../services/setoresRonda';
@@ -84,8 +88,20 @@ interface ConfiguracoesProps {
   onConfigSalva?: (payload: any) => void;
 }
 
+export type TipoAbaConfiguracao = 
+  | 'menu' 
+  | 'flags' 
+  | 'permissoes_rbac' 
+  | 'templates' 
+  | 'emergencia' 
+  | 'backup' 
+  | 'whats_modulos' 
+  | 'locais_triagem' 
+  | 'setores_ronda' 
+  | 'modelos_documentos';
+
 export default function Configuracoes({ usuarioLogado, onConfigSalva }: ConfiguracoesProps) {
-  const [abaAtiva, setAbaAtiva] = useState<'flags' | 'permissoes_rbac' | 'templates' | 'emergencia' | 'backup' | 'whats_modulos' | 'locais_triagem' | 'setores_ronda' | 'modelos_documentos'>('flags');
+  const [abaAtiva, setAbaAtiva] = useState<TipoAbaConfiguracao>('menu');
   const [loading, setLoading] = useState(false);
   const [exportando, setExportando] = useState(false);
   const [mensagem, setMensagem] = useState({ tipo: '', texto: '' });
@@ -155,6 +171,7 @@ export default function Configuracoes({ usuarioLogado, onConfigSalva }: Configur
   const [modalLocalAberto, setModalLocalAberto] = useState(false);
   const [localParaExcluir, setLocalParaExcluir] = useState<LocalArmazenamento | null>(null);
   const [modalDoctorAberto, setModalDoctorAberto] = useState(false);
+  const [modalMigracaoAberto, setModalMigracaoAberto] = useState(false);
   const [editandoLocalId, setEditandoLocalId] = useState<string | null>(null);
   const [filtroLocais, setFiltroLocais] = useState('');
   const [formLocal, setFormLocal] = useState({
@@ -257,6 +274,130 @@ export default function Configuracoes({ usuarioLogado, onConfigSalva }: Configur
       titulo: 'Módulo 13 - Portal do Síndico', 
       desc: 'Painel de gestão, auditoria e consulta exclusivo para síndicos e administradores', 
       icon: ShieldAlert 
+    }
+  ];
+
+  const funcoesMenuConfig = [
+    {
+      id: 'flags' as TipoAbaConfiguracao,
+      numero: '11.1',
+      titulo: 'Parametrização & Ativação de Módulos',
+      subtitulo: 'Ligar e desligar os 13 módulos do sistema e alternar entre Modo Claro e Escuro.',
+      icone: Sliders,
+      badge: '13 Módulos & Tema',
+      corBorda: 'hover:border-blue-400 group-hover:border-blue-500',
+      corBgIcone: 'bg-blue-500/10 text-blue-600 border border-blue-500/20 group-hover:bg-blue-600 group-hover:text-white',
+      corBadge: 'bg-blue-50 text-blue-700 border-blue-200'
+    },
+    {
+      id: 'permissoes_rbac' as TipoAbaConfiguracao,
+      numero: '11.2',
+      titulo: 'Níveis de Acesso & Permissões (RBAC)',
+      subtitulo: 'Gestão de permissões por perfil: Síndico, Zelador, Porteiro e Administrador.',
+      icone: ShieldCheck,
+      badge: 'Controle de Acesso',
+      corBorda: 'hover:border-emerald-400 group-hover:border-emerald-500',
+      corBgIcone: 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 group-hover:bg-emerald-600 group-hover:text-white',
+      corBadge: 'bg-emerald-50 text-emerald-700 border-emerald-200'
+    },
+    {
+      id: 'whats_modulos' as TipoAbaConfiguracao,
+      numero: '11.3',
+      titulo: 'Grupos & Notificações WhatsApp',
+      subtitulo: 'Configuração de canais e grupos de WhatsApp por módulo e tipo de evento.',
+      icone: Share2,
+      badge: 'Grupos WhatsApp',
+      corBorda: 'hover:border-green-400 group-hover:border-green-500',
+      corBgIcone: 'bg-green-500/10 text-green-600 border border-green-500/20 group-hover:bg-green-600 group-hover:text-white',
+      corBadge: 'bg-green-50 text-green-700 border-green-200'
+    },
+    {
+      id: 'locais_triagem' as TipoAbaConfiguracao,
+      numero: '11.4',
+      titulo: 'Locais de Armazenamento & Triagem',
+      subtitulo: 'Tabela de escaninhos, prateleiras, gavetas e bancadas para encomendas físicas.',
+      icone: Boxes,
+      badge: 'Locais Físicos',
+      corBorda: 'hover:border-amber-400 group-hover:border-amber-500',
+      corBgIcone: 'bg-amber-500/10 text-amber-600 border border-amber-500/20 group-hover:bg-amber-600 group-hover:text-white',
+      corBadge: 'bg-amber-50 text-amber-700 border-amber-200'
+    },
+    {
+      id: 'setores_ronda' as TipoAbaConfiguracao,
+      numero: '11.5',
+      titulo: 'Setores & Rotas de Ronda',
+      subtitulo: 'Pontos georreferenciados (QR/GPS), áreas de ronda patrimonial e checklists.',
+      icone: MapPin,
+      badge: 'Rondas Patrimoniais',
+      corBorda: 'hover:border-cyan-400 group-hover:border-cyan-500',
+      corBgIcone: 'bg-cyan-500/10 text-cyan-600 border border-cyan-500/20 group-hover:bg-cyan-600 group-hover:text-white',
+      corBadge: 'bg-cyan-50 text-cyan-700 border-cyan-200'
+    },
+    {
+      id: 'templates' as TipoAbaConfiguracao,
+      numero: '11.6',
+      titulo: 'Templates de Mensagens WhatsApp',
+      subtitulo: 'Modelos de textos com tags dinâmicas ({NOME_MORADOR}, {CODIGO}) para avisos.',
+      icone: MessageSquare,
+      badge: 'Modelos de Texto',
+      corBorda: 'hover:border-indigo-400 group-hover:border-indigo-500',
+      corBgIcone: 'bg-indigo-500/10 text-indigo-600 border border-indigo-500/20 group-hover:bg-indigo-600 group-hover:text-white',
+      corBadge: 'bg-indigo-50 text-indigo-700 border-indigo-200'
+    },
+    {
+      id: 'emergencia' as TipoAbaConfiguracao,
+      numero: '11.7',
+      titulo: 'Agenda & Telefones de Emergência',
+      subtitulo: 'Números rápidos: Polícia Militar, Bombeiros, SAMU, Zelador e Suporte da Guarita.',
+      icone: PhoneCall,
+      badge: 'Discagem 1-Clique',
+      corBorda: 'hover:border-rose-400 group-hover:border-rose-500',
+      corBgIcone: 'bg-rose-500/10 text-rose-600 border border-rose-500/20 group-hover:bg-rose-600 group-hover:text-white',
+      corBadge: 'bg-rose-50 text-rose-700 border-rose-200'
+    },
+    {
+      id: 'modelos_documentos' as TipoAbaConfiguracao,
+      numero: '11.8',
+      titulo: 'Design & Modelos de Documentos (OCR)',
+      subtitulo: 'Leitura ótica e layouts de conferência de CNH, RG, crachás e comprovantes.',
+      icone: Scan,
+      badge: 'OCR & Identidade',
+      corBorda: 'hover:border-purple-400 group-hover:border-purple-500',
+      corBgIcone: 'bg-purple-500/10 text-purple-600 border border-purple-500/20 group-hover:bg-purple-600 group-hover:text-white',
+      corBadge: 'bg-purple-50 text-purple-700 border-purple-200'
+    },
+    {
+      id: 'backup' as TipoAbaConfiguracao,
+      numero: '11.9',
+      titulo: 'Backup & Exportação Excel (.CSV)',
+      subtitulo: 'Extração instantânea e download de todas as tabelas do condomínio para Excel.',
+      icone: FileSpreadsheet,
+      badge: 'Planilhas .CSV',
+      corBorda: 'hover:border-teal-400 group-hover:border-teal-500',
+      corBgIcone: 'bg-teal-500/10 text-teal-600 border border-teal-500/20 group-hover:bg-teal-600 group-hover:text-white',
+      corBadge: 'bg-teal-50 text-teal-700 border-teal-200'
+    },
+    {
+      id: 'banco_doctor' as any,
+      numero: '11.10',
+      titulo: 'Diagnóstico do Banco de Dados',
+      subtitulo: 'Verificação da integridade das 29 coleções do Cloud Firestore e status de sincronização.',
+      icone: Database,
+      badge: 'Cloud Firestore',
+      corBorda: 'hover:border-blue-500 group-hover:border-blue-600 ring-2 ring-blue-500/20',
+      corBgIcone: 'bg-blue-600 text-white shadow-xs group-hover:scale-105',
+      corBadge: 'bg-blue-100 text-blue-800 border-blue-300 font-bold'
+    },
+    {
+      id: 'migracao_supabase' as any,
+      numero: '11.11',
+      titulo: 'Migrador Supabase (v1) → v2.0',
+      subtitulo: 'Ferramenta oficial para transferir 100% dos dados do Supabase antigo para o PorttoHub v2.0.',
+      icone: ArrowRightLeft,
+      badge: 'Migração de Dados v1',
+      corBorda: 'hover:border-indigo-500 group-hover:border-indigo-600 ring-2 ring-indigo-500/20',
+      corBgIcone: 'bg-gradient-to-tr from-indigo-600 to-blue-600 text-white shadow-xs group-hover:scale-105',
+      corBadge: 'bg-indigo-100 text-indigo-800 border-indigo-300 font-bold'
     }
   ];
 
@@ -1006,89 +1147,150 @@ export default function Configuracoes({ usuarioLogado, onConfigSalva }: Configur
         </div>
       )}
 
-      {/* Menu de Abas */}
-      <div className="flex flex-wrap border border-slate-200 gap-1 bg-slate-100 p-1 rounded-lg">
-        <button
-          onClick={() => setAbaAtiva('flags')}
-          className={`px-2.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition ${
-            abaAtiva === 'flags' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:bg-white/50'
-          }`}
-        >
-          <Sliders className="w-3.5 h-3.5" /> 11.1 Parametrização
-        </button>
+      {/* VISÃO 1: MENU PRINCIPAL LIMPO DE BOTÕES (QUANDO NENHUMA ABA ESPECÍFICA ESTÁ ABERTA) */}
+      {abaAtiva === 'menu' ? (
+        <div className="space-y-4">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div>
+              <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                <LayoutGrid className="w-4 h-4 text-slate-700" />
+                Menu de Funções & Módulos Administrativos
+              </h4>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Clique no botão da função desejada para acessar ou gerenciar as opções correspondentes.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setModalDoctorAberto(true)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer shrink-0"
+              title="Diagnóstico & Integridade do Banco (Firestore)"
+            >
+              <Database className="w-3.5 h-3.5" />
+              <span>Diagnóstico Firestore</span>
+            </button>
+          </div>
 
-        <button
-          onClick={() => setAbaAtiva('permissoes_rbac')}
-          className={`px-2.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition ${
-            abaAtiva === 'permissoes_rbac' ? 'bg-emerald-600 text-white shadow-2xs' : 'text-slate-700 bg-emerald-50/80 hover:bg-emerald-100'
-          }`}
-        >
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" /> Níveis de Acesso & Permissões (RBAC)
-        </button>
+          {/* Grade de Botões de Menu Limpos */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {funcoesMenuConfig.map((funcao) => {
+              const Icone = funcao.icone;
+              const ehDoctor = funcao.id === 'banco_doctor';
+              const ehMigracao = funcao.id === 'migracao_supabase';
 
-        <button
-          onClick={() => setAbaAtiva('templates')}
-          className={`px-2.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition ${
-            abaAtiva === 'templates' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:bg-white/50'
-          }`}
-        >
-          <MessageSquare className="w-3.5 h-3.5" /> 11.2 Templates WhatsApp
-        </button>
+              return (
+                <button
+                  key={funcao.id}
+                  type="button"
+                  onClick={() => {
+                    if (ehDoctor) {
+                      setModalDoctorAberto(true);
+                    } else if (ehMigracao) {
+                      setModalMigracaoAberto(true);
+                    } else {
+                      setAbaAtiva(funcao.id);
+                    }
+                  }}
+                  className={`group relative text-left p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between ${funcao.corBorda}`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${funcao.corBgIcone}`}>
+                        <Icone className="w-5 h-5" />
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${funcao.corBadge}`}>
+                        {funcao.badge}
+                      </span>
+                    </div>
 
-        <button
-          onClick={() => setAbaAtiva('emergencia')}
-          className={`px-2.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition ${
-            abaAtiva === 'emergencia' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:bg-white/50'
-          }`}
-        >
-          <PhoneCall className="w-3.5 h-3.5" /> 11.3 Agenda & Escala
-        </button>
+                    <span className="text-[10px] font-mono font-bold text-slate-400 block mb-0.5">
+                      FUNÇÃO {funcao.numero}
+                    </span>
 
-        <button
-          onClick={() => setAbaAtiva('backup')}
-          className={`px-2.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition ${
-            abaAtiva === 'backup' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:bg-white/50'
-          }`}
-        >
-          <FileSpreadsheet className={`w-3.5 h-3.5 ${abaAtiva === 'backup' ? 'text-emerald-500' : 'text-emerald-600'}`} /> 11.4 Backup Excel
-        </button>
+                    <h4 className="font-bold text-slate-900 text-sm group-hover:text-blue-600 transition-colors">
+                      {funcao.titulo}
+                    </h4>
 
-        <button
-          onClick={() => setAbaAtiva('whats_modulos')}
-          className={`px-2.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition ${
-            abaAtiva === 'whats_modulos' ? 'bg-emerald-600 text-white shadow-2xs' : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
-          }`}
-        >
-          <Share2 className="w-3.5 h-3.5" /> 11.5 Grupos WhatsApp (Módulos)
-        </button>
+                    <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                      {funcao.subtitulo}
+                    </p>
+                  </div>
 
-        <button
-          onClick={() => setAbaAtiva('locais_triagem')}
-          className={`px-2.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition ${
-            abaAtiva === 'locais_triagem' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:bg-white/50'
-          }`}
-        >
-          <Boxes className="w-3.5 h-3.5 text-emerald-600" /> 11.6 Locais de Triagem
-        </button>
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-600 group-hover:text-blue-600 transition-colors">
+                    <span>{ehDoctor ? 'Abrir Diagnóstico' : 'Acessar Função'}</span>
+                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        /* VISÃO 2: BARRA DE NAVEGAÇÃO SUPERIOR QUANDO UMA FUNÇÃO ESTIVER SENDO EXECUTADA */
+        <div className="space-y-3">
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setAbaAtiva('menu')}
+                className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer group"
+                title="Voltar à grade de botões de configuração"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+                <span>Voltar ao Menu de Configurações</span>
+              </button>
 
-        <button
-          onClick={() => setAbaAtiva('setores_ronda')}
-          className={`px-2.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition ${
-            abaAtiva === 'setores_ronda' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:bg-white/50'
-          }`}
-        >
-          <ShieldCheck className="w-3.5 h-3.5 text-blue-600" /> 11.7 Setores de Ronda
-        </button>
+              <div className="h-5 w-[1px] bg-slate-200 hidden sm:block"></div>
 
-        <button
-          onClick={() => setAbaAtiva('modelos_documentos')}
-          className={`px-2.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition ${
-            abaAtiva === 'modelos_documentos' ? 'bg-indigo-600 text-white shadow-2xs' : 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100'
-          }`}
-        >
-          <Scan className="w-3.5 h-3.5" /> 11.8 Design & Modelos de Documentos (OCR)
-        </button>
-      </div>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-slate-400 hidden sm:inline">Configurações</span>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-400 hidden sm:inline" />
+                <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                  {funcoesMenuConfig.find(f => f.id === abaAtiva)?.titulo || 'Função'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <button
+                type="button"
+                onClick={() => setModalDoctorAberto(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold transition cursor-pointer"
+                title="Diagnóstico & Integridade do Banco de Dados (Firestore)"
+              >
+                <Database className="w-3.5 h-3.5 text-blue-600" />
+                <span>Diagnóstico Firestore</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Atalhos Rápidos Compactos entre Funções */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+            <button
+              type="button"
+              onClick={() => setAbaAtiva('menu')}
+              className="px-2.5 py-1 rounded-lg text-slate-600 hover:bg-slate-200/80 font-bold transition flex items-center gap-1 shrink-0 bg-slate-100"
+            >
+              <LayoutGrid className="w-3 h-3" /> Menu Completo
+            </button>
+            {funcoesMenuConfig.filter(f => f.id !== 'banco_doctor' && f.id !== 'migracao_supabase').map(f => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setAbaAtiva(f.id)}
+                className={`px-2.5 py-1 rounded-lg font-bold transition shrink-0 flex items-center gap-1.5 ${
+                  abaAtiva === f.id
+                    ? 'bg-slate-900 text-white shadow-2xs'
+                    : 'text-slate-600 hover:bg-slate-100 bg-white border border-slate-200'
+                }`}
+              >
+                <f.icone className="w-3 h-3" />
+                <span>{f.titulo.split(' ')[0]} {f.numero}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ABA NÍVEIS DE ACESSO & PERMISSÕES (RBAC) */}
       {abaAtiva === 'permissoes_rbac' && (
@@ -2686,6 +2888,18 @@ export default function Configuracoes({ usuarioLogado, onConfigSalva }: Configur
       <SupabaseDoctorModal 
         isOpen={modalDoctorAberto} 
         onClose={() => setModalDoctorAberto(false)} 
+        onAbrirMigrador={() => setModalMigracaoAberto(true)}
+      />
+
+      {/* MODAL MIGRACÃO SUPABASE (v1) -> PORTTOHUB v2.0 */}
+      <ModalMigracaoSupabase
+        aberto={modalMigracaoAberto}
+        onFechar={() => setModalMigracaoAberto(false)}
+        onMigracaoConcluida={() => {
+          carregarCondominios();
+          const target = condominioConfigId || usuarioLogado?.condominio_id;
+          if (target) carregarConfiguracoes(target);
+        }}
       />
     </div>
   );
