@@ -225,6 +225,7 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
   // Busca e visualização com aba direcionada de checklist
   const [termoBusca, setTermoBusca] = useState<string>('');
   const [mostrarBuscaConsolidado, setMostrarBuscaConsolidado] = useState<boolean>(false);
+  const [menuFabAberto, setMenuFabAberto] = useState<boolean>(false);
   const [abaVisualizacao, setAbaVisualizacao] = useState<'lancamento' | 'visao_geral' | 'checklist' | 'historico'>(() => {
     if (typeof window !== 'undefined') {
       const abaSalva = sessionStorage.getItem('bancada_aba_ativa');
@@ -233,7 +234,7 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
         return abaSalva;
       }
     }
-    return 'lancamento';
+    return 'visao_geral';
   });
 
   // Alerta de checklist originado do bloqueio da Troca de Turno
@@ -780,50 +781,56 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
         </div>
       </div>
 
-      {/* NAVEGAÇÃO DE ABAS LADO A LADO */}
-      <div className="grid grid-cols-3 gap-1.5 sm:gap-2 bg-white rounded-xl p-1 shadow-xs border border-slate-200">
-        <button
-          type="button"
-          onClick={() => setAbaVisualizacao('lancamento')}
-          className={`py-2 px-2 sm:px-3 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 sm:gap-2 transition cursor-pointer text-center truncate ${
-            abaVisualizacao === 'lancamento'
-              ? 'bg-amber-500 text-white shadow-sm'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-          title="Entrada Manual"
-        >
-          <PenTool className="w-4 h-4 shrink-0" />
-          <span className="truncate">Entr. Manual</span>
-        </button>
+      {/* INDICADOR DE MODO QUANDO FORA DO CONSOLIDADO (TELA PRINCIPAL) */}
+      {abaVisualizacao !== 'visao_geral' && (
+        <div className="flex items-center justify-between bg-white border border-slate-200 px-3.5 py-2.5 rounded-xl shadow-xs">
+          <div className="flex items-center gap-2">
+            {abaVisualizacao === 'lancamento' && (
+              <>
+                <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+                  <PenTool className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs font-black text-slate-800">Entrada Manual</span>
+                  <p className="text-[10px] text-slate-500">Lançamento rápido por torre/bloco</p>
+                </div>
+              </>
+            )}
+            {abaVisualizacao === 'checklist' && (
+              <>
+                <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  <ListChecks className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs font-black text-slate-800">Checklist de Balcão</span>
+                  <p className="text-[10px] text-slate-500">Conferência física item por item</p>
+                </div>
+              </>
+            )}
+            {abaVisualizacao === 'historico' && (
+              <>
+                <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
+                  <History className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs font-black text-slate-800">Histórico de Conferências</span>
+                  <p className="text-[10px] text-slate-500">Fechamentos e trocas de turno</p>
+                </div>
+              </>
+            )}
+          </div>
 
-        <button
-          type="button"
-          onClick={() => setAbaVisualizacao('visao_geral')}
-          className={`py-2 px-2 sm:px-3 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 sm:gap-2 transition cursor-pointer text-center truncate ${
-            abaVisualizacao === 'visao_geral'
-              ? 'bg-amber-500 text-white shadow-sm'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-          title="Consolidado"
-        >
-          <Layers className="w-4 h-4 shrink-0" />
-          <span className="truncate">Consolidado</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setAbaVisualizacao('checklist')}
-          className={`py-2 px-2 sm:px-3 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 sm:gap-2 transition cursor-pointer text-center truncate ${
-            abaVisualizacao === 'checklist'
-              ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-300'
-              : 'text-slate-600 hover:bg-emerald-50 hover:text-emerald-800'
-          }`}
-          title="Checklist"
-        >
-          <ListChecks className="w-4 h-4 shrink-0" />
-          <span className="truncate">Checklist</span>
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={() => setAbaVisualizacao('visao_geral')}
+            className="text-xs font-black text-amber-800 hover:text-amber-900 flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-3 py-1.5 rounded-xl transition active:scale-95 cursor-pointer shadow-2xs"
+            title="Voltar para a Visão Geral Consolidada"
+          >
+            <Layers className="w-4 h-4 text-amber-600" />
+            <span>Voltar ao Consolidado</span>
+          </button>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* ABA 1: LANÇAMENTO RÁPIDO OTIMIZADO PARA TOUCH & TECLADO NUMÉRICO          */}
@@ -2713,6 +2720,95 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
           </div>
         </div>
       )}
+
+      {/* BOTÃO FLUTUANTE DE AÇÕES (+ NO CANTO INFERIOR DIREITO ACIMA DA BARRA DE MENU) */}
+      <div className="fixed bottom-16 sm:bottom-6 right-4 sm:right-6 z-50 flex flex-col items-end">
+        {/* BACKDROP QUANDO O MENU ESTÁ ABERTO */}
+        {menuFabAberto && (
+          <div
+            className="fixed inset-0 bg-slate-950/40 backdrop-blur-2xs z-40 transition-opacity"
+            onClick={() => setMenuFabAberto(false)}
+          />
+        )}
+
+        {/* ITENS DO MENU FLUTUANTE */}
+        {menuFabAberto && (
+          <div className="relative z-50 mb-3 flex flex-col items-end gap-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
+            {/* SE ESTIVER FORA DO CONSOLIDADO, PERMITIR RETORNAR AO CONSOLIDADO */}
+            {abaVisualizacao !== 'visao_geral' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAbaVisualizacao('visao_geral');
+                  setMenuFabAberto(false);
+                }}
+                className="flex items-center gap-2.5 px-3.5 py-2.5 bg-white text-slate-800 hover:bg-amber-50 hover:text-amber-900 rounded-2xl shadow-xl border border-slate-200 text-xs font-black transition active:scale-95 cursor-pointer"
+              >
+                <span>Consolidado</span>
+                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                  <Layers className="w-4 h-4" />
+                </div>
+              </button>
+            )}
+
+            {/* OPÇÃO: ENTR. MANUAL */}
+            {abaVisualizacao !== 'lancamento' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAbaVisualizacao('lancamento');
+                  setMenuFabAberto(false);
+                }}
+                className="flex items-center gap-2.5 px-3.5 py-2.5 bg-white text-slate-800 hover:bg-amber-50 hover:text-amber-900 rounded-2xl shadow-xl border border-slate-200 text-xs font-black transition active:scale-95 cursor-pointer"
+              >
+                <span>Entr. Manual</span>
+                <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0">
+                  <PenTool className="w-4 h-4" />
+                </div>
+              </button>
+            )}
+
+            {/* OPÇÃO: CHECKLIST */}
+            {abaVisualizacao !== 'checklist' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAbaVisualizacao('checklist');
+                  setMenuFabAberto(false);
+                }}
+                className="flex items-center gap-2.5 px-3.5 py-2.5 bg-white text-slate-800 hover:bg-emerald-50 hover:text-emerald-900 rounded-2xl shadow-xl border border-slate-200 text-xs font-black transition active:scale-95 cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>Checklist</span>
+                  {estatisticasChecklistGeral.pendentes > 0 && (
+                    <span className="px-1.5 py-0.5 text-[10px] font-black bg-rose-500 text-white rounded-full">
+                      {estatisticasChecklistGeral.pendentes}
+                    </span>
+                  )}
+                </div>
+                <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                  <ListChecks className="w-4 h-4" />
+                </div>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* BOTÃO PRINCIPAL COM ÍCONE DE + */}
+        <button
+          type="button"
+          onClick={() => setMenuFabAberto(!menuFabAberto)}
+          className={`relative z-50 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-white transition-all duration-200 active:scale-90 cursor-pointer border-2 border-white ring-4 ring-amber-500/20 ${
+            menuFabAberto
+              ? 'bg-slate-800 rotate-45 hover:bg-slate-700'
+              : 'bg-gradient-to-tr from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 hover:shadow-amber-500/30'
+          }`}
+          title={menuFabAberto ? 'Fechar menu de ações' : 'Mais ações da Bancada'}
+          aria-label="Ações da bancada"
+        >
+          <Plus className="w-6 h-6 stroke-[2.5]" />
+        </button>
+      </div>
     </div>
   );
 }
