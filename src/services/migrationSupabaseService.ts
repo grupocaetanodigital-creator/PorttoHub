@@ -1,12 +1,11 @@
 /**
- * PorttoHub — Serviço de Migração Supabase (v1) → Firebase Firestore (v2.0)
+ * PorttoHub — Serviço de Importação e Migração de Dados para Supabase
  * 
- * Permite extrair 100% dos dados legados de qualquer projeto Supabase e migrar
- * para a nova arquitetura do PorttoHub v2.0 preservando IDs, datas, fotos e relacionamentos.
+ * Permite restaurar e sincronizar dados de dumps JSON, backups ou outros projetos
+ * diretamente nas tabelas relacionais do Supabase do PorttoHub com isolamento multi-condomínio.
  */
 
-import { db } from './firebase';
-import { doc, setDoc, writeBatch, collection, getDocs } from 'firebase/firestore';
+import { supabase } from './supabase';
 
 export interface MigrationTableInfo {
   name: string;
@@ -52,7 +51,8 @@ export const MIGRATION_TABLES: Omit<MigrationTableInfo, 'status' | 'migratedCoun
   { name: 'historico_absoluto', label: 'Histórico & Auditoria', category: 'Auditoria', order: 25 },
   { name: 'lembretes_portaria', label: 'Lembretes de Portaria', category: 'Sistema', order: 26 },
   { name: 'bancada_conferencias', label: 'Conferências de Bancada', category: 'Bancada', order: 27 },
-  { name: 'bancada_volumes', label: 'Volumes de Bancada', category: 'Bancada', order: 28 }
+  { name: 'bancada_volumes', label: 'Volumes de Bancada', category: 'Bancada', order: 28 },
+  { name: 'fotos_armazenadas', label: 'Galeria & Fotos Armazenadas', category: 'Storage', order: 29 }
 ];
 
 export interface SupabaseCredentials {
@@ -60,43 +60,67 @@ export interface SupabaseCredentials {
   key: string;
 }
 
-/**
- * Normaliza a URL do Supabase removendo barras finais e espaços
- */
-export function normalizeSupabaseUrl(rawUrl: string): string {
-  let url = rawUrl.trim();
-  if (!url.startsWith('http://') && !url.startsWith('https://')) {
-    url = `https://${url}`;
+function normalizeSupabaseUrl(url: string): string {
+  let cleaned = (url || '').trim().replace(/\/+$/, '');
+  if (!cleaned.startsWith('http://') && !cleaned.startsWith('https://')) {
+    cleaned = 'https://' + cleaned;
   }
-  return url.replace(/\/+$/, '');
+  return cleaned;
+}
+
+export function extractProjectRef(url: string): string {
+  try {
+    const match = url.match(/https?:\/\/([^.]+)\.supabase\.co/);
+    if (match && match[1]) return match[1];
+    return 'custom';
+  } catch {
+    return 'desconhecido';
+  }
 }
 
 /**
- * Limpa objetos recursivamente para que o Firestore aceite (remove 'undefined')
+ * Higieniza um registro para inserção no banco de dados Supabase
+ * Trata mapeamento de colunas legado (ex: fileName -> filename e file_name)
  */
-export function sanitizeForFirestore(obj: any): any {
-  if (obj === undefined) return null;
-  if (obj === null || typeof obj !== 'object') return obj;
+export function sanitizeForSupabase(record: any): any {
+  if (!record || typeof record !== 'object') return record;
+  const sanitized: any = {};
 
-  if (Array.isArray(obj)) {
-    return obj.map(sanitizeForFirestore);
-  }
+  for (const [key, val] of Object.entries(record)) {
+    if (val === undefined) continue;
 
-  const result: Record<string, any> = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (value === undefined) {
-      result[key] = null;
-    } else if (value !== null && typeof value === 'object') {
-      result[key] = sanitizeForFirestore(value);
-    } else {
-      result[key] = value;
+    // Normalização de booleanos
+    if (val === 'true') {
+      sanitized[key] = true;
+      continue;
     }
+    if (val === 'false') {
+      sanitized[key] = false;
+      continue;
+    }
+
+    // Mapeamento de colunas case-sensitive de fotos e arquivos
+    if (key === 'fileName' || key === 'filename' || key === 'file_name') {
+      sanitized['filename'] = val;
+      sanitized['file_name'] = val;
+      continue;
+    }
+
+    sanitized[key] = val;
   }
-  return result;
+
+  // Garante chave primária id caso o registro venha sem ela
+  if (!sanitized.id) {
+    sanitized.id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `item_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  }
+
+  return sanitized;
 }
 
+export const sanitizeForFirestore = sanitizeForSupabase;
+
 /**
- * Testa conexão direta com o Supabase via PostgREST API
+ * Testa a conexão com o Supabase de origem
  */
 export async function testSupabaseConnection(credentials: SupabaseCredentials): Promise<{
   success: boolean;
@@ -106,42 +130,37 @@ export async function testSupabaseConnection(credentials: SupabaseCredentials): 
   const url = normalizeSupabaseUrl(credentials.url);
   const key = credentials.key.trim();
 
-  if (!url || !key) {
-    return { success: false, message: 'URL e Chave do Supabase são obrigatórias.' };
+  if (!url || !url.includes('.')) {
+    return { success: false, message: 'URL do Supabase inválida. Exemplo: https://xyz.supabase.co' };
+  }
+  if (!key || key.length < 20) {
+    return { success: false, message: 'Chave de API do Supabase inválida (deve ser a anon ou service_role).' };
   }
 
+  const projectRef = extractProjectRef(url);
+
   try {
-    // Tenta consultar a rota OpenAPI raiz ou uma tabela padrão com limit 1
-    const testEndpoints = [
+    const candidateEndpoints = [
       `${url}/rest/v1/condominios?select=id&limit=1`,
       `${url}/rest/v1/operadores?select=id&limit=1`,
-      `${url}/rest/v1/?`
+      `${url}/rest/v1/`
     ];
 
     let lastError = '';
-    for (const endpoint of testEndpoints) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
 
+    for (const endpoint of candidateEndpoints) {
+      try {
         const res = await fetch(endpoint, {
-          method: 'GET',
           headers: {
             apikey: key,
-            Authorization: `Bearer ${key}`,
-            'Content-Type': 'application/json'
-          },
-          signal: controller.signal
+            Authorization: `Bearer ${key}`
+          }
         });
 
-        clearTimeout(timeoutId);
-
-        if (res.ok || res.status === 200 || res.status === 206) {
-          const match = url.match(/https?:\/\/([^.]+)\./);
-          const projectRef = match ? match[1] : 'supabase-v1';
+        if (res.ok || res.status === 200 || res.status === 206 || res.status === 404) {
           return {
             success: true,
-            message: `Conexão estabelecida com sucesso com o Supabase (${projectRef})!`,
+            message: `Conexão bem-sucedida com o projeto (${projectRef}).`,
             projectRef
           };
         } else if (res.status === 401 || res.status === 403) {
@@ -204,7 +223,6 @@ export async function getSupabaseRowCount(
       return { count: 0, exists: false, error: 'Tabela não existe no banco antigo' };
     }
 
-    // Fallback: consulta com limit 1000
     const fallbackRes = await fetch(`${url}/rest/v1/${tableName}?select=id&limit=1000`, {
       headers: {
         apikey: key,
@@ -228,8 +246,7 @@ export async function getSupabaseRowCount(
  */
 export async function fetchAllSupabaseTableData(
   credentials: SupabaseCredentials,
-  tableName: string,
-  onBatchFetched?: (count: number) => void
+  tableName: string
 ): Promise<any[]> {
   const url = normalizeSupabaseUrl(credentials.url);
   const key = credentials.key.trim();
@@ -250,23 +267,19 @@ export async function fetchAllSupabaseTableData(
     });
 
     if (!res.ok) {
-      if (res.status === 404) break; // Tabela não existe
-      throw new Error(`Falha ao buscar tabela ${tableName} (${res.status}: ${res.statusText})`);
-    }
-
-    const data = await res.json();
-    if (!Array.isArray(data) || data.length === 0) {
-      hasMore = false;
       break;
     }
 
-    allRecords = allRecords.concat(data);
-    if (onBatchFetched) onBatchFetched(allRecords.length);
-
-    if (data.length < PAGE_SIZE) {
+    const batch = await res.json();
+    if (!Array.isArray(batch) || batch.length === 0) {
       hasMore = false;
     } else {
-      offset += PAGE_SIZE;
+      allRecords = allRecords.concat(batch);
+      if (batch.length < PAGE_SIZE) {
+        hasMore = false;
+      } else {
+        offset += PAGE_SIZE;
+      }
     }
   }
 
@@ -274,9 +287,9 @@ export async function fetchAllSupabaseTableData(
 }
 
 /**
- * Salva uma lista de registros no Firestore em lotes de até 250 documentos
+ * Salva uma lista de registros no Supabase usando upsert
  */
-export async function saveRecordsToFirestore(
+export async function saveRecordsToSupabase(
   tableName: string,
   records: any[],
   onProgress?: (saved: number, total: number) => void
@@ -285,52 +298,34 @@ export async function saveRecordsToFirestore(
     return { success: true, savedCount: 0, errors: [] };
   }
 
-  const BATCH_SIZE = 200; // Limite seguro abaixo dos 500 do Firestore
+  const BATCH_SIZE = 100;
   let savedCount = 0;
   const errors: string[] = [];
 
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
-    const chunk = records.slice(i, i + BATCH_SIZE);
-    const batch = writeBatch(db);
-
-    for (const record of chunk) {
-      try {
-        const sanitized = sanitizeForFirestore(record);
-        // Identificador primário: id, uuid, codigo, ou autogerado
-        const docId = String(record.id || record.uuid || record.codigo || `${tableName}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`);
-        
-        // Garante que o documento contenha o ID e marcas de tempo
-        sanitized.id = docId;
-        if (!sanitized.updated_at) {
-          sanitized.updated_at = new Date().toISOString();
-        }
-
-        const docRef = doc(db, tableName, docId);
-        batch.set(docRef, sanitized, { merge: true });
-      } catch (err: any) {
-        errors.push(`Erro ao preparar doc na tabela ${tableName}: ${err.message}`);
-      }
-    }
+    const chunk = records.slice(i, i + BATCH_SIZE).map(r => sanitizeForSupabase(r));
 
     try {
-      await batch.commit();
-      savedCount += chunk.length;
-      if (onProgress) {
-        onProgress(savedCount, records.length);
-      }
-    } catch (commitErr: any) {
-      // Se falhar o batch coletivo, tenta item por item para não abortar tudo
-      for (const record of chunk) {
-        try {
-          const sanitized = sanitizeForFirestore(record);
-          const docId = String(record.id || record.uuid || record.codigo || `${tableName}_${Date.now()}`);
-          sanitized.id = docId;
-          await setDoc(doc(db, tableName, docId), sanitized, { merge: true });
-          savedCount++;
-        } catch (individualErr: any) {
-          errors.push(`Erro individual em ${tableName} ID ${record.id}: ${individualErr.message}`);
+      const { error } = await supabase.from(tableName).upsert(chunk);
+      if (error) {
+        // Tenta individualmente se falhar em lote
+        for (const item of chunk) {
+          const { error: singleErr } = await supabase.from(tableName).upsert(item);
+          if (singleErr) {
+            errors.push(`Erro em ${tableName} ID ${item.id}: ${singleErr.message}`);
+          } else {
+            savedCount++;
+          }
         }
+      } else {
+        savedCount += chunk.length;
       }
+    } catch (err: any) {
+      errors.push(`Falha de rede em ${tableName}: ${err.message}`);
+    }
+
+    if (onProgress) {
+      onProgress(savedCount, records.length);
     }
   }
 
@@ -341,8 +336,10 @@ export async function saveRecordsToFirestore(
   };
 }
 
+export const saveRecordsToFirestore = saveRecordsToSupabase;
+
 /**
- * Executa a migração direta de todas as tabelas do Supabase para o Firestore
+ * Executa a migração direta de todas as tabelas para o Supabase
  */
 export async function executeFullSupabaseMigration(
   credentials: SupabaseCredentials,
@@ -368,7 +365,6 @@ export async function executeFullSupabaseMigration(
     onTableProgress(tableState);
 
     try {
-      // 1. Busca dados no Supabase
       const records = await fetchAllSupabaseTableData(credentials, def.name);
 
       if (records.length === 0) {
@@ -383,8 +379,7 @@ export async function executeFullSupabaseMigration(
       tableState.count = records.length;
       onTableProgress(tableState);
 
-      // 2. Salva no Firestore
-      const saveResult = await saveRecordsToFirestore(def.name, records, (saved, total) => {
+      const saveResult = await saveRecordsToSupabase(def.name, records, (saved) => {
         tableState.migratedCount = saved;
         onTableProgress(tableState);
       });
@@ -393,7 +388,7 @@ export async function executeFullSupabaseMigration(
       tableState.status = saveResult.errors.length > 0 ? 'error' : 'completed';
       tableState.migratedCount = saveResult.savedCount;
       if (saveResult.errors.length > 0) {
-        tableState.error = `${saveResult.errors.length} erros durante o salvamento.`;
+        tableState.error = `${saveResult.errors.length} erros durante a gravação.`;
       }
       onTableProgress(tableState);
 
@@ -407,29 +402,6 @@ export async function executeFullSupabaseMigration(
       onTableProgress(tableState);
       tablesSummary[def.name] = { count: 0, error: tableState.error };
     }
-  }
-
-  // Garante que o operador admin master continue ativo após a migração
-  try {
-    const adminRef = doc(db, 'operadores', 'admin_master_root');
-    await setDoc(adminRef, {
-      id: 'admin_master_root',
-      nome: 'Administrador Master',
-      login: 'admin',
-      senha: '2468',
-      funcao: 'Administrador Geral',
-      cargo: 'Administrador Geral',
-      perfil: 'admin_geral',
-      nivel_acesso: 0,
-      ativo: true,
-      condominio_id: 'todos',
-      email: 'admin@porttohub.com',
-      turno_padrao: 'Geral',
-      turno: 'Geral',
-      updated_at: new Date().toISOString()
-    }, { merge: true });
-  } catch (err) {
-    console.warn('[Migracao] Aviso ao assegurar admin:', err);
   }
 
   return { totalMigrated, tablesSummary };
@@ -467,27 +439,24 @@ export async function importJsonDump(
   const summary: Record<string, number> = {};
   const errors: string[] = [];
 
-  // Se o JSON for um array de uma tabela única (ex: [{id: 1, ...}])
-  // ou se for um dicionário mapeado: { "moradores": [...], "encomendas_itens": [...] }
   if (Array.isArray(data)) {
     return {
       success: false,
       totalImported: 0,
       summary: {},
-      errors: ['O arquivo fornecido é uma lista avulsa sem nome de tabela. Por favor, envie o formato exportado completo ou indique a tabela.']
+      errors: ['O arquivo fornecido é uma lista avulsa sem nome de tabela. Por favor, envie o formato exportado completo.']
     };
   }
 
   for (const [tableKey, records] of Object.entries(data)) {
     if (!Array.isArray(records) || records.length === 0) continue;
 
-    // Normaliza nome de tabela legada se necessário
     let canonicalTable = tableKey.toLowerCase().trim();
     if (canonicalTable === 'usuarios_sistema') canonicalTable = 'operadores';
     if (canonicalTable === 'encomendas') canonicalTable = 'encomendas_itens';
 
     try {
-      const result = await saveRecordsToFirestore(canonicalTable, records, (saved, total) => {
+      const result = await saveRecordsToSupabase(canonicalTable, records, (saved, total) => {
         if (onProgress) onProgress(canonicalTable, saved, total);
       });
 
@@ -557,11 +526,11 @@ export function generateSupabaseDumpSqlScript(): string {
 
 DO $$
 BEGIN
-  RAISE NOTICE 'Gerando Dump JSON completo para migração ao PorttoHub v2.0...';
+  RAISE NOTICE 'Gerando Dump JSON completo do PorttoHub...';
 END $$;
 
 SELECT json_build_object(
 ${jsonBuildParts}
-) AS porttohub_v2_dump_completo;
+) AS porttohub_dump_completo;
 `;
 }
