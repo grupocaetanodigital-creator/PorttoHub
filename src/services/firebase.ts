@@ -563,10 +563,9 @@ export const firebaseDb = {
       return {
         async upload(filePath: string, file: any, options?: any) {
           try {
-            const storageRef = ref(storage, filePath);
-            const uploadRes = await uploadBytes(storageRef, file, options);
-            const downloadUrl = await getDownloadURL(storageRef);
-            return { data: { path: filePath, fullPath: uploadRes.metadata.fullPath, downloadUrl }, error: null };
+            const { supabaseStorage, obterStorageBucket } = await import('./supabaseStorage');
+            const bucket = bucketName || obterStorageBucket();
+            return await supabaseStorage.storage.from(bucket).upload(filePath, file, options);
           } catch (err) {
             return { data: null, error: err };
           }
@@ -577,8 +576,8 @@ export const firebaseDb = {
             return { data: { publicUrl: filePath } };
           }
           const caminhoLimpo = filePath.replace(/^\/+/, '').replace(/^uploads\//, '');
-          const bucket = firebaseConfig.storageBucket;
-          const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(caminhoLimpo)}?alt=media`;
+          const bucket = bucketName || 'encomendas';
+          const publicUrl = `https://kkeizhscivyfjgetnbke.supabase.co/storage/v1/object/public/${bucket}/${caminhoLimpo}`;
           return { data: { publicUrl } };
         }
       };

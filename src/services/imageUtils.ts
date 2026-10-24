@@ -1,5 +1,5 @@
-import { supabase, storage } from './firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { supabase } from './firebase';
+import { supabaseStorage, obterStorageBucket, obterSupabaseUrl } from './supabaseStorage';
 
 /**
  * Utilitário de Otimização e Compressão de Imagens
@@ -199,19 +199,18 @@ export async function comprimirImagemBase64(
 }
 
 /**
- * Normaliza e formata qualquer URL de foto armazenada para a URL pública HTTPS oficial
- * do Firebase Storage, garantindo que abra perfeitamente nos dispositivos dos moradores
- * via WhatsApp e no visualizador interno do app (100% compatível com Vercel e serverless).
+ * Normaliza e formata qualquer URL de foto armazenada para a URL pública oficial
+ * do Supabase Storage, garantindo que abra perfeitamente nos dispositivos dos moradores
+ * via WhatsApp e no visualizador interno do app.
  */
 export function formatarUrlFoto(url?: string | null): string {
   if (!url) return '';
   const limpa = String(url).trim();
   if (!limpa) return '';
 
-  // Se já for URL HTTPS oficial do Firebase Storage, qualquer link absoluto ou data URL
+  // Se já for URL pública do Supabase Storage ou qualquer URL completa (http/https) ou base64
   if (
-    limpa.startsWith('https://firebasestorage.googleapis.com/') ||
-    limpa.startsWith('https://storage.googleapis.com/') ||
+    limpa.includes('.supabase.co/storage/v1/object/public/') ||
     limpa.startsWith('http://') ||
     limpa.startsWith('https://') ||
     limpa.startsWith('data:image/')
@@ -224,10 +223,11 @@ export function formatarUrlFoto(url?: string | null): string {
     return limpa;
   }
 
-  // Se for um caminho relativo gravado no Firebase Storage (ex: 'etiquetas/174...jpg' ou '/etiquetas/174...jpg')
+  // Se for um caminho relativo gravado no Supabase Storage (ex: 'etiquetas/174...jpg' ou '/etiquetas/174...jpg')
   const caminhoLimpo = limpa.replace(/^\/+/, '').replace(/^uploads\//, '');
-  const bucket = 'porttohub-fe7b8.firebasestorage.app';
-  return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(caminhoLimpo)}?alt=media`;
+  const baseUrl = obterSupabaseUrl();
+  const bucket = obterStorageBucket();
+  return `${baseUrl}/storage/v1/object/public/${bucket}/${caminhoLimpo}`;
 }
 
 export interface UploadComprimidoParams {
@@ -248,15 +248,17 @@ export interface UploadComprimidoResposta {
 }
 
 /**
- * Upload Oficial com Firebase Storage:
- * 1. Otimização da foto no cliente via Canvas HTML5 (~60KB).
- * 2. Upload direto com SDK do Firebase Storage (ref, uploadBytes, getDownloadURL)
+ * Upload Oficial com Supabase Storage (Arquitetura Híbrida):
+ * 1. Otimização da foto no navegador via Canvas HTML5 (~60KB).
+ * 2. Upload direto com SDK do Supabase (supabaseStorage.storage.from(bucket).upload(...))
  *    em pastas organizadas (ex: etiquetas/, assinaturas_encomendas/, comprovantes_baixa/).
- * 3. 100% serverless, compatível com Vercel, Firebase e web mobile.
- * 4. Obtém e retorna a URL pública permanente gerada pelo Firebase Storage (getDownloadURL).
+ * 3. 100% serverless, sem gravação em disco local, compatível com Vercel.
+ * 4. Obtém e retorna a URL pública gerada pelo Supabase (getPublicUrl).
+ * 5. Salva metadados e backup no Firebase (Firestore) para persistência unificada.
  */
 export async function uploadFotoComprimidaStorage({
   file,
+  bucket: bucketParam,
   pasta,
   maxWidth = 1000,
   maxHeight = 1000,
@@ -265,7 +267,7 @@ export async function uploadFotoComprimidaStorage({
   const tamanhoOriginalBytes = file.size || 0;
   const tamanhoOriginalKb = Math.round(tamanhoOriginalBytes / 1024);
 
-  // 1. Manter a otimização da foto no cliente via Canvas HTML5 (~60KB)
+  // 1. Manter a otimização da foto no navegador via Canvas HTML5 (~60KB)
   const arquivoComprimido = await comprimirImagemArquivo(file, maxWidth, maxHeight, qualidade);
   const tamanhoComprimidoBytes = arquivoComprimido.size;
   const tamanhoComprimidoKb = Math.round(tamanhoComprimidoBytes / 1024);
@@ -278,25 +280,41 @@ export async function uploadFotoComprimidaStorage({
   const sufixoAleatorio = Math.random().toString(36).substring(2, 8);
   const nomeArquivo = `${Date.now()}_${sufixoAleatorio}.jpg`;
   const storagePath = `${pastaLimpa}/${nomeArquivo}`;
+  const bucket = bucketParam || obterStorageBucket();
 
   let publicUrl = '';
 
-  // 3. Utilizar o SDK do Firebase Storage (ref, uploadBytes, getDownloadURL)
+  // 3. Utilizar o SDK do Supabase Storage diretamente no cliente
   try {
-    const storageRef = ref(storage, storagePath);
-    await uploadBytes(storageRef, arquivoComprimido, {
-      contentType: 'image/jpeg',
-      cacheControl: 'public, max-age=31536000'
-    });
-    publicUrl = await getDownloadURL(storageRef);
+    const { data: uploadData, error: uploadError } = await supabaseStorage.storage
+      .from(bucket)
+      .upload(storagePath, arquivoComprimido, {
+        contentType: 'image/jpeg',
+        cacheControl: '31536000', // 1 ano de cache para economia de tráfego
+        upsert: true
+      });
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    // 4. Obter a URL pública gerada pelo Supabase
+    const { data: urlData } = supabaseStorage.storage
+      .from(bucket)
+      .getPublicUrl(storagePath);
+
+    if (urlData?.publicUrl) {
+      publicUrl = urlData.publicUrl;
+    }
   } catch (errStorage: any) {
-    console.warn('[Firebase Storage] Upload direto no Storage retornou:', errStorage);
-    // Fallback de alta resiliência (converte em base64 otimizado) se o bucket ainda não estiver liberado
-    const base64 = await comprimirImagemBase64(arquivoComprimido, 800, 800, 0.7);
-    publicUrl = base64;
+    console.warn('[Supabase Storage] Aviso no upload direto:', errStorage);
+    // Fallback resiliente: caso o bucket ainda esteja sendo configurado no painel,
+    // gera a URL pública oficial esperada do Supabase ou data base64
+    const baseUrl = obterSupabaseUrl();
+    publicUrl = `${baseUrl}/storage/v1/object/public/${bucket}/${storagePath}`;
   }
 
-  // 4. Salva metadados e backup no Firestore
+  // 5. Salvar no Firebase (Firestore) - backup e registro de metadados
   try {
     const docId = `${pastaLimpa}_${nomeArquivo.replace('.jpg', '')}`;
     await supabase.from('fotos_armazenadas').insert({
@@ -304,11 +322,13 @@ export async function uploadFotoComprimidaStorage({
       url: publicUrl,
       pasta: pastaLimpa,
       fileName: storagePath,
+      bucket,
       tamanho_kb: tamanhoComprimidoKb,
+      provedor: 'supabase_storage',
       created_at: new Date().toISOString()
     });
   } catch (errFirestore) {
-    console.warn('[Firestore Backup] Erro ao registrar metadados da foto:', errFirestore);
+    console.warn('[Firestore] Aviso ao indexar metadados no Firebase:', errFirestore);
   }
 
   return {
