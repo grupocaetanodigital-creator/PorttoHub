@@ -1,4 +1,4 @@
-import { supabase } from './firebase';
+import { supabase } from './supabase';
 import { supabaseStorage, obterStorageBucket, obterSupabaseUrl } from './supabaseStorage';
 
 /**
@@ -275,6 +275,17 @@ export async function uploadFotoComprimidaStorage({
     ? Math.max(0, Math.round((1 - tamanhoComprimidoBytes / tamanhoOriginalBytes) * 100))
     : 0;
 
+  // Gera fallback em base64 Data URL garantido
+  let base64Fallback = '';
+  try {
+    base64Fallback = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve((reader.result as string) || '');
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(arquivoComprimido);
+    });
+  } catch {}
+
   // 2. Organização em pastas organizadas (ex: etiquetas/, assinaturas_encomendas/, comprovantes_baixa/)
   const pastaLimpa = (pasta || 'etiquetas').replace(/[^a-zA-Z0-9_-]/g, '') || 'etiquetas';
   const sufixoAleatorio = Math.random().toString(36).substring(2, 8);
@@ -283,52 +294,63 @@ export async function uploadFotoComprimidaStorage({
   const bucket = bucketParam || obterStorageBucket();
 
   let publicUrl = '';
+  let uploadSucesso = false;
 
-  // 3. Utilizar o SDK do Supabase Storage diretamente no cliente
+  // 3. Utilizar o SDK do Supabase Storage diretamente no cliente com o bucket correto
   try {
-    const { data: uploadData, error: uploadError } = await supabaseStorage.storage
-      .from(bucket)
-      .upload(storagePath, arquivoComprimido, {
-        contentType: 'image/jpeg',
-        cacheControl: '31536000', // 1 ano de cache para economia de tráfego
-        upsert: true
-      });
+    const storageClient = supabase?.storage || supabaseStorage?.storage;
+    if (storageClient) {
+      const { data: uploadData, error: uploadError } = await storageClient
+        .from(bucket)
+        .upload(storagePath, arquivoComprimido, {
+          contentType: 'image/jpeg',
+          cacheControl: '31536000', // 1 ano de cache para economia de tráfego
+          upsert: true
+        });
 
-    if (uploadError) {
-      throw uploadError;
-    }
+      if (uploadError) {
+        console.warn('[Supabase Storage] Aviso no upload direto:', uploadError);
+      } else {
+        // 4. Obter a URL pública gerada pelo Supabase
+        const { data: urlData } = storageClient
+          .from(bucket)
+          .getPublicUrl(storagePath);
 
-    // 4. Obter a URL pública gerada pelo Supabase
-    const { data: urlData } = supabaseStorage.storage
-      .from(bucket)
-      .getPublicUrl(storagePath);
-
-    if (urlData?.publicUrl) {
-      publicUrl = urlData.publicUrl;
+        if (urlData?.publicUrl) {
+          publicUrl = urlData.publicUrl;
+          uploadSucesso = true;
+        }
+      }
     }
   } catch (errStorage: any) {
-    console.warn('[Supabase Storage] Aviso no upload direto:', errStorage);
-    // Fallback resiliente: caso o bucket ainda esteja sendo configurado no painel,
-    // gera a URL pública oficial esperada do Supabase ou data base64
-    const baseUrl = obterSupabaseUrl();
-    publicUrl = `${baseUrl}/storage/v1/object/public/${bucket}/${storagePath}`;
+    console.warn('[Supabase Storage] Exceção no upload direto:', errStorage);
   }
 
-  // 5. Salvar no Firebase (Firestore) - backup e registro de metadados
+  // FALLBACK RESILIENTE: Se o Supabase Storage estiver offline ou falhar,
+  // utiliza o base64 comprimido diretamente para que a foto NUNCA seja perdida
+  // e NUNCA gere erro 404 no navegador ou no WhatsApp!
+  if (!uploadSucesso || !publicUrl) {
+    console.info('[Supabase Storage] Usando base64 otimizado para salvar a foto com segurança.');
+    publicUrl = base64Fallback || (typeof file === 'string' ? file : '');
+  }
+
+  // 5. Salvar metadados na tabela fotos_armazenadas
   try {
     const docId = `${pastaLimpa}_${nomeArquivo.replace('.jpg', '')}`;
+    const urlMeta = publicUrl.startsWith('data:') ? `[inline_base64_${tamanhoComprimidoKb}kb]` : publicUrl;
     await supabase.from('fotos_armazenadas').insert({
       id: docId,
-      url: publicUrl,
+      url: urlMeta,
       pasta: pastaLimpa,
-      fileName: storagePath,
+      filename: storagePath,
+      file_name: storagePath,
       bucket,
       tamanho_kb: tamanhoComprimidoKb,
-      provedor: 'supabase_storage',
+      provedor: uploadSucesso ? 'supabase_storage' : 'inline_base64',
       created_at: new Date().toISOString()
     });
-  } catch (errFirestore) {
-    console.warn('[Firestore] Aviso ao indexar metadados no Firebase:', errFirestore);
+  } catch (errDb) {
+    console.warn('[Supabase] Aviso ao indexar metadados da foto:', errDb);
   }
 
   return {
