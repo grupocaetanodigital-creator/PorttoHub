@@ -27,6 +27,7 @@ import {
   importJsonDump, 
   generateSupabaseDumpSqlScript 
 } from '../services/migrationSupabaseService';
+import { obterSupabaseUrl } from '../services/supabase';
 
 interface ModalMigracaoSupabaseProps {
   aberto: boolean;
@@ -358,7 +359,7 @@ export default function ModalMigracaoSupabase({
                   Banco de Destino (Novo Supabase Ativo)
                 </span>
                 <span className="text-xs sm:text-sm font-mono font-bold text-emerald-950 truncate block">
-                  https://fukxrdzhryumbcqibtas.supabase.co
+                  {obterSupabaseUrl()}
                 </span>
               </div>
             </div>

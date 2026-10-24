@@ -724,7 +724,7 @@ export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'oci
                           : 'bg-emerald-200 text-emerald-900'
                       }`}>
                         {(statusOci.tipo as string) === 'supabase'
-                          ? '⚡ Supabase PostgreSQL (fukxrdzhryumbcqibtas)'
+                          ? '⚡ Supabase PostgreSQL (kkeizhscivyfjgetnbke)'
                           : (statusOci.tipo as string) === 'oci'
                           ? '☁️ Oracle Cloud (VM Própria)'
                           : '⚡ Supabase PostgreSQL'}

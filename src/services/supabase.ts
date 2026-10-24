@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-export const SUPABASE_PROJECT_URL = 'https://fukxrdzhryumbcqibtas.supabase.co';
-export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1a3hyZHpocnl1bWJjcWlidGFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI4NTY3MTUsImV4cCI6MjEwODQzMjcxNX0.f7DAt8NKPu4JMsLX-NMxBorBmFPxXTmtLJ359-ictz0';
+export const SUPABASE_PROJECT_URL = 'https://kkeizhscivyfjgetnbke.supabase.co';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtrZWl6aHNjaXZ5ZmpnZXRuYmtlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2ODk5NDUsImV4cCI6MjEwODI2NTk0NX0.hQzzvICbZfNPziWrj8DlD-A8-Vm4xbr25Nr0xQe3BEA';
 export const DEFAULT_STORAGE_BUCKET = 'encomendas';
 
 /**
@@ -10,8 +10,8 @@ export const DEFAULT_STORAGE_BUCKET = 'encomendas';
 export function obterSupabaseUrl(): string {
   if (typeof window !== 'undefined' && window.localStorage) {
     const salvo = window.localStorage.getItem('porttohub_supabase_url');
-    // Sanitização automática: remove URLs legadas de OCI (163.176.49.21) ou que não sejam Supabase
-    if (salvo && (salvo.includes('163.176.49.21') || !salvo.includes('supabase.co'))) {
+    // Sanitização automática: remove URLs legadas (OCI ou projetos antigos)
+    if (salvo && (salvo.includes('163.176.49.21') || salvo.includes('fukxrdzhryumbcqibtas') || salvo.includes('juafrepntyksgqiqzyes') || !salvo.includes('supabase.co'))) {
       window.localStorage.removeItem('porttohub_supabase_url');
       window.localStorage.removeItem('porttohub_supabase_key');
       window.localStorage.removeItem('porttohub_supabase_bucket');
@@ -100,7 +100,7 @@ export function obterStatusConexaoBanco() {
   return {
     url: urlAtual,
     tipo: 'supabase' as const,
-    projectId: 'fukxrdzhryumbcqibtas',
+    projectId: 'kkeizhscivyfjgetnbke',
     customizado
   };
 }
