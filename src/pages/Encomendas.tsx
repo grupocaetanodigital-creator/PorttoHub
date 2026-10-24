@@ -70,6 +70,21 @@ import {
   CondominioConfig 
 } from '../services/condominioService';
 
+export interface EncomendaAdicional {
+  id: string;
+  moradorId?: string;
+  codigoBarras: string;
+  fotoEtiquetaUrl: string;
+  observacoes: string;
+  sugestoesCodigosOcr?: Array<{
+    tipo: 'rastreio' | 'nf' | 'outro';
+    label: string;
+    valor: string;
+    destaque?: boolean;
+  }>;
+  analisandoOcr?: boolean;
+}
+
 interface EncomendasProps {
   usuarioLogado?: any;
 }
@@ -237,6 +252,10 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
   const videoCameraEtiquetaRef = useRef<HTMLVideoElement | null>(null);
   const streamCameraEtiquetaRef = useRef<MediaStream | null>(null);
   const fileInputEtiquetaRef = useRef<HTMLInputElement | null>(null);
+
+  // Múltiplas Encomendas para a Mesma Unidade (+ MESMA UN)
+  const [encomendasAdicionais, setEncomendasAdicionais] = useState<EncomendaAdicional[]>([]);
+  const [alvoCapturaCamera, setAlvoCapturaCamera] = useState<'principal' | string>('principal');
 
   const [locaisArmazenamento, setLocaisArmazenamento] = useState<any[]>([]);
   const [localArmazenamentoTriagem, setLocalArmazenamentoTriagem] = useState('PRAT-A1 - Prateleira A1 - Caixas Pequenas');
@@ -711,12 +730,16 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
    * NÃO extrai chaves de 44 dígitos da DANFE.
    * Lista no MÁXIMO 3 códigos com a NF inclusa.
    */
-  const processarOcrEtiqueta = async (file: File | null) => {
+  const processarOcrEtiqueta = async (file: File | null, targetId: 'principal' | string = 'principal') => {
     if (!file) return;
-    setAnalisandoOcrEtiqueta(true);
-    setSugestoesCodigosOcr([]);
-    setCodigoSelecionadoOcr('');
-    setOcrDadosDetectados(null);
+    if (targetId === 'principal') {
+      setAnalisandoOcrEtiqueta(true);
+      setSugestoesCodigosOcr([]);
+      setCodigoSelecionadoOcr('');
+      setOcrDadosDetectados(null);
+    } else {
+      setEncomendasAdicionais(prev => prev.map(it => it.id === targetId ? { ...it, analisandoOcr: true, sugestoesCodigosOcr: [] } : it));
+    }
 
     try {
       // 1. Otimização extrema: redimensiona e comprime instantaneamente (~40KB)
@@ -756,30 +779,43 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       listaSugestoes = listaSugestoes.slice(0, 3);
 
       if (listaSugestoes.length > 0) {
-        setSugestoesCodigosOcr(listaSugestoes);
-        setOcrDadosDetectados({
-          destinatario: dados.destinatario || '',
-          unidade: dados.unidade || '',
-          bloco: dados.bloco || '',
-          transportadora: dados.transportadora || ''
-        });
-
-        // Seleciona e preenche automaticamente o primeiro código (ex: Rastreio ou NF)
         const principal = listaSugestoes[0];
-        setCodigoSelecionadoOcr(principal.valor);
-        setCodigoBarras(principal.valor);
 
-        // Se encontrou a unidade ou morador na etiqueta e o campo ainda estiver em branco, auxilia o operador
-        if (dados.unidade && !unidadeTriagem.trim()) {
-          handleDigitarUnidadeTriagem(dados.unidade);
+        if (targetId === 'principal') {
+          setSugestoesCodigosOcr(listaSugestoes);
+          setOcrDadosDetectados({
+            destinatario: dados.destinatario || '',
+            unidade: dados.unidade || '',
+            bloco: dados.bloco || '',
+            transportadora: dados.transportadora || ''
+          });
+
+          // Seleciona e preenche automaticamente o primeiro código (ex: Rastreio ou NF)
+          setCodigoSelecionadoOcr(principal.valor);
+          setCodigoBarras(principal.valor);
+
+          // Se encontrou a unidade ou morador na etiqueta e o campo ainda estiver em branco, auxilia o operador
+          if (dados.unidade && !unidadeTriagem.trim()) {
+            handleDigitarUnidadeTriagem(dados.unidade);
+          }
+        } else {
+          setEncomendasAdicionais(prev => prev.map(it => it.id === targetId ? {
+            ...it,
+            codigoBarras: principal.valor,
+            sugestoesCodigosOcr: listaSugestoes,
+            analisandoOcr: false
+          } : it));
         }
 
         tocarAlertaSonoro();
         setMensagem({
           tipo: 'sucesso',
-          texto: `⚡ OCR Ultra-Rápido: ${listaSugestoes.length} código(s) encontrado(s) (máx. 3). Código preenchido automaticamente!`
+          texto: `⚡ OCR Ultra-Rápido: ${listaSugestoes.length} código(s) encontrado(s). Código preenchido automaticamente!`
         });
       } else {
+        if (targetId !== 'principal') {
+          setEncomendasAdicionais(prev => prev.map(it => it.id === targetId ? { ...it, analisandoOcr: false } : it));
+        }
         setMensagem({
           tipo: 'info',
           texto: 'Foto capturada. Nenhum código de rastreio ou NF legível encontrado automaticamente. Você pode digitar ou escanear.'
@@ -787,15 +823,21 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       }
     } catch (err: any) {
       console.warn('[OCR Etiqueta] OCR finalizado ou tempo limite atingido:', err);
+      if (targetId !== 'principal') {
+        setEncomendasAdicionais(prev => prev.map(it => it.id === targetId ? { ...it, analisandoOcr: false } : it));
+      }
     } finally {
-      setAnalisandoOcrEtiqueta(false);
+      if (targetId === 'principal') {
+        setAnalisandoOcrEtiqueta(false);
+      }
     }
   };
 
   /**
    * Abre a câmera diretamente para tirar foto da etiqueta
    */
-  const abrirCameraFotoEtiqueta = async () => {
+  const abrirCameraFotoEtiqueta = async (targetId: 'principal' | string = 'principal') => {
+    setAlvoCapturaCamera(targetId);
     setCodigoDetectadoAoVivo('');
     setErroCamera('');
 
@@ -898,10 +940,12 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     setCodigoSelecionadoOcr('');
     setOcrDadosDetectados(null);
     setItemTriadoWhats(null);
+    setEncomendasAdicionais([]);
+    setAlvoCapturaCamera('principal');
 
     // 3. Abre o formulário de entrada E ativa a câmera
     setModalEntradaAberta(true);
-    abrirCameraFotoEtiqueta();
+    abrirCameraFotoEtiqueta('principal');
   };
 
   /**
@@ -927,14 +971,15 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
               const valorLido = (barcodes[0].rawValue || '').trim();
               // Não aceitar chave DANFE de 44 dígitos
               if (valorLido && valorLido.replace(/\D/g, '').length < 35) {
-                setCodigoBarras((prev) => {
-                  if (prev !== valorLido) {
-                    setCodigoDetectadoAoVivo(valorLido);
-                    tocarBipSucesso();
-                    return valorLido;
-                  }
-                  return prev;
-                });
+                setCodigoDetectadoAoVivo(valorLido);
+                tocarBipSucesso();
+                if (alvoCapturaCamera === 'principal') {
+                  setCodigoBarras((prev) => (prev !== valorLido ? valorLido : prev));
+                } else {
+                  setEncomendasAdicionais((prev) =>
+                    prev.map((it) => (it.id === alvoCapturaCamera ? { ...it, codigoBarras: valorLido } : it))
+                  );
+                }
               }
             }
           } catch (e) {
@@ -948,7 +993,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       cancelado = true;
       if (intervalId) clearInterval(intervalId);
     };
-  }, [modalCameraEtiqueta]);
+  }, [modalCameraEtiqueta, alvoCapturaCamera]);
 
   const capturarFotoDaCameraAoVivo = () => {
     if (!videoCameraEtiquetaRef.current) return;
@@ -964,9 +1009,14 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       if (!blob) return;
       const file = new File([blob], `etiqueta_${Date.now()}.jpg`, { type: 'image/jpeg' });
       
-      // Cria preview local imediato da foto tirada (0ms de espera)
       const previewUrl = URL.createObjectURL(blob);
-      setFotoEtiquetaUrl(previewUrl);
+      const targetAtual = alvoCapturaCamera;
+
+      if (targetAtual === 'principal') {
+        setFotoEtiquetaUrl(previewUrl);
+      } else {
+        setEncomendasAdicionais(prev => prev.map(it => it.id === targetAtual ? { ...it, fotoEtiquetaUrl: previewUrl } : it));
+      }
 
       // Fecha a câmera de captura ao vivo
       fecharCameraFotoEtiqueta();
@@ -976,9 +1026,13 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
 
       // Inicia upload seguro para o storage e o OCR ultra-rápido (< 5s) em segundo plano
       uploadFotoStorage(file, 'etiquetas', (urlFinal) => {
-        setFotoEtiquetaUrl(urlFinal);
+        if (targetAtual === 'principal') {
+          setFotoEtiquetaUrl(urlFinal);
+        } else {
+          setEncomendasAdicionais(prev => prev.map(it => it.id === targetAtual ? { ...it, fotoEtiquetaUrl: urlFinal } : it));
+        }
       });
-      processarOcrEtiqueta(file);
+      processarOcrEtiqueta(file, targetAtual);
     }, 'image/jpeg', 0.85);
   };
 
@@ -1694,6 +1748,41 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     }
   };
 
+  const handleAdicionarMesmaUnidade = () => {
+    if (!unidadeTriagem.trim()) {
+      setMensagem({
+        tipo: 'erro',
+        texto: 'Por favor, informe a unidade antes de adicionar mais encomendas para a mesma unidade.'
+      });
+      return;
+    }
+
+    const novoId = 'adic_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const novoItem: EncomendaAdicional = {
+      id: novoId,
+      moradorId: moradorSelecionado?.id || (moradoresDaUnidade[0]?.id || ''),
+      codigoBarras: '',
+      fotoEtiquetaUrl: '',
+      observacoes: '',
+      sugestoesCodigosOcr: []
+    };
+
+    setEncomendasAdicionais(prev => [...prev, novoItem]);
+    tocarBipSucesso();
+    setMensagem({
+      tipo: 'sucesso',
+      texto: `📦 Encomenda #${encomendasAdicionais.length + 2} para a mesma unidade adicionada abaixo!`
+    });
+  };
+
+  const handleRemoverEncomendaAdicional = (idRemover: string) => {
+    setEncomendasAdicionais(prev => prev.filter(it => it.id !== idRemover));
+  };
+
+  const abrirCameraParaItem = (target: 'principal' | string) => {
+    abrirCameraFotoEtiqueta(target);
+  };
+
   const salvarItemEntrada = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!podeFazerEntrada) {
@@ -1726,42 +1815,57 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       const blocoFinal = eEstruturaCasas ? 'Casa' : (blocoTriagem || '').trim();
       const unidadeFinal = autoCorrigirZeroEsquerda(unidadeTriagem.trim());
 
-      let payloadItem: any = {
-        lote_re_id: loteAtivo?.id || null, // Não vincula lote obrigatoriamente
-        condominio_id: condoAlvo,
-        bloco: blocoFinal,
-        unidade: unidadeFinal,
-        morador_id: moradorSelecionado?.id || null,
-        codigo_barras: codigoBarras.trim(),
-        foto_etiqueta_url: fotoEtiquetaUrl.trim(),
-        observacoes: observacoes.trim(),
-        local_armazenamento: localArmazenar,
-        status: 'retido'
-      };
+      const pacotesParaSalvar: any[] = [
+        {
+          lote_re_id: loteAtivo?.id || null, // Não vincula lote obrigatoriamente
+          condominio_id: condoAlvo,
+          bloco: blocoFinal,
+          unidade: unidadeFinal,
+          morador_id: moradorSelecionado?.id || null,
+          codigo_barras: codigoBarras.trim(),
+          foto_etiqueta_url: fotoEtiquetaUrl.trim(),
+          observacoes: observacoes.trim(),
+          local_armazenamento: localArmazenar,
+          status: 'retido'
+        },
+        ...encomendasAdicionais.map(adic => ({
+          lote_re_id: loteAtivo?.id || null,
+          condominio_id: condoAlvo,
+          bloco: blocoFinal,
+          unidade: unidadeFinal,
+          morador_id: adic.moradorId || moradorSelecionado?.id || null,
+          codigo_barras: (adic.codigoBarras || '').trim(),
+          foto_etiqueta_url: (adic.fotoEtiquetaUrl || '').trim(),
+          observacoes: (adic.observacoes || '').trim(),
+          local_armazenamento: localArmazenar,
+          status: 'retido'
+        }))
+      ];
 
-      let { data: itemInserido, error: itemErr } = await supabase
+      let { data: itensInseridos, error: itemErr } = await supabase
         .from('encomendas_itens')
-        .insert([payloadItem])
-        .select()
-        .maybeSingle();
+        .insert(pacotesParaSalvar)
+        .select();
 
       // Fallback seguro caso a coluna local_armazenamento ainda não exista no Supabase
       if (itemErr && (itemErr.message?.includes('local_armazenamento') || (itemErr as any).code === '42703' || itemErr.message?.includes('schema cache'))) {
-        console.warn('[INFPORT] Coluna local_armazenamento não encontrada no Supabase. Salvando pacote sem a coluna...');
-        delete payloadItem.local_armazenamento;
-        const retry = await supabase.from('encomendas_itens').insert([payloadItem]).select().maybeSingle();
+        console.warn('[INFPORT] Coluna local_armazenamento não encontrada no Supabase. Salvando pacote(s) sem a coluna...');
+        const semLocal = pacotesParaSalvar.map(({ local_armazenamento, ...rest }) => rest);
+        const retry = await supabase.from('encomendas_itens').insert(semLocal).select();
         itemErr = retry.error;
-        itemInserido = retry.data;
-        if (itemInserido) {
-          localStorage.setItem(`infport_item_local_${itemInserido.id}`, localArmazenar);
+        itensInseridos = retry.data;
+        if (itensInseridos && Array.isArray(itensInseridos)) {
+          itensInseridos.forEach(item => {
+            localStorage.setItem(`infport_item_local_${item.id}`, localArmazenar);
+          });
         }
       }
 
       if (itemErr) throw itemErr;
 
-      // Se houver lote ativo no estado, atualiza-o de forma segura
+      // Se houver lote ativo no estado, atualiza-o com a soma de todos os pacotes
       if (loteAtivo) {
-        const novaQtdTriada = (loteAtivo.qtd_triada || 0) + 1;
+        const novaQtdTriada = (loteAtivo.qtd_triada || 0) + pacotesParaSalvar.length;
         const novoStatusLote = novaQtdTriada >= loteAtivo.qtd_declarada ? 'concluido' : 'em_triagem';
         await supabase
           .from('lotes_re')
@@ -1771,21 +1875,22 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
         setLoteAtivo((prev: any) => prev ? ({ ...prev, qtd_triada: novaQtdTriada, status: novoStatusLote }) : null);
       }
 
-      const telMorador = moradorSelecionado?.telefone?.replace(/\D/g, '') || '';
+      const telMorador = moradorSelecionado?.telefone?.replace(/\D/g, '') || (moradoresDaUnidade.find(m => m.telefone)?.telefone?.replace(/\D/g, '') || '');
       const nomeDestinatario = moradorSelecionado ? moradorSelecionado.nome : 'Morador';
       const labelUnidadeFormatada = formatarIdentificacaoUnidade(unidadeFinal, blocoFinal, condoConfig?.tipo_estrutura);
+      const orientacaoRetirada = eEstruturaCasas ? 'o número da sua casa' : 'seu apartamento e bloco';
 
       // Registra evento no Histórico Absoluto
       registrarAtividade({
         modulo: 'Encomendas',
         acao: 'CRIAR',
-        descricao: `Registrou entrada de encomenda para ${nomeDestinatario} (${labelUnidadeFormatada}). Local de guarda: ${localArmazenar}.`,
+        descricao: `Registrou entrada de ${pacotesParaSalvar.length} encomenda(s) para a unidade ${labelUnidadeFormatada} (${nomeDestinatario}). Local de guarda: ${localArmazenar}.`,
         detalhes: {
+          totalPacotes: pacotesParaSalvar.length,
           unidade: unidadeFinal,
           bloco: blocoFinal,
           destinatario: nomeDestinatario,
-          localGuarda: localArmazenar,
-          codigoRastreio: codigoBarras || 'N/A'
+          localGuarda: localArmazenar
         },
         operador_nome: usuarioLogado?.nome || usuarioLogado?.login,
         operador_id: usuarioLogado?.id,
@@ -1793,15 +1898,26 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
         condominio_id: condoAlvo
       });
 
-      const orientacaoRetirada = eEstruturaCasas ? 'o número da sua casa' : 'seu apartamento e bloco';
-      const textoWhatsMorador = `Olá, ${nomeDestinatario} (${labelUnidadeFormatada})! 📦\n\nSua encomenda acabou de chegar na Portaria.\n• Destinatário: ${nomeDestinatario}\n• Cód. Rastreio: ${codigoBarras || 'N/A'}\n• Local Físico de Guarda: ${localArmazenar}\n• Observação: ${observacoes || 'Nenhuma'}\n• Foto do Pacote: ${fotoEtiquetaUrl || 'Registrada na portaria'}\n\nPor favor, retire na portaria informando ${orientacaoRetirada}!`;
+      let textoWhatsMorador = '';
+      if (pacotesParaSalvar.length === 1) {
+        textoWhatsMorador = `Olá, ${nomeDestinatario} (${labelUnidadeFormatada})! 📦\n\nSua encomenda acabou de chegar na Portaria.\n• Destinatário: ${nomeDestinatario}\n• Cód. Rastreio: ${codigoBarras || 'N/A'}\n• Local Físico de Guarda: ${localArmazenar}\n• Observação: ${observacoes || 'Nenhuma'}\n• Foto do Pacote: ${fotoEtiquetaUrl || 'Registrada na portaria'}\n\nPor favor, retire na portaria informando ${orientacaoRetirada}!`;
+      } else {
+        const totalP = pacotesParaSalvar.length;
+        const linhas = pacotesParaSalvar.map((p, idx) => {
+          const m = moradoresDaUnidade.find(mor => mor.id === p.morador_id) || moradorSelecionado;
+          const dest = m?.nome || nomeDestinatario;
+          return `📦 *PACOTE ${idx + 1} de ${totalP}*:\n• Destinatário: ${dest}\n• Cód. Rastreio: ${p.codigo_barras || 'N/A'}\n• Foto: ${p.foto_etiqueta_url || 'Registrada na portaria'}${p.observacoes ? `\n• Obs: ${p.observacoes}` : ''}`;
+        }).join('\n\n');
+
+        textoWhatsMorador = `Olá, moradores da unidade *${labelUnidadeFormatada}*! 📦✨\n\nChegaram *${totalP} encomendas* para a sua unidade na Portaria:\n\n${linhas}\n\n📍 *Local Físico de Guarda:* ${localArmazenar}\nPor favor, retirem na portaria informando ${orientacaoRetirada}!`;
+      }
 
       const linkWhatsMorador = telMorador 
         ? `https://wa.me/55${telMorador}?text=${encodeURIComponent(textoWhatsMorador)}` 
         : `https://wa.me/?text=${encodeURIComponent(textoWhatsMorador)}`;
 
       setItemTriadoWhats({
-        destinatario: nomeDestinatario,
+        destinatario: pacotesParaSalvar.length > 1 ? `${nomeDestinatario} (${pacotesParaSalvar.length} pacotes)` : nomeDestinatario,
         link: linkWhatsMorador
       });
 
@@ -1818,6 +1934,8 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       setCodigoBarras(''); setFotoEtiquetaUrl(''); setObservacoes('');
       setSugestoesCodigosOcr([]); setCodigoSelecionadoOcr(''); setOcrDadosDetectados(null);
       setAlertaAgrupamento(null);
+      setEncomendasAdicionais([]);
+      setAlvoCapturaCamera('principal');
 
       // Fecha o modal de entrada e retorna diretamente para o menu de entrega de pacotes aos moradores
       setModalEntradaAberta(false);
@@ -1828,7 +1946,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       carregarDadosBase();
       setMensagem({ 
         tipo: 'sucesso', 
-        texto: `✅ Encomenda salva! Mensagem disparada para ${nomeDestinatario} e retornado ao menu de entrega de pacotes.` 
+        texto: `✅ ${pacotesParaSalvar.length} encomenda(s) registrada(s) com sucesso! Mensagem disparada para ${nomeDestinatario} e retornado ao menu de entrega.` 
       });
     } catch (err: any) {
       setMensagem({ tipo: 'erro', texto: err.message });
@@ -4968,7 +5086,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                     />
                     <button 
                       type="button" 
-                      onClick={abrirCameraFotoEtiqueta} 
+                      onClick={() => abrirCameraFotoEtiqueta('principal')} 
                       className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl transition flex items-center gap-1 cursor-pointer font-bold text-xs shadow-xs shrink-0"
                       title="Abrir câmera direto para tirar foto da etiqueta"
                     >
@@ -5117,7 +5235,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                           </span>
                           <button
                             type="button"
-                            onClick={abrirCameraFotoEtiqueta}
+                            onClick={() => abrirCameraFotoEtiqueta('principal')}
                             className="text-[10px] text-emerald-700 hover:text-emerald-900 font-bold underline cursor-pointer flex items-center gap-0.5"
                           >
                             <Camera className="w-3 h-3" /> Tirar outra foto
@@ -5140,13 +5258,204 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                   />
                 </div>
 
-                <button 
-                  type="submit" 
-                  disabled={loading} 
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition text-xs shadow-md disabled:opacity-50 cursor-pointer mt-2"
-                >
-                  {loading ? 'Salvando...' : <><CheckCircle2 className="w-4 h-4" /> Registrar Entrada e Reter Pacote</>}
-                </button>
+                {/* SUB-FORMULÁRIOS DE ENCOMENDAS ADICIONAIS PARA A MESMA UNIDADE */}
+                {encomendasAdicionais.length > 0 && (
+                  <div className="space-y-3 pt-2">
+                    <div className="flex items-center justify-between border-t border-blue-200 pt-2">
+                      <span className="text-[11px] font-black uppercase text-blue-900 flex items-center gap-1.5">
+                        <Package className="w-3.5 h-3.5 text-blue-600" />
+                        Encomendas Adicionais ({encomendasAdicionais.length}) • Mesma Unidade ({unidadeTriagem} {blocoTriagem ? `- ${blocoTriagem}` : ''})
+                      </span>
+                      <span className="text-[10px] text-blue-800 bg-blue-100 font-extrabold px-2 py-0.5 rounded-full">
+                        Unidade Fixada
+                      </span>
+                    </div>
+
+                    {encomendasAdicionais.map((adic, index) => {
+                      const numeroPacote = index + 2;
+                      return (
+                        <div key={adic.id} className="p-3 bg-blue-50/70 border-2 border-blue-300 rounded-2xl space-y-2.5 relative shadow-xs">
+                          {/* Cabeçalho do Pacote Adicional */}
+                          <div className="flex items-center justify-between pb-1 border-b border-blue-200">
+                            <span className="text-xs font-black text-blue-950 flex items-center gap-1.5">
+                              <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-extrabold">
+                                #{numeroPacote}
+                              </span>
+                              Pacote {numeroPacote} (Mesma Unidade)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoverEncomendaAdicional(adic.id)}
+                              className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded-lg transition text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                              title="Remover esta encomenda adicional"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Remover</span>
+                            </button>
+                          </div>
+
+                          {/* Seletor de Morador da Mesma Unidade (Pode ser outro morador) */}
+                          <div className="space-y-1">
+                            <label className="block text-[10px] font-bold text-slate-700 uppercase flex items-center gap-1">
+                              <User className="w-3 h-3 text-blue-600" />
+                              Morador / Destinatário
+                            </label>
+                            {moradoresDaUnidade.length > 0 ? (
+                              <select
+                                value={adic.moradorId || ''}
+                                onChange={(e) => {
+                                  const mId = e.target.value;
+                                  setEncomendasAdicionais(prev => prev.map(item => item.id === adic.id ? { ...item, moradorId: mId } : item));
+                                }}
+                                className="w-full p-2 bg-white border border-blue-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                              >
+                                {moradoresDaUnidade.map(m => (
+                                  <option key={m.id} value={m.id}>
+                                    {m.nome} (Tel: {m.telefone || 'Sem tel'})
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <div className="p-2 bg-white border border-blue-200 rounded-xl text-xs text-slate-700 font-medium">
+                                {moradorSelecionado?.nome || 'Morador da Unidade'}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Código de Rastreio com botão Câmera (extrai código e tira foto) */}
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <label className="block text-[10px] font-bold text-slate-700 uppercase flex items-center gap-1">
+                                <Tag className="w-3 h-3 text-slate-600" />
+                                Código de Barras / Rastreio
+                              </label>
+                              {adic.analisandoOcr && (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-blue-900 bg-blue-100 px-2 py-0.5 rounded-full animate-pulse border border-blue-200">
+                                  <Sparkles className="w-3 h-3 text-blue-600 animate-spin" />
+                                  Lendo etiqueta com IA...
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex gap-1.5">
+                              <input
+                                type="text"
+                                value={adic.codigoBarras}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setEncomendasAdicionais(prev => prev.map(item => item.id === adic.id ? { ...item, codigoBarras: v } : item));
+                                }}
+                                placeholder="Escaneie, digite ou abra a câmera..."
+                                className="w-full p-2 bg-white border border-blue-300 rounded-xl text-slate-900 text-xs font-mono focus:outline-hidden focus:ring-2 focus:ring-blue-500 transition"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => abrirCameraParaItem(adic.id)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-xl transition flex items-center gap-1 cursor-pointer font-bold text-xs shadow-xs shrink-0"
+                                title="Abrir câmera para tirar foto da etiqueta e extrair rastreio"
+                              >
+                                <Camera className="w-4 h-4" />
+                                <span className="hidden sm:inline">Câmera</span>
+                              </button>
+                            </div>
+
+                            {/* Chips de códigos extraídos do OCR */}
+                            {adic.sugestoesCodigosOcr && adic.sugestoesCodigosOcr.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 pt-1">
+                                {adic.sugestoesCodigosOcr.slice(0, 3).map((sug, sIdx) => (
+                                  <button
+                                    key={sIdx}
+                                    type="button"
+                                    onClick={() => {
+                                      setEncomendasAdicionais(prev => prev.map(item => item.id === adic.id ? { ...item, codigoBarras: sug.valor } : item));
+                                      tocarAlertaSonoro();
+                                    }}
+                                    className={`text-[10px] px-2 py-1 rounded-lg border font-mono font-bold cursor-pointer transition ${
+                                      adic.codigoBarras === sug.valor
+                                        ? 'bg-blue-600 text-white border-blue-700 shadow-xs ring-1 ring-blue-400'
+                                        : 'bg-white text-slate-700 border-blue-200 hover:bg-blue-50'
+                                    }`}
+                                  >
+                                    {sug.label}: {sug.valor}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Foto da Etiqueta se já tirada */}
+                          {adic.fotoEtiquetaUrl && (
+                            <div className="relative rounded-xl overflow-hidden border border-blue-200 bg-white p-2 flex justify-center">
+                              <img
+                                src={adic.fotoEtiquetaUrl}
+                                alt={`Etiqueta Pacote ${numeroPacote}`}
+                                className="max-h-24 rounded-lg object-contain shadow-xs border border-slate-200"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEncomendasAdicionais(prev => prev.map(item => item.id === adic.id ? { ...item, fotoEtiquetaUrl: '', sugestoesCodigosOcr: [] } : item));
+                                }}
+                                className="absolute top-1 right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600 shadow-md cursor-pointer"
+                                title="Remover foto deste pacote"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Observações da encomenda adicional */}
+                          <div className="space-y-1">
+                            <label className="block text-[10px] font-bold text-slate-700 uppercase">Observações (Opcional)</label>
+                            <input
+                              type="text"
+                              value={adic.observacoes}
+                              onChange={(e) => {
+                                const obs = e.target.value;
+                                setEncomendasAdicionais(prev => prev.map(item => item.id === adic.id ? { ...item, observacoes: obs } : item));
+                              }}
+                              placeholder="Ex: Caixa média, frágil..."
+                              className="w-full p-2 bg-white border border-blue-200 rounded-xl text-slate-900 text-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* BOTÕES: + MESMA UN (À ESQUERDA) E REGISTRAR (À DIREITA COM ÍCONE) */}
+                <div className="flex items-center gap-2 pt-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={handleAdicionarMesmaUnidade}
+                    className="flex-1 bg-sky-700 hover:bg-sky-800 active:scale-95 text-white font-black py-3 px-3 rounded-xl flex items-center justify-center gap-1.5 transition text-xs shadow-md cursor-pointer"
+                    title="Adicionar mais uma encomenda para a mesma unidade"
+                  >
+                    <Plus className="w-4 h-4 shrink-0" />
+                    <span>+ MESMA UN</span>
+                    {encomendasAdicionais.length > 0 && (
+                      <span className="bg-sky-900 text-white text-[10px] px-1.5 py-0.5 rounded-full font-black ml-0.5">
+                        +{encomendasAdicionais.length}
+                      </span>
+                    )}
+                  </button>
+
+                  <button 
+                    type="submit" 
+                    disabled={loading} 
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black py-3 px-3 rounded-xl flex items-center justify-center gap-1.5 transition text-xs shadow-md disabled:opacity-50 cursor-pointer"
+                  >
+                    {loading ? (
+                      'Salvando...'
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        <span>REGISTRAR{encomendasAdicionais.length > 0 ? ` (${encomendasAdicionais.length + 1})` : ''}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </form>
 
               {/* FEEDBACK & WHATSAPP APÓS REGISTRO */}
@@ -5190,7 +5499,9 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
             <div className="flex items-center gap-2">
               <Camera className="w-5 h-5 text-emerald-400" />
               <div>
-                <span className="font-bold text-sm block">Câmera: Foto da Etiqueta</span>
+                <span className="font-bold text-sm block">
+                  {alvoCapturaCamera === 'principal' ? 'Câmera: Foto da Etiqueta' : 'Câmera: Foto da Etiqueta (Mesma Unidade)'}
+                </span>
                 <span className="text-[10px] text-emerald-300 flex items-center gap-1 font-medium">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
                   Leitor de código ativo durante o enquadramento
