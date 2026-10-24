@@ -1,4 +1,5 @@
-import { supabase } from './supabase';
+import { supabase, storage } from './firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 /**
  * Utilitário de Otimização e Compressão de Imagens
@@ -198,16 +199,23 @@ export async function comprimirImagemBase64(
 }
 
 /**
- * Normaliza e formata qualquer URL de foto armazenada para que funcione
- * perfeitamente em tags <img>, links <a>, novas abas e links de WhatsApp.
+ * Normaliza e formata qualquer URL de foto armazenada para a URL pública HTTPS oficial
+ * do Firebase Storage, garantindo que abra perfeitamente nos dispositivos dos moradores
+ * via WhatsApp e no visualizador interno do app (100% compatível com Vercel e serverless).
  */
 export function formatarUrlFoto(url?: string | null): string {
   if (!url) return '';
   const limpa = String(url).trim();
   if (!limpa) return '';
 
-  // Se já for data URL base64 ou URL absoluta (http/https)
-  if (limpa.startsWith('data:image/') || limpa.startsWith('http://') || limpa.startsWith('https://')) {
+  // Se já for URL HTTPS oficial do Firebase Storage, qualquer link absoluto ou data URL
+  if (
+    limpa.startsWith('https://firebasestorage.googleapis.com/') ||
+    limpa.startsWith('https://storage.googleapis.com/') ||
+    limpa.startsWith('http://') ||
+    limpa.startsWith('https://') ||
+    limpa.startsWith('data:image/')
+  ) {
     return limpa;
   }
 
@@ -216,17 +224,10 @@ export function formatarUrlFoto(url?: string | null): string {
     return limpa;
   }
 
-  const origin = typeof window !== 'undefined' && window.location?.origin
-    ? window.location.origin
-    : '';
-
-  // Se já for caminho absoluto no servidor (ex: /uploads/etiquetas/... ou /api/foto/...)
-  if (limpa.startsWith('/')) {
-    return origin ? `${origin}${limpa}` : limpa;
-  }
-
-  // Se for caminho salvo como 'etiquetas/...' ou 'comprovantes_baixa/...'
-  return origin ? `${origin}/uploads/${limpa}` : `/uploads/${limpa}`;
+  // Se for um caminho relativo gravado no Firebase Storage (ex: 'etiquetas/174...jpg' ou '/etiquetas/174...jpg')
+  const caminhoLimpo = limpa.replace(/^\/+/, '').replace(/^uploads\//, '');
+  const bucket = 'porttohub-fe7b8.firebasestorage.app';
+  return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(caminhoLimpo)}?alt=media`;
 }
 
 export interface UploadComprimidoParams {
@@ -247,15 +248,15 @@ export interface UploadComprimidoResposta {
 }
 
 /**
- * Função centralizada para armazenamento seguro e persistente de fotos no PorttoHub:
- * 1. Comprime a imagem no cliente (HTML5 Canvas, max 1000px, JPEG 0.75, ~50KB-90KB).
- * 2. Envia para o endpoint de storage permanente (/api/upload-foto).
- * 3. Faz backup no Firestore (coleção fotos_armazenadas).
- * 4. Retorna uma URL HTTP completa e válida, sem links quebrados.
+ * Upload Oficial com Firebase Storage:
+ * 1. Otimização da foto no cliente via Canvas HTML5 (~60KB).
+ * 2. Upload direto com SDK do Firebase Storage (ref, uploadBytes, getDownloadURL)
+ *    em pastas organizadas (ex: etiquetas/, assinaturas_encomendas/, comprovantes_baixa/).
+ * 3. 100% serverless, compatível com Vercel, Firebase e web mobile.
+ * 4. Obtém e retorna a URL pública permanente gerada pelo Firebase Storage (getDownloadURL).
  */
 export async function uploadFotoComprimidaStorage({
   file,
-  bucket = 'encomendas',
   pasta,
   maxWidth = 1000,
   maxHeight = 1000,
@@ -264,68 +265,55 @@ export async function uploadFotoComprimidaStorage({
   const tamanhoOriginalBytes = file.size || 0;
   const tamanhoOriginalKb = Math.round(tamanhoOriginalBytes / 1024);
 
-  // 1. Comprime no cliente para alta fidelidade e baixo peso
-  const base64 = await comprimirImagemBase64(file, maxWidth, maxHeight, qualidade);
-  const tamanhoComprimidoBytes = Math.round((base64.length * 3) / 4);
+  // 1. Manter a otimização da foto no cliente via Canvas HTML5 (~60KB)
+  const arquivoComprimido = await comprimirImagemArquivo(file, maxWidth, maxHeight, qualidade);
+  const tamanhoComprimidoBytes = arquivoComprimido.size;
   const tamanhoComprimidoKb = Math.round(tamanhoComprimidoBytes / 1024);
   const taxaReducaoPct = tamanhoOriginalBytes > 0
     ? Math.max(0, Math.round((1 - tamanhoComprimidoBytes / tamanhoOriginalBytes) * 100))
     : 0;
 
+  // 2. Organização em pastas organizadas (ex: etiquetas/, assinaturas_encomendas/, comprovantes_baixa/)
+  const pastaLimpa = (pasta || 'etiquetas').replace(/[^a-zA-Z0-9_-]/g, '') || 'etiquetas';
   const sufixoAleatorio = Math.random().toString(36).substring(2, 8);
-  const pastaLimpa = pasta.replace(/[^a-zA-Z0-9_-]/g, '') || 'etiquetas';
   const nomeArquivo = `${Date.now()}_${sufixoAleatorio}.jpg`;
-  const fileName = `${pastaLimpa}/${nomeArquivo}`;
+  const storagePath = `${pastaLimpa}/${nomeArquivo}`;
 
   let publicUrl = '';
 
-  // 2. Envia para a API de upload persistente no servidor
+  // 3. Utilizar o SDK do Firebase Storage (ref, uploadBytes, getDownloadURL)
   try {
-    const res = await fetch('/api/upload-foto', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        imagemBase64: base64,
-        pasta: pastaLimpa,
-        fileName: nomeArquivo
-      })
+    const storageRef = ref(storage, storagePath);
+    await uploadBytes(storageRef, arquivoComprimido, {
+      contentType: 'image/jpeg',
+      cacheControl: 'public, max-age=31536000'
     });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data.publicUrl) {
-        publicUrl = data.publicUrl;
-      }
-    }
-  } catch (err) {
-    console.warn('[Upload Storage] Aviso na rota /api/upload-foto, aplicando fallback resiliente:', err);
+    publicUrl = await getDownloadURL(storageRef);
+  } catch (errStorage: any) {
+    console.warn('[Firebase Storage] Upload direto no Storage retornou:', errStorage);
+    // Fallback de alta resiliência (converte em base64 otimizado) se o bucket ainda não estiver liberado
+    const base64 = await comprimirImagemBase64(arquivoComprimido, 800, 800, 0.7);
+    publicUrl = base64;
   }
 
-  // 3. Fallback ou persistência em Firestore caso a URL ainda não esteja definida
-  if (!publicUrl) {
-    const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
-    publicUrl = `${origin}/uploads/${fileName}`;
-  }
-
-  // 4. Salva backup em fotos_armazenadas no Firestore para redundância perpétua
+  // 4. Salva metadados e backup no Firestore
   try {
     const docId = `${pastaLimpa}_${nomeArquivo.replace('.jpg', '')}`;
     await supabase.from('fotos_armazenadas').insert({
       id: docId,
       url: publicUrl,
       pasta: pastaLimpa,
-      fileName,
-      base64,
+      fileName: storagePath,
       tamanho_kb: tamanhoComprimidoKb,
       created_at: new Date().toISOString()
     });
   } catch (errFirestore) {
-    console.warn('[Upload Storage] Aviso ao indexar foto no Firestore:', errFirestore);
+    console.warn('[Firestore Backup] Erro ao registrar metadados da foto:', errFirestore);
   }
 
   return {
     publicUrl: formatarUrlFoto(publicUrl),
-    fileName,
+    fileName: storagePath,
     tamanhoOriginalKb,
     tamanhoComprimidoKb,
     taxaReducaoPct

@@ -21,6 +21,8 @@ import {
   getDocFromServer
 } from 'firebase/firestore';
 
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+
 export const firebaseConfig = {
   apiKey: "AIzaSyA6QvF1Qb7F5mPxrSDK7mo-J2g1LjDGDFU",
   authDomain: "porttohub-fe7b8.firebaseapp.com",
@@ -34,6 +36,8 @@ export const firebaseConfig = {
 export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const storage = getStorage(app);
+export { ref, uploadBytes, getDownloadURL };
 
 export enum OperationType {
   CREATE = 'create',
@@ -558,14 +562,24 @@ export const firebaseDb = {
     from(bucketName: string) {
       return {
         async upload(filePath: string, file: any, options?: any) {
-          return { data: { path: filePath }, error: null };
+          try {
+            const storageRef = ref(storage, filePath);
+            const uploadRes = await uploadBytes(storageRef, file, options);
+            const downloadUrl = await getDownloadURL(storageRef);
+            return { data: { path: filePath, fullPath: uploadRes.metadata.fullPath, downloadUrl }, error: null };
+          } catch (err) {
+            return { data: null, error: err };
+          }
         },
         getPublicUrl(filePath: string) {
-          const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
-          const cleanPath = filePath.startsWith('/') ? filePath : `/${filePath}`;
           const isUrl = filePath.startsWith('http://') || filePath.startsWith('https://') || filePath.startsWith('data:');
-          const finalUrl = isUrl ? filePath : (filePath.startsWith('/uploads') ? `${origin}${cleanPath}` : `${origin}/uploads${cleanPath}`);
-          return { data: { publicUrl: finalUrl } };
+          if (isUrl) {
+            return { data: { publicUrl: filePath } };
+          }
+          const caminhoLimpo = filePath.replace(/^\/+/, '').replace(/^uploads\//, '');
+          const bucket = firebaseConfig.storageBucket;
+          const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(caminhoLimpo)}?alt=media`;
+          return { data: { publicUrl } };
         }
       };
     }
