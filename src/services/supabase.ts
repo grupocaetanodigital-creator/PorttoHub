@@ -51,20 +51,10 @@ export function obterSupabaseKey(): string {
 }
 
 /**
- * Resolve o nome do Bucket do Supabase Storage
+ * Nome do Bucket padrão do Supabase Storage ('encomendas')
+ * Funciona de forma 100% automática sem exigir VITE_SUPABASE_STORAGE_BUCKET
  */
 export function obterStorageBucket(): string {
-  if (typeof window !== 'undefined' && window.localStorage) {
-    const salvo = window.localStorage.getItem('porttohub_supabase_bucket');
-    if (salvo && salvo.trim()) {
-      return salvo.trim();
-    }
-  }
-  const envBucket = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_STORAGE_BUCKET) ||
-                    (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_STORAGE_BUCKET);
-  if (envBucket && typeof envBucket === 'string' && envBucket.trim()) {
-    return envBucket.trim();
-  }
   return DEFAULT_STORAGE_BUCKET;
 }
 

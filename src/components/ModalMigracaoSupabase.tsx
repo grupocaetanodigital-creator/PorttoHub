@@ -25,7 +25,8 @@ import {
   getSupabaseRowCount, 
   executeFullSupabaseMigration, 
   importJsonDump, 
-  generateSupabaseDumpSqlScript 
+  generateSupabaseDumpSqlScript,
+  exportSourceDatabaseToJson
 } from '../services/migrationSupabaseService';
 import { obterSupabaseUrl } from '../services/supabase';
 
@@ -52,6 +53,11 @@ export default function ModalMigracaoSupabase({
     mensagem: string;
     projectRef?: string;
   }>({ testado: false, sucesso: false, mensagem: '' });
+
+  // Backup dos Dados de Origem
+  const [baixandoBackup, setBaixandoBackup] = useState(false);
+  const [salvarBackupAntes, setSalvarBackupAntes] = useState(true);
+  const [backupStatus, setBackupStatus] = useState<string | null>(null);
 
   // Tabelas e Estado de Migração
   const [tabelas, setTabelas] = useState<MigrationTableInfo[]>(() =>
@@ -149,7 +155,38 @@ export default function ModalMigracaoSupabase({
     setEscaneando(false);
   };
 
-  // 3. Executa a Migração Completa
+  // 3. Salva Cópia de Segurança em JSON dos Dados de Origem
+  const handleBaixarBackupOrigem = async () => {
+    if (!supabaseUrl.trim() || !supabaseKey.trim()) {
+      setStatusConexao({
+        testado: true,
+        sucesso: false,
+        mensagem: 'Por favor, informe a URL e a API Key do banco de origem antes de baixar o backup.'
+      });
+      return;
+    }
+
+    setBaixandoBackup(true);
+    setBackupStatus('Conectando ao banco de origem para extrair todos os dados...');
+
+    try {
+      const res = await exportSourceDatabaseToJson(
+        { url: supabaseUrl, key: supabaseKey },
+        tabelas.map(t => t.name),
+        (tabela, registros, idx, total) => {
+          setBackupStatus(`Extraindo tabela ${idx}/${total}: ${tabela} (${registros} registros)...`);
+        }
+      );
+
+      setBackupStatus(`✓ Sucesso! Arquivo "${res.fileName}" baixado (${res.totalRecords} registros salvos localmente).`);
+    } catch (err: any) {
+      setBackupStatus(`Erro ao salvar backup de origem: ${err.message || String(err)}`);
+    } finally {
+      setBaixandoBackup(false);
+    }
+  };
+
+  // 4. Executa a Migração Completa
   const handleIniciarMigracao = async () => {
     if (!statusConexao.sucesso) {
       alert('Por favor, teste e valide a conexão com o Supabase antes de iniciar.');
@@ -180,6 +217,10 @@ export default function ModalMigracaoSupabase({
               registrosMigrados: totalSalvos
             });
           }
+        },
+        {
+          salvarBackupAntes,
+          onBackupProgresso: (msg) => setBackupStatus(msg)
         }
       );
 
@@ -529,6 +570,49 @@ export default function ModalMigracaoSupabase({
                     </button>
                   )}
                 </div>
+
+                {/* Opções de Segurança e Backup dos Dados de Origem */}
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-2 cursor-pointer select-none font-medium text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={salvarBackupAntes}
+                        onChange={(e) => setSalvarBackupAntes(e.target.checked)}
+                        disabled={migrando || baixandoBackup}
+                        className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                      />
+                      <span>Salvar automaticamente cópia de segurança (backup .json) antes de gravar</span>
+                    </label>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleBaixarBackupOrigem}
+                    disabled={baixandoBackup || migrando || !supabaseUrl || !supabaseKey}
+                    className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                    title="Baixar arquivo JSON com todos os dados do banco de onde está puxando informações"
+                  >
+                    {baixandoBackup ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+                        <span>Extraindo Backup...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 text-blue-600" />
+                        <span>Salvar Dados de Origem (Download JSON)</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {backupStatus && (
+                  <div className="px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 flex items-center gap-2 font-medium">
+                    <Info className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <span>{backupStatus}</span>
+                  </div>
+                )}
 
                 {/* Barra de Progresso Durante a Migração */}
                 {migrando && (

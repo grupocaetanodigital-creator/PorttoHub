@@ -1,10 +1,11 @@
 /**
- * PorttoHub — Serviço de Importação e Migração de Dados para Supabase
+ * PorttoHub — Serviço de Importação, Exportação e Migração de Dados para Supabase
  * 
- * Permite restaurar e sincronizar dados de dumps JSON, backups ou outros projetos
- * diretamente nas tabelas relacionais do Supabase do PorttoHub com isolamento multi-condomínio.
+ * Permite extrair, salvar backups em JSON e migrar dados de bancos Supabase antigos
+ * para o novo banco de dados Supabase ativo do PorttoHub com total integridade e segurança.
  */
 
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
 export interface MigrationTableInfo {
@@ -19,7 +20,7 @@ export interface MigrationTableInfo {
 }
 
 export const MIGRATION_TABLES: Omit<MigrationTableInfo, 'status' | 'migratedCount'>[] = [
-  // 1. Cadastros e Tenants Raiz (Prioridade 1)
+  // 1. Cadastros e Tenants Raiz (Prioridade 1 - Devem entrar primeiro por dependência de Foreign Key)
   { name: 'condominios', label: 'Condomínios', category: 'Base', order: 1 },
   { name: 'operadores', label: 'Operadores & Porteiros', category: 'Acesso', order: 2 },
   { name: 'moradores', label: 'Moradores & Unidades', category: 'Base', order: 3 },
@@ -60,7 +61,7 @@ export interface SupabaseCredentials {
   key: string;
 }
 
-function normalizeSupabaseUrl(url: string): string {
+export function normalizeSupabaseUrl(url: string): string {
   let cleaned = (url || '').trim().replace(/\/+$/, '');
   if (!cleaned.startsWith('http://') && !cleaned.startsWith('https://')) {
     cleaned = 'https://' + cleaned;
@@ -79,8 +80,10 @@ export function extractProjectRef(url: string): string {
 }
 
 /**
- * Higieniza um registro para inserção no banco de dados Supabase
- * Trata mapeamento de colunas legado (ex: fileName -> filename e file_name)
+ * Higieniza rigorosamente um registro para inserção no banco de dados PostgreSQL do Supabase:
+ * - Converte strings vazias "" em null para UUIDs (evita 'invalid input syntax for type uuid: ""')
+ * - Converte strings vazias "" em null para timestamps e números
+ * - Mapeia colunas legadas e normaliza booleanos
  */
 export function sanitizeForSupabase(record: any): any {
   if (!record || typeof record !== 'object') return record;
@@ -99,25 +102,80 @@ export function sanitizeForSupabase(record: any): any {
       continue;
     }
 
-    // Mapeamento de colunas case-sensitive de fotos e arquivos
+    // Limpeza de campos vazios "" que quebram PostgreSQL (UUID, Timestamps, Inteiros)
+    if (typeof val === 'string' && val.trim() === '') {
+      if (
+        key === 'id' || 
+        key.endsWith('_id') || 
+        key.endsWith('Id') ||
+        key.endsWith('_em') || 
+        key.endsWith('_at') || 
+        key.startsWith('data_') || 
+        key.startsWith('horario_') ||
+        key === 'volumes' || 
+        key === 'quantidade' || 
+        key === 'quantidade_total' || 
+        key === 'quantidade_disponivel' || 
+        key === 'duracao_segundos' || 
+        key === 'total_pontos' || 
+        key === 'pontos_conferidos' ||
+        key === 'ordem' || 
+        key === 'nivel_acesso'
+      ) {
+        sanitized[key] = null;
+        continue;
+      }
+    }
+
+    // Normalização de fotos e nomes de arquivos
     if (key === 'fileName' || key === 'filename' || key === 'file_name') {
       sanitized['filename'] = val;
       sanitized['file_name'] = val;
       continue;
     }
 
+    // Normalização de colunas JSONB
+    if (
+      (key === 'veiculos' || key === 'dependentes' || key === 'tags_acesso' || key === 'feature_flags' || 
+       key === 'locais_armazenamento' || key === 'fotos' || key === 'checklist_resumo' || key === 'itens_snapshot' || key === 'detalhes') &&
+      typeof val === 'string'
+    ) {
+      try {
+        sanitized[key] = JSON.parse(val);
+        continue;
+      } catch {
+        // Se falhar o parse, mantém original
+      }
+    }
+
     sanitized[key] = val;
   }
 
-  // Garante chave primária id caso o registro venha sem ela
+  // Garante chave primária id válida
   if (!sanitized.id) {
-    sanitized.id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `item_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    sanitized.id = typeof crypto !== 'undefined' && crypto.randomUUID 
+      ? crypto.randomUUID() 
+      : `item_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   }
 
   return sanitized;
 }
 
 export const sanitizeForFirestore = sanitizeForSupabase;
+
+/**
+ * Cria cliente Supabase de origem com tratamento seguro
+ */
+export function createSourceSupabaseClient(credentials: SupabaseCredentials) {
+  const url = normalizeSupabaseUrl(credentials.url);
+  const key = credentials.key.trim();
+  return createClient(url, key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false
+    }
+  });
+}
 
 /**
  * Testa a conexão com o Supabase de origem
@@ -140,45 +198,62 @@ export async function testSupabaseConnection(credentials: SupabaseCredentials): 
   const projectRef = extractProjectRef(url);
 
   try {
-    const candidateEndpoints = [
-      `${url}/rest/v1/condominios?select=id&limit=1`,
-      `${url}/rest/v1/operadores?select=id&limit=1`,
-      `${url}/rest/v1/`
-    ];
+    const client = createSourceSupabaseClient(credentials);
 
-    let lastError = '';
+    // Tenta ler de tabelas primárias
+    const testTables = ['condominios', 'operadores', 'moradores', 'configuracoes'];
+    let connected = false;
+    let authError = false;
+    let lastErrorMsg = '';
 
-    for (const endpoint of candidateEndpoints) {
+    for (const t of testTables) {
       try {
-        const res = await fetch(endpoint, {
-          headers: {
-            apikey: key,
-            Authorization: `Bearer ${key}`
-          }
-        });
-
-        if (res.ok || res.status === 200 || res.status === 206 || res.status === 404) {
-          return {
-            success: true,
-            message: `Conexão bem-sucedida com o projeto (${projectRef}).`,
-            projectRef
-          };
-        } else if (res.status === 401 || res.status === 403) {
-          return {
-            success: false,
-            message: 'Erro de autenticação no Supabase: A chave fornecida (API Key) é inválida ou expirou.'
-          };
+        const { error, status } = await client.from(t).select('id').limit(1);
+        if (!error || status === 200 || status === 206) {
+          connected = true;
+          break;
+        } else if (status === 401 || status === 403) {
+          authError = true;
+          lastErrorMsg = error.message;
         } else {
-          lastError = `Status ${res.status}: ${res.statusText}`;
+          lastErrorMsg = error.message;
         }
       } catch (err: any) {
-        lastError = err.message || String(err);
+        lastErrorMsg = err.message || String(err);
       }
+    }
+
+    if (connected) {
+      return {
+        success: true,
+        message: `Conexão bem-sucedida com o projeto (${projectRef}).`,
+        projectRef
+      };
+    }
+
+    if (authError) {
+      return {
+        success: false,
+        message: `Erro de autenticação no Supabase: A chave fornecida é inválida ou expirou (${lastErrorMsg}).`
+      };
+    }
+
+    // Fallback: Teste via REST API direto
+    const res = await fetch(`${url}/rest/v1/`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` }
+    });
+
+    if (res.ok || res.status === 200 || res.status === 404) {
+      return {
+        success: true,
+        message: `Conexão bem-sucedida com o projeto (${projectRef}).`,
+        projectRef
+      };
     }
 
     return {
       success: false,
-      message: `Não foi possível comunicar com o Supabase: ${lastError}. Verifique a URL e se o CORS está liberado.`
+      message: `Não foi possível comunicar com o Supabase (${res.status} ${res.statusText}). Verifique a URL e a chave.`
     };
   } catch (err: any) {
     return {
@@ -195,59 +270,42 @@ export async function getSupabaseRowCount(
   credentials: SupabaseCredentials,
   tableName: string
 ): Promise<{ count: number; exists: boolean; error?: string }> {
-  const url = normalizeSupabaseUrl(credentials.url);
-  const key = credentials.key.trim();
+  const client = createSourceSupabaseClient(credentials);
 
   try {
-    const res = await fetch(`${url}/rest/v1/${tableName}?select=*`, {
-      method: 'HEAD',
-      headers: {
-        apikey: key,
-        Authorization: `Bearer ${key}`,
-        Prefer: 'count=exact'
-      }
-    });
+    const { count, error, status } = await client
+      .from(tableName)
+      .select('*', { count: 'exact', head: true });
 
-    if (res.ok || res.status === 200 || res.status === 206) {
-      const contentRange = res.headers.get('content-range');
-      if (contentRange) {
-        const parts = contentRange.split('/');
-        if (parts.length > 1 && !isNaN(Number(parts[1]))) {
-          return { count: Number(parts[1]), exists: true };
-        }
-      }
-      return { count: 0, exists: true };
+    if (!error) {
+      return { count: count || 0, exists: true };
     }
 
-    if (res.status === 404) {
-      return { count: 0, exists: false, error: 'Tabela não existe no banco antigo' };
+    // Se a tabela não existe
+    if (status === 404 || error.code === '42P01' || error.message?.includes('does not exist')) {
+      return { count: 0, exists: false, error: 'Tabela não existe no banco de origem' };
     }
 
-    const fallbackRes = await fetch(`${url}/rest/v1/${tableName}?select=id&limit=1000`, {
-      headers: {
-        apikey: key,
-        Authorization: `Bearer ${key}`
-      }
-    });
-
-    if (fallbackRes.ok) {
-      const data = await fallbackRes.json();
-      return { count: Array.isArray(data) ? data.length : 0, exists: true };
+    // Fallback: tenta buscar até 1000 IDs
+    const { data: idData, error: idErr } = await client.from(tableName).select('id').limit(1000);
+    if (!idErr && Array.isArray(idData)) {
+      return { count: idData.length, exists: true };
     }
 
-    return { count: 0, exists: false, error: `Status ${res.status}` };
+    return { count: 0, exists: false, error: error.message };
   } catch (err: any) {
-    return { count: 0, exists: false, error: err.message };
+    return { count: 0, exists: false, error: err.message || String(err) };
   }
 }
 
 /**
- * Busca todos os registros de uma tabela no Supabase paginando com Range
+ * Busca todos os registros de uma tabela no Supabase de forma resiliente e paginada
  */
 export async function fetchAllSupabaseTableData(
   credentials: SupabaseCredentials,
   tableName: string
 ): Promise<any[]> {
+  const client = createSourceSupabaseClient(credentials);
   const url = normalizeSupabaseUrl(credentials.url);
   const key = credentials.key.trim();
   const PAGE_SIZE = 1000;
@@ -256,22 +314,57 @@ export async function fetchAllSupabaseTableData(
   let hasMore = true;
 
   while (hasMore) {
-    const rangeHeader = `${offset}-${offset + PAGE_SIZE - 1}`;
-    const res = await fetch(`${url}/rest/v1/${tableName}?select=*`, {
-      method: 'GET',
-      headers: {
-        apikey: key,
-        Authorization: `Bearer ${key}`,
-        Range: rangeHeader
-      }
-    });
+    let batch: any[] = [];
+    let fetchError: any = null;
 
-    if (!res.ok) {
-      break;
+    // 1. Tentativa via cliente oficial do Supabase
+    try {
+      const { data, error, status } = await client
+        .from(tableName)
+        .select('*')
+        .range(offset, offset + PAGE_SIZE - 1);
+
+      if (!error && Array.isArray(data)) {
+        batch = data;
+      } else {
+        if (status === 404 || error?.code === '42P01' || error?.message?.includes('does not exist')) {
+          return allRecords; // Tabela inexistente, retorna o que tem
+        }
+        fetchError = error;
+      }
+    } catch (e) {
+      fetchError = e;
     }
 
-    const batch = await res.json();
-    if (!Array.isArray(batch) || batch.length === 0) {
+    // 2. Fallback via requisição REST com limit e offset se o SDK falhar
+    if (fetchError && batch.length === 0) {
+      try {
+        const fallbackUrl = `${url}/rest/v1/${tableName}?select=*&limit=${PAGE_SIZE}&offset=${offset}`;
+        const res = await fetch(fallbackUrl, {
+          method: 'GET',
+          headers: {
+            apikey: key,
+            Authorization: `Bearer ${key}`
+          }
+        });
+
+        if (res.ok) {
+          const json = await res.json();
+          if (Array.isArray(json)) {
+            batch = json;
+          }
+        } else if (res.status === 404) {
+          return allRecords;
+        } else {
+          const errText = await res.text().catch(() => '');
+          throw new Error(`Falha na tabela ${tableName} (${res.status}): ${errText || res.statusText}`);
+        }
+      } catch (err: any) {
+        throw new Error(`Não foi possível puxar os dados de ${tableName}: ${err.message}`);
+      }
+    }
+
+    if (batch.length === 0) {
       hasMore = false;
     } else {
       allRecords = allRecords.concat(batch);
@@ -287,7 +380,80 @@ export async function fetchAllSupabaseTableData(
 }
 
 /**
- * Salva uma lista de registros no Supabase usando upsert
+ * NOVO RECURSO: Exporta e baixa todos os dados do banco de origem como arquivo JSON
+ * Permite ao usuário salvar um backup completo de onde está puxando informações
+ */
+export async function exportSourceDatabaseToJson(
+  credentials: SupabaseCredentials,
+  tablesToExport?: string[],
+  onProgress?: (tabela: string, registros: number, indice: number, total: number) => void
+): Promise<{
+  success: boolean;
+  totalRecords: number;
+  dump: Record<string, any[]>;
+  fileName: string;
+}> {
+  const projectRef = extractProjectRef(credentials.url);
+  const targetTables = tablesToExport && tablesToExport.length > 0 
+    ? tablesToExport 
+    : MIGRATION_TABLES.map(t => t.name);
+
+  const dump: Record<string, any[]> = {};
+  let totalRecords = 0;
+
+  for (let i = 0; i < targetTables.length; i++) {
+    const tableName = targetTables[i];
+    try {
+      const records = await fetchAllSupabaseTableData(credentials, tableName);
+      dump[tableName] = records;
+      totalRecords += records.length;
+      if (onProgress) {
+        onProgress(tableName, records.length, i + 1, targetTables.length);
+      }
+    } catch (e: any) {
+      console.warn(`[Dump] Tabela ${tableName} não exportada:`, e.message);
+      dump[tableName] = [];
+    }
+  }
+
+  const payload = {
+    exportado_em: new Date().toISOString(),
+    projeto_origem: projectRef,
+    origem_url: credentials.url,
+    total_tabelas: targetTables.length,
+    total_registros: totalRecords,
+    tabelas: dump
+  };
+
+  const fileName = `porttohub_backup_origem_${projectRef}_${new Date().toISOString().split('T')[0]}.json`;
+
+  // Dispara o download automático no navegador
+  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    try {
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const downloadUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      console.error('Falha ao acionar download no browser:', err);
+    }
+  }
+
+  return {
+    success: true,
+    totalRecords,
+    dump,
+    fileName
+  };
+}
+
+/**
+ * Salva uma lista de registros no Supabase usando upsert com fallback unitário
  */
 export async function saveRecordsToSupabase(
   tableName: string,
@@ -298,7 +464,7 @@ export async function saveRecordsToSupabase(
     return { success: true, savedCount: 0, errors: [] };
   }
 
-  const BATCH_SIZE = 100;
+  const BATCH_SIZE = 50;
   let savedCount = 0;
   const errors: string[] = [];
 
@@ -306,22 +472,38 @@ export async function saveRecordsToSupabase(
     const chunk = records.slice(i, i + BATCH_SIZE).map(r => sanitizeForSupabase(r));
 
     try {
-      const { error } = await supabase.from(tableName).upsert(chunk);
+      const { error } = await supabase.from(tableName).upsert(chunk, { onConflict: 'id', ignoreDuplicates: false });
       if (error) {
-        // Tenta individualmente se falhar em lote
+        // Tenta individualmente para isolar e salvar tudo o que for possível
         for (const item of chunk) {
-          const { error: singleErr } = await supabase.from(tableName).upsert(item);
-          if (singleErr) {
-            errors.push(`Erro em ${tableName} ID ${item.id}: ${singleErr.message}`);
-          } else {
-            savedCount++;
+          try {
+            const { error: singleErr } = await supabase.from(tableName).upsert(item, { onConflict: 'id' });
+            if (singleErr) {
+              errors.push(`Erro em ${tableName} (ID: ${item.id}): ${singleErr.message}`);
+            } else {
+              savedCount++;
+            }
+          } catch (singleException: any) {
+            errors.push(`Exceção em ${tableName} (ID: ${item.id}): ${singleException.message}`);
           }
         }
       } else {
         savedCount += chunk.length;
       }
     } catch (err: any) {
-      errors.push(`Falha de rede em ${tableName}: ${err.message}`);
+      // Fallback unitário se a requisição de lote explodir
+      for (const item of chunk) {
+        try {
+          const { error: singleErr } = await supabase.from(tableName).upsert(item, { onConflict: 'id' });
+          if (singleErr) {
+            errors.push(`Erro em ${tableName}: ${singleErr.message}`);
+          } else {
+            savedCount++;
+          }
+        } catch (itemErr: any) {
+          errors.push(`Falha em ${tableName}: ${itemErr.message}`);
+        }
+      }
     }
 
     if (onProgress) {
@@ -344,15 +526,35 @@ export const saveRecordsToFirestore = saveRecordsToSupabase;
 export async function executeFullSupabaseMigration(
   credentials: SupabaseCredentials,
   tablesToMigrate: string[],
-  onTableProgress: (table: MigrationTableInfo) => void
+  onTableProgress: (table: MigrationTableInfo) => void,
+  opcoes?: {
+    salvarBackupAntes?: boolean;
+    onBackupProgresso?: (msg: string) => void;
+  }
 ): Promise<{
   totalMigrated: number;
   tablesSummary: Record<string, { count: number; error?: string }>;
+  backupSalvo?: boolean;
 }> {
   let totalMigrated = 0;
   const tablesSummary: Record<string, { count: number; error?: string }> = {};
 
-  for (const def of MIGRATION_TABLES) {
+  // Se solicitado, salva backup em JSON do banco de origem antes de iniciar
+  let backupSalvo = false;
+  if (opcoes?.salvarBackupAntes) {
+    if (opcoes.onBackupProgresso) opcoes.onBackupProgresso('Extraindo e salvando cópia de backup do banco de origem...');
+    try {
+      await exportSourceDatabaseToJson(credentials, tablesToMigrate);
+      backupSalvo = true;
+    } catch (e) {
+      console.warn('Aviso: Não foi possível salvar backup prévio:', e);
+    }
+  }
+
+  // Ordena as tabelas conforme a prioridade (condomínios e operadores primeiro)
+  const orderedDefs = [...MIGRATION_TABLES].sort((a, b) => a.order - b.order);
+
+  for (const def of orderedDefs) {
     if (tablesToMigrate.length > 0 && !tablesToMigrate.includes(def.name)) {
       continue;
     }
@@ -385,10 +587,10 @@ export async function executeFullSupabaseMigration(
       });
 
       totalMigrated += saveResult.savedCount;
-      tableState.status = saveResult.errors.length > 0 ? 'error' : 'completed';
+      tableState.status = saveResult.errors.length > 0 ? (saveResult.savedCount > 0 ? 'completed' : 'error') : 'completed';
       tableState.migratedCount = saveResult.savedCount;
       if (saveResult.errors.length > 0) {
-        tableState.error = `${saveResult.errors.length} erros durante a gravação.`;
+        tableState.error = `${saveResult.errors.length} erros durante a gravação (${saveResult.errors[0]}).`;
       }
       onTableProgress(tableState);
 
@@ -404,7 +606,7 @@ export async function executeFullSupabaseMigration(
     }
   }
 
-  return { totalMigrated, tablesSummary };
+  return { totalMigrated, tablesSummary, backupSalvo };
 }
 
 /**
@@ -439,7 +641,12 @@ export async function importJsonDump(
   const summary: Record<string, number> = {};
   const errors: string[] = [];
 
-  if (Array.isArray(data)) {
+  // Se o JSON contiver o envelope { exportado_em, tabelas: { ... } }
+  const tabelasFonte = data?.tabelas && typeof data.tabelas === 'object' && !Array.isArray(data.tabelas) 
+    ? data.tabelas 
+    : data;
+
+  if (Array.isArray(tabelasFonte)) {
     return {
       success: false,
       totalImported: 0,
@@ -448,7 +655,16 @@ export async function importJsonDump(
     };
   }
 
-  for (const [tableKey, records] of Object.entries(data)) {
+  // Ordena por ordem de prioridade de dependência
+  const nomesTabelas = Object.keys(tabelasFonte);
+  const tabelasOrdenadas = nomesTabelas.sort((a, b) => {
+    const orderA = MIGRATION_TABLES.find(t => t.name === a)?.order || 99;
+    const orderB = MIGRATION_TABLES.find(t => t.name === b)?.order || 99;
+    return orderA - orderB;
+  });
+
+  for (const tableKey of tabelasOrdenadas) {
+    const records = tabelasFonte[tableKey];
     if (!Array.isArray(records) || records.length === 0) continue;
 
     let canonicalTable = tableKey.toLowerCase().trim();
@@ -471,7 +687,7 @@ export async function importJsonDump(
   }
 
   return {
-    success: errors.length === 0,
+    success: errors.length === 0 || totalImported > 0,
     totalImported,
     summary,
     errors
