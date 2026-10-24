@@ -25,6 +25,7 @@ import EmblemaInfport from './components/EmblemaInfport';
 import LeitorNFC from './components/LeitorNFC';
 import ModalMeuPerfil from './components/ModalMeuPerfil';
 import SupabaseDoctorModal from './components/SupabaseDoctorModal';
+import ModalMigracaoSupabase from './components/ModalMigracaoSupabase';
 import BotaoNotificacoesLembretes from './components/BotaoNotificacoesLembretes';
 import AlertaNoCondominioTopo from './components/AlertaNoCondominioTopo';
 import ModalLembretesPortaria from './components/ModalLembretesPortaria';
@@ -78,6 +79,7 @@ export default function App() {
   const [modalLeitorNfcGlobal, setModalLeitorNfcGlobal] = useState(false);
   const [modalMeuPerfilAberto, setModalMeuPerfilAberto] = useState(false);
   const [modalSupabaseDoctorAberto, setModalSupabaseDoctorAberto] = useState(false);
+  const [modalMigracaoGlobalAberto, setModalMigracaoGlobalAberto] = useState(false);
   const [modalLembretesAberto, setModalLembretesAberto] = useState(false);
   const [mostrarSenhaLogin, setMostrarSenhaLogin] = useState(false);
   const [lembrarAcesso, setLembrarAcesso] = useState(true);
@@ -1275,6 +1277,18 @@ export default function App() {
         <SupabaseDoctorModal
           isOpen={modalSupabaseDoctorAberto}
           onClose={() => setModalSupabaseDoctorAberto(false)}
+          onAbrirMigrador={() => setModalMigracaoGlobalAberto(true)}
+        />
+
+        {/* Modal Global de Migração Supabase: Puxar Dados do Banco Antigo */}
+        <ModalMigracaoSupabase
+          aberto={modalMigracaoGlobalAberto}
+          onFechar={() => setModalMigracaoGlobalAberto(false)}
+          onMigracaoConcluida={() => {
+            if (condominioAtivoId) {
+              carregarFeatureFlags(condominioAtivoId);
+            }
+          }}
         />
 
         {/* Modal Global de Lembretes & Mensagens da Portaria (Portaria ⇄ Moradores) */}
