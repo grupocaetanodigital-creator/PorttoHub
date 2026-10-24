@@ -287,7 +287,7 @@ export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'oci
               className="ml-auto my-auto px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer shrink-0"
             >
               <ArrowRightLeft className="w-3.5 h-3.5" />
-              Migrador Supabase (v1) → v2.0
+              Puxar Dados do Supabase Antigo
             </button>
           )}
         </div>
@@ -717,17 +717,17 @@ export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'oci
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-black uppercase tracking-wider">Banco de Dados Ativo:</span>
                       <span className={`text-xs font-black px-2 py-0.5 rounded-md ${
-                        (statusOci.tipo as string) === 'firebase'
-                          ? 'bg-amber-200 text-amber-900'
+                        (statusOci.tipo as string) === 'supabase'
+                          ? 'bg-emerald-200 text-emerald-900'
                           : (statusOci.tipo as string) === 'oci'
                           ? 'bg-blue-200 text-blue-900'
                           : 'bg-emerald-200 text-emerald-900'
                       }`}>
-                        {(statusOci.tipo as string) === 'firebase'
-                          ? '🔥 Firebase Cloud Firestore'
+                        {(statusOci.tipo as string) === 'supabase'
+                          ? '⚡ Supabase PostgreSQL (fukxrdzhryumbcqibtas)'
                           : (statusOci.tipo as string) === 'oci'
                           ? '☁️ Oracle Cloud (VM Própria)'
-                          : '⚡ Nuvem'}
+                          : '⚡ Supabase PostgreSQL'}
                       </span>
                       {statusOci.customizado && (
                         <span className="text-[10px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded font-bold">
