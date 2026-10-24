@@ -273,19 +273,20 @@ export default function ModalMigracaoSupabase({
                 <ArrowRightLeft className="w-6 h-6 text-blue-200" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-500/30 text-blue-100 border border-blue-400/30">
                     PorttoHub v2.0 Oficial
                   </span>
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-200 border border-emerald-400/30">
-                    Cloud Firestore Ativo
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-200 border border-emerald-400/30 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Novo Supabase Conectado
                   </span>
                 </div>
                 <h2 className="text-xl sm:text-2xl font-bold tracking-tight mt-1">
-                  Migrador de Dados: Supabase (v1) → PorttoHub (v2.0)
+                  Puxar Dados: Supabase Antigo → Novo Supabase
                 </h2>
                 <p className="text-blue-100 text-xs sm:text-sm mt-0.5 max-w-2xl">
-                  Transfira condomínios, moradores, encomendas, chaves, materiais e histórico do banco antigo para a versão 2.0 sem perder nenhum dado.
+                  Transfira condomínios, moradores, encomendas, fotos, chaves e históricos do banco antigo diretamente para o seu novo Supabase oficial com zero perda de dados.
                 </p>
               </div>
             </div>
@@ -307,7 +308,7 @@ export default function ModalMigracaoSupabase({
               onClick={() => setMetodo('direto')}
               className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 cursor-pointer ${
                 metodo === 'direto'
-                  ? 'bg-white text-blue-900 shadow-md'
+                  ? 'bg-white text-blue-900 shadow-md font-bold'
                   : 'bg-white/10 text-white hover:bg-white/20'
               }`}
             >
@@ -320,7 +321,7 @@ export default function ModalMigracaoSupabase({
               onClick={() => setMetodo('arquivo')}
               className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 cursor-pointer ${
                 metodo === 'arquivo'
-                  ? 'bg-white text-blue-900 shadow-md'
+                  ? 'bg-white text-blue-900 shadow-md font-bold'
                   : 'bg-white/10 text-white hover:bg-white/20'
               }`}
             >
@@ -333,7 +334,7 @@ export default function ModalMigracaoSupabase({
               onClick={() => setMetodo('script_sql')}
               className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 cursor-pointer ${
                 metodo === 'script_sql'
-                  ? 'bg-white text-blue-900 shadow-md'
+                  ? 'bg-white text-blue-900 shadow-md font-bold'
                   : 'bg-white/10 text-white hover:bg-white/20'
               }`}
             >
@@ -344,7 +345,29 @@ export default function ModalMigracaoSupabase({
         </div>
 
         {/* Corpo do Modal com Scroll */}
-        <div className="p-5 sm:p-6 overflow-y-auto space-y-6 flex-1 bg-slate-50/50">
+        <div className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1 bg-slate-50/50">
+
+          {/* Banner de Destino Fixo */}
+          <div className="bg-emerald-50/90 border border-emerald-200 rounded-2xl p-3.5 sm:p-4 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2.5 bg-emerald-600 text-white rounded-xl shrink-0 shadow-xs">
+                <Database className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">
+                  Banco de Destino (Novo Supabase Ativo)
+                </span>
+                <span className="text-xs sm:text-sm font-mono font-bold text-emerald-950 truncate block">
+                  https://fukxrdzhryumbcqibtas.supabase.co
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="px-2.5 py-1 bg-emerald-600 text-white text-[11px] font-bold rounded-lg flex items-center gap-1 shadow-2xs">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Pronto para Gravação
+              </span>
+            </div>
+          </div>
 
           {/* MÉTODO 1: CONEXÃO DIRETA */}
           {metodo === 'direto' && (
@@ -352,13 +375,50 @@ export default function ModalMigracaoSupabase({
               
               {/* Card de Credenciais */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-                <div className="flex items-center gap-2 text-slate-800 font-bold text-sm sm:text-base">
-                  <Server className="w-5 h-5 text-blue-600" />
-                  Passo 1: Credenciais do Supabase Antigo (v1)
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 text-slate-800 font-bold text-sm sm:text-base">
+                    <Server className="w-5 h-5 text-blue-600" />
+                    Passo 1: Credenciais do Supabase Antigo
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-medium">
+                    Atalhos rápidos para preencher:
+                  </div>
                 </div>
-                <p className="text-xs text-slate-500">
-                  Encontre no seu painel Supabase em: <strong className="text-slate-700">Project Settings → API</strong>. Copie a URL do projeto e a chave (anon pública ou service_role).
-                </p>
+
+                {/* Botões de Preenchimento Rápido com Projetos Conhecidos */}
+                <div className="flex flex-wrap gap-1.5 p-2 bg-slate-100/80 rounded-xl border border-slate-200 text-xs">
+                  <span className="text-[10px] font-bold uppercase text-slate-500 self-center px-1">Projetos Anteriores:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSupabaseUrl('https://kkeizhscivyfjgetnbke.supabase.co');
+                      setStatusConexao({ testado: false, sucesso: false, mensagem: '' });
+                    }}
+                    className="px-2.5 py-1 bg-white hover:bg-blue-50 hover:text-blue-700 text-slate-700 rounded-lg border border-slate-300 font-mono text-[11px] font-semibold transition cursor-pointer"
+                  >
+                    kkeizhscivyfjgetnbke
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSupabaseUrl('https://juafrepntyksggqiqzyes.supabase.co');
+                      setStatusConexao({ testado: false, sucesso: false, mensagem: '' });
+                    }}
+                    className="px-2.5 py-1 bg-white hover:bg-blue-50 hover:text-blue-700 text-slate-700 rounded-lg border border-slate-300 font-mono text-[11px] font-semibold transition cursor-pointer"
+                  >
+                    juafrepntyksggqiqzyes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSupabaseUrl('http://163.176.49.21:8000');
+                      setStatusConexao({ testado: false, sucesso: false, mensagem: '' });
+                    }}
+                    className="px-2.5 py-1 bg-white hover:bg-amber-50 hover:text-amber-800 text-slate-700 rounded-lg border border-slate-300 font-mono text-[11px] font-semibold transition cursor-pointer"
+                  >
+                    OCI 163.176.49.21
+                  </button>
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
@@ -367,17 +427,17 @@ export default function ModalMigracaoSupabase({
                     </label>
                     <input
                       type="text"
-                      placeholder="https://xyzabcdefg.supabase.co"
+                      placeholder="https://kkeizhscivyfjgetnbke.supabase.co"
                       value={supabaseUrl}
                       onChange={(e) => setSupabaseUrl(e.target.value)}
                       disabled={migrando || testandoConexao}
-                      className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white"
+                      className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white font-mono"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      API Key (anon pública ou service_role)
+                      API Key do Supabase antigo (anon ou service_role)
                     </label>
                     <input
                       type="password"
@@ -438,11 +498,11 @@ export default function ModalMigracaoSupabase({
                   <div>
                     <h3 className="text-sm sm:text-base font-bold text-slate-800 flex items-center gap-2">
                       <Layers className="w-5 h-5 text-indigo-600" />
-                      Passo 2: Mapeamento das 28 Tabelas do Sistema
+                      Passo 2: Mapeamento das 29 Tabelas do Sistema
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5">
                       {statusConexao.sucesso
-                        ? `Detectados ${totalRegistrosSupabase} registros prontos para migração para o PorttoHub v2.0.`
+                        ? `Detectados ${totalRegistrosSupabase} registros escaneados prontos para transferência para o Novo Supabase.`
                         : 'Conecte ao Supabase acima para verificar quantos registros existem no seu banco antigo.'}
                     </p>
                   </div>
@@ -451,7 +511,7 @@ export default function ModalMigracaoSupabase({
                     <button
                       type="button"
                       onClick={handleIniciarMigracao}
-                      disabled={migrando || escaneando || totalRegistrosSupabase === 0}
+                      disabled={migrando || escaneando}
                       className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs sm:text-sm shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50 transition-all"
                     >
                       {migrando ? (
@@ -462,7 +522,7 @@ export default function ModalMigracaoSupabase({
                       ) : (
                         <>
                           <ArrowRightLeft className="w-4 h-4" />
-                          Migrar Todos os Dados Agora
+                          Puxar e Migrar Todos os Dados Agora
                         </>
                       )}
                     </button>
