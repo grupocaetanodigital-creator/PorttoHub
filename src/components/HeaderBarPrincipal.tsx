@@ -2,7 +2,6 @@ import React from 'react';
 import EmblemaInfport from './EmblemaInfport';
 import BotaoNotificacoesLembretes from './BotaoNotificacoesLembretes';
 import AlertaNoCondominioTopo from './AlertaNoCondominioTopo';
-import ControleFonteAcessibilidade from './ControleFonteAcessibilidade';
 import { NOME_APLICACAO } from '../services/versaoService';
 import { useCustomizacaoVisual, obterClasseTamanhoFonte } from '../services/customizacaoVisualService';
 
@@ -96,11 +95,6 @@ export default function HeaderBarPrincipal({
             condominioId={condominioId || ''}
             onAbrirPainel={onAbrirNotificacoes}
           />
-        </div>
-
-        {/* BOTÃO DE CONTROLE DE ACESSIBILIDADE & TEMA */}
-        <div className="shrink-0" title="Controles de Acessibilidade">
-          <ControleFonteAcessibilidade />
         </div>
       </div>
     </header>

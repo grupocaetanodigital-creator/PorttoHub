@@ -155,8 +155,8 @@ export default function BarraTopoMenus({
           />
         )}
 
-        {/* BOTÃO DE ACESSIBILIDADE */}
-        <div className="shrink-0" title="Controles de Acessibilidade">
+        {/* BOTÃO DE ACESSIBILIDADE (No celular fica na barra de menu inferior) */}
+        <div className="hidden sm:block shrink-0" title="Controles de Acessibilidade">
           <ControleFonteAcessibilidade />
         </div>
 

@@ -1511,22 +1511,8 @@ export default function App() {
                 </button>
               )}
 
-              {modulosDisponiveis.some(m => m.id === 'passagem' && m.flag) && (
-                <button
-                  type="button"
-                  onClick={() => mudarModulo('passagem')}
-                  className={`flex flex-col items-center justify-center flex-1 h-full py-1 text-[10px] font-bold transition cursor-pointer active:scale-95 ${
-                    moduloAtual === 'passagem'
-                      ? 'text-emerald-400'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <div className={`p-1 rounded-xl transition ${moduloAtual === 'passagem' ? 'bg-emerald-500/15' : ''}`}>
-                    <Repeat className={`w-4 h-4 ${moduloAtual === 'passagem' ? 'text-emerald-400 stroke-[2.5]' : ''}`} />
-                  </div>
-                  <span className="truncate max-w-[65px]">Passagem</span>
-                </button>
-              )}
+              {/* BOTÃO ACESSIBILIDADE NA BARRA DE MENU (NO LUGAR DE PASSAGEM DE POSTO) */}
+              <ControleFonteAcessibilidade variante="barra_menu" />
 
               <button
                 type="button"

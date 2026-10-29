@@ -11,7 +11,15 @@ import {
 import { obterTemaAtual, alternarTema, TipoTema } from '../services/themeService';
 import ModalInfoVersaoRepositorio from './ModalInfoVersaoRepositorio';
 
-export default function ControleFonteAcessibilidade() {
+export interface ControleFonteAcessibilidadeProps {
+  variante?: 'padrao' | 'barra_menu';
+  className?: string;
+}
+
+export default function ControleFonteAcessibilidade({
+  variante = 'padrao',
+  className = ''
+}: ControleFonteAcessibilidadeProps = {}) {
   const [escala, setEscala] = useState<NivelEscalaFonte>(100);
   const [menuAberto, setMenuAberto] = useState(false);
   const [modalInfoAberto, setModalInfoAberto] = useState(false);
@@ -104,28 +112,51 @@ export default function ControleFonteAcessibilidade() {
 
   return (
     <>
-      <div ref={containerRef} className="relative inline-flex items-center z-30">
+      <div ref={containerRef} className={`relative ${variante === 'barra_menu' ? 'flex flex-col items-center justify-center flex-1 h-full' : 'inline-flex items-center z-30'} ${className}`}>
         {/* Botão do Menu de Tamanho de Fonte, Tema e Atualizações */}
-        <button
-          type="button"
-          onClick={handleAlternarMenu}
-          title="Ajustes de Acessibilidade: Tamanho de Fonte, Tema Claro/Escuro e Atualizações"
-          aria-expanded={menuAberto}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition shadow-xs cursor-pointer select-none ${
-            menuAberto 
-              ? 'bg-slate-700 dark:bg-slate-700 text-emerald-400 border-emerald-500/50 ring-2 ring-emerald-500/30' 
-              : 'bg-slate-800 hover:bg-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 border-slate-700 dark:border-slate-600 text-slate-100 hover:text-emerald-400'
-          }`}
-        >
-          <Type className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-          <span className="font-mono font-black" style={{ fontSize: '12px' }}>{escala}%</span>
-        </button>
+        {variante === 'barra_menu' ? (
+          <button
+            type="button"
+            onClick={handleAlternarMenu}
+            title="Ajustes de Acessibilidade: Tamanho de Fonte, Tema Claro/Escuro e Atualizações"
+            aria-expanded={menuAberto}
+            className={`flex flex-col items-center justify-center w-full h-full py-1 text-[10px] font-bold transition cursor-pointer active:scale-95 ${
+              menuAberto
+                ? 'text-emerald-400'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <div className={`p-1 rounded-xl transition ${menuAberto ? 'bg-emerald-500/15' : ''}`}>
+              <Type className={`w-4 h-4 ${menuAberto ? 'text-emerald-400 stroke-[2.5]' : ''}`} />
+            </div>
+            <span className="truncate max-w-[65px]">Acessibilidade</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleAlternarMenu}
+            title="Ajustes de Acessibilidade: Tamanho de Fonte, Tema Claro/Escuro e Atualizações"
+            aria-expanded={menuAberto}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition shadow-xs cursor-pointer select-none ${
+              menuAberto 
+                ? 'bg-slate-700 dark:bg-slate-700 text-emerald-400 border-emerald-500/50 ring-2 ring-emerald-500/30' 
+                : 'bg-slate-800 hover:bg-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 border-slate-700 dark:border-slate-600 text-slate-100 hover:text-emerald-400'
+            }`}
+          >
+            <Type className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span className="font-mono font-black" style={{ fontSize: '12px' }}>{escala}%</span>
+          </button>
+        )}
 
         {/* Menu Flutuante Completo com botão de fechar para ficar na tela */}
         {menuAberto && (
           <div 
             onClick={(e) => e.stopPropagation()}
-            className="absolute right-0 top-full mt-2 w-68 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-white rounded-2xl shadow-2xl p-3.5 z-50 animate-in fade-in zoom-in-95 duration-100"
+            className={`absolute w-68 max-w-[90vw] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-white rounded-2xl shadow-2xl p-3.5 z-50 animate-in fade-in zoom-in-95 duration-100 ${
+              variante === 'barra_menu'
+                ? 'bottom-full mb-3 -right-6 sm:right-0'
+                : 'right-0 top-full mt-2'
+            }`}
           >
             {/* Topo do Menu com Fechar explícito para ficar na tela */}
             <div className="px-1 py-1 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
