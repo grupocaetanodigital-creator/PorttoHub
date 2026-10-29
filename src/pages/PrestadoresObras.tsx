@@ -1119,6 +1119,21 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
       }
 
       return true;
+    }).sort((a: any, b: any) => {
+      // Ordenação: liberações vencidas vão para o final da lista (ativos primeiro, vencidos por último)
+      const aVal = checarValidade(a);
+      const bVal = checarValidade(b);
+      const aExpirou = aVal.expirou ? 1 : 0;
+      const bExpirou = bVal.expirou ? 1 : 0;
+
+      if (aExpirou !== bExpirou) {
+        return aExpirou - bExpirou;
+      }
+
+      // Critério secundário: registros mais recentes primeiro
+      const dataA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dataB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dataB - dataA;
     });
   }, [cadastros, filtroCategoria, filtroStatus, busca, filtroUnidade, prestadoresAtivos]);
 
