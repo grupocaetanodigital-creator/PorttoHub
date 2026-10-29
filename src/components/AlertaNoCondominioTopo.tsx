@@ -154,17 +154,14 @@ export default function AlertaNoCondominioTopo({
         )}
       </div>
 
-      <div className="flex items-center gap-1 leading-none">
-        <span>No Condomínio:</span>
-        <span className="text-white font-black text-xs px-1.5 py-0.5 rounded-md bg-white/20">
-          {totalNoCondominio}
-        </span>
-      </div>
+      <span className="text-white font-black text-xs px-1.5 py-0.5 rounded-md bg-white/20 leading-none">
+        {totalNoCondominio}
+      </span>
 
       {temEstourados && (
         <span className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-red-600 text-white text-[10px] font-black uppercase tracking-wider">
           <AlertTriangle className="w-2.5 h-2.5 animate-bounce" />
-          {totalEstourados} estourado{totalEstourados > 1 ? 's' : ''}
+          {totalEstourados}
         </span>
       )}
     </button>
