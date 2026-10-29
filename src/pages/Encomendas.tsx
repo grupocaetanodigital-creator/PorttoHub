@@ -3303,18 +3303,22 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                 {itensRetidosFiltrados.length > 0 ? (
                   itensRetidosFiltrados.map((item: any) => {
                     const selecionado = itensSelecionadosIds.includes(item.id);
+                    const operadorNome = obterOperadorPacote(item);
+                    const dataHoraRegistro = item.created_at || item.data_recebimento
+                      ? `${new Date(item.created_at || item.data_recebimento).toLocaleDateString('pt-BR')} às ${new Date(item.created_at || item.data_recebimento).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+                      : null;
                     return (
                       <div 
                         key={item.id} 
                         onClick={() => toggleItemSelecao(item.id)}
-                        title={`Local: ${item.local_armazenamento || 'Bancada'} • Cadastrado em: ${new Date(item.created_at).toLocaleDateString('pt-BR')} às ${new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
+                        title={`Local: ${item.local_armazenamento || 'Bancada'}${dataHoraRegistro ? ` • Cadastrado em: ${dataHoraRegistro}` : ''} • Operador: ${operadorNome}`}
                         className={`p-2 sm:p-2.5 rounded-xl border cursor-pointer transition-all duration-150 flex items-center justify-between gap-2.5 active:scale-[0.99] select-none ${
                           selecionado 
                             ? 'border-emerald-500 bg-emerald-50/80 shadow-xs ring-1 ring-emerald-500/30' 
                             : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/60 shadow-2xs'
                         }`}
                       >
-                        {/* Checkbox visual compacto + Identificação da Unidade e Morador */}
+                        {/* Checkbox visual compacto + Identificação da Unidade, Morador, Data/Hora e Operador */}
                         <div className="flex items-center gap-2.5 min-w-0 flex-1">
                           <div className="shrink-0 flex items-center justify-center">
                             {selecionado ? (
@@ -3326,13 +3330,36 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                             )}
                           </div>
 
-                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-900 bg-slate-100 border border-slate-200/80 px-2 py-0.5 rounded shrink-0 font-mono">
-                            {formatarIdentificacaoUnidade(item.unidade, item.bloco, condoConfig?.tipo_estrutura)}
-                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-900 bg-slate-100 border border-slate-200/80 px-2 py-0.5 rounded shrink-0 font-mono">
+                                {formatarIdentificacaoUnidade(item.unidade, item.bloco, condoConfig?.tipo_estrutura)}
+                              </span>
 
-                          <span className="text-xs font-bold text-slate-900 truncate">
-                            {item.moradores?.nome || 'Morador não vinculado'}
-                          </span>
+                              <span className="text-xs font-bold text-slate-900 truncate">
+                                {item.moradores?.nome || 'Morador não vinculado'}
+                              </span>
+                            </div>
+
+                            {/* Informações de Registro: Data/Hora e Nome do Operador */}
+                            <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium mt-0.5 flex-wrap">
+                              {dataHoraRegistro && (
+                                <span className="flex items-center gap-1 text-slate-600 shrink-0">
+                                  <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                                  <span>{dataHoraRegistro}</span>
+                                </span>
+                              )}
+                              {dataHoraRegistro && operadorNome && (
+                                <span className="text-slate-300 hidden sm:inline">•</span>
+                              )}
+                              {operadorNome && (
+                                <span className="flex items-center gap-1 text-slate-600 shrink-0 truncate max-w-[160px] sm:max-w-[220px]" title={`Operador: ${operadorNome}`}>
+                                  <User className="w-3 h-3 text-slate-400 shrink-0" />
+                                  <span className="truncate">Op: <strong className="font-semibold text-slate-700">{operadorNome}</strong></span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
 
                         {/* BOTÕES DE AÇÃO AGRUPADOS DE FORMA DINÂMICA E COMPACTA */}
