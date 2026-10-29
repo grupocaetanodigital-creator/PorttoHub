@@ -1816,6 +1816,26 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     }
   };
 
+  const executarExclusaoEmLote = async () => {
+    if (!podeExcluirPacote || itensSelecionadosIds.length === 0) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('encomendas_itens')
+        .delete()
+        .in('id', itensSelecionadosIds);
+      if (error) throw error;
+      setItensSelecionadosIds([]);
+      setItensCandidatosEntrega([]);
+      setMensagem({ tipo: 'sucesso', texto: 'Pacotes selecionados excluídos com sucesso!' });
+      await carregarDadosBase();
+    } catch (err: any) {
+      setMensagem({ tipo: 'erro', texto: 'Erro ao excluir pacotes: ' + err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const buscarMoradoresEChecarAgrupamento = async (unid: string, bloc: string) => {
     const blocoEfetivo = eEstruturaCasas ? 'Casa' : bloc;
     setUnidadeTriagem(unid);
@@ -3275,6 +3295,20 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                         <Boxes className="w-3 h-3" /> Mover Sel.
                       </button>
                     )}
+                    {podeExcluirPacote && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm(`Deseja realmente excluir os ${itensSelecionadosIds.length} pacote(s) selecionado(s)?`)) {
+                            executarExclusaoEmLote();
+                          }
+                        }}
+                        className="bg-red-600 hover:bg-red-700 text-white font-black text-[10px] px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                        title="Excluir pacotes selecionados"
+                      >
+                        <Trash2 className="w-3 h-3" /> Excluir Sel.
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -3287,62 +3321,32 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                       <div 
                         key={item.id} 
                         onClick={() => toggleItemSelecao(item.id)}
-                        className={`p-2 sm:p-2.5 rounded-xl border cursor-pointer transition-all duration-150 flex items-center gap-2.5 active:scale-[0.99] select-none ${
+                        title={`Local: ${item.local_armazenamento || 'Bancada'} • Cadastrado em: ${new Date(item.created_at).toLocaleDateString('pt-BR')} às ${new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
+                        className={`p-2 sm:p-2.5 rounded-xl border cursor-pointer transition-all duration-150 flex items-center justify-between gap-2.5 active:scale-[0.99] select-none ${
                           selecionado 
                             ? 'border-emerald-500 bg-emerald-50/80 shadow-xs ring-1 ring-emerald-500/30' 
                             : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/60 shadow-2xs'
                         }`}
                       >
-                        {/* Checkbox visual compacto */}
-                        <div className="shrink-0 flex items-center justify-center">
-                          {selecionado ? (
-                            <div className="w-5 h-5 rounded-md bg-emerald-600 text-white flex items-center justify-center shadow-xs">
-                              <Check className="w-3.5 h-3.5 stroke-[3]" />
-                            </div>
-                          ) : (
-                            <div className="w-5 h-5 rounded-md border-2 border-slate-300 bg-white hover:border-emerald-400 transition-colors flex items-center justify-center" />
-                          )}
-                        </div>
-
-                        {/* Informações organizadas e compactas em 2 linhas */}
-                        <div className="flex-1 min-w-0">
-                          {/* LINHA 1: UNIDADE EM DESTAQUE + NOME DO MORADOR */}
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-900 bg-slate-100 border border-slate-200/80 px-1.5 py-0.5 rounded shrink-0">
-                              {formatarIdentificacaoUnidade(item.unidade, item.bloco, condoConfig?.tipo_estrutura)}
-                            </span>
-                            <span className="text-xs font-bold text-slate-900 truncate">
-                              {item.moradores?.nome || 'Morador não vinculado'}
-                            </span>
+                        {/* Checkbox visual compacto + Identificação da Unidade e Morador */}
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <div className="shrink-0 flex items-center justify-center">
+                            {selecionado ? (
+                              <div className="w-5 h-5 rounded-md bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                              </div>
+                            ) : (
+                              <div className="w-5 h-5 rounded-md border-2 border-slate-300 bg-white hover:border-emerald-400 transition-colors flex items-center justify-center" />
+                            )}
                           </div>
 
-                          {/* LINHA 2: LOCAL, HORA E CÓDIGO DE RASTREIO */}
-                          <div className="flex items-center gap-1.5 mt-1 text-[10px] text-slate-500 font-medium flex-wrap">
-                            {/* LOCAL ONDE ESTÁ O VOLUME */}
-                            <span className="text-[9.5px] font-bold text-emerald-900 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded flex items-center gap-1 shrink-0">
-                              <Boxes className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
-                              <span className="truncate max-w-[110px]">{item.local_armazenamento || 'Bancada'}</span>
-                            </span>
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-900 bg-slate-100 border border-slate-200/80 px-2 py-0.5 rounded shrink-0 font-mono">
+                            {formatarIdentificacaoUnidade(item.unidade, item.bloco, condoConfig?.tipo_estrutura)}
+                          </span>
 
-                            {/* HORA */}
-                            <span 
-                              className="text-[9.5px] bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-mono font-bold flex items-center gap-0.5 shrink-0"
-                              title={`Cadastrado em: ${new Date(item.created_at).toLocaleDateString('pt-BR')} às ${new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
-                            >
-                              <Clock className="w-2.5 h-2.5 text-slate-400" />
-                              <span>{new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                            </span>
-
-                            {/* CÓDIGO DE RASTREIO */}
-                            <span className="text-[9.5px] text-slate-400 font-mono truncate max-w-[130px] sm:max-w-[160px]">
-                              {(() => {
-                                const cod = item.codigo_barras?.trim();
-                                if (!cod) return 'Sem código';
-                                if (cod.startsWith('http')) return 'Link/QR';
-                                return cod.length > 12 ? cod.substring(0, 10) + '…' : cod;
-                              })()}
-                            </span>
-                          </div>
+                          <span className="text-xs font-bold text-slate-900 truncate">
+                            {item.moradores?.nome || 'Morador não vinculado'}
+                          </span>
                         </div>
 
                         {/* BOTÕES DE AÇÃO AGRUPADOS DE FORMA DINÂMICA E COMPACTA */}
