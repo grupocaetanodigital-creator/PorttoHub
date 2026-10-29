@@ -229,6 +229,14 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
   useEffect(() => {
     carregarTudo();
     carregarMoradores();
+
+    const handleAbrirPermanencia = () => {
+      setAbaAtiva('permanencia');
+    };
+    window.addEventListener('infport_abrir_permanencia_prestadores', handleAbrirPermanencia);
+    return () => {
+      window.removeEventListener('infport_abrir_permanencia_prestadores', handleAbrirPermanencia);
+    };
   }, [idCondominio]);
 
   // Carrega moradores para autocompletar unidades e telefones
@@ -1205,11 +1213,10 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                 fecharModalCadastro();
                 setModalNovoCadastro(true);
               }}
-              className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black px-3.5 py-2 rounded-xl text-xs uppercase flex items-center gap-1.5 transition shadow-sm active:scale-95 cursor-pointer"
-              title="Liberação de Acesso"
+              className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 p-2 rounded-xl transition shadow-sm active:scale-95 cursor-pointer"
+              title="Nova Liberação de Acesso"
             >
               <UserPlus className="w-4 h-4" />
-              <span>Liberação</span>
             </button>
           )}
         </div>
@@ -1235,59 +1242,81 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
       {/* ========================================================================= */}
       {/* 2. NAVEGAÇÃO ENTRE ABAS DO PAINEL */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-3 gap-1.5 sm:gap-2 border-b border-slate-800 pb-2 w-full">
-        {/* Aba 1: Gestão de Acessos & Liberados */}
+      <div className="space-y-2 border-b border-slate-800 pb-3 w-full">
+        {/* Linha 1 Exclusiva: Gestão de Acessos */}
         <button
+          type="button"
           onClick={() => setAbaAtiva('cadastros')}
-          className={`w-full py-2.5 px-2 rounded-xl text-xs sm:text-sm font-black transition flex items-center justify-center gap-1.5 cursor-pointer text-center ${
+          className={`w-full py-2.5 px-3.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer border ${
             abaAtiva === 'cadastros'
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20'
-              : 'bg-slate-900 text-slate-300 hover:bg-slate-850 hover:text-white border border-slate-800'
+              ? 'bg-purple-600 hover:bg-purple-500 text-white border-purple-500 shadow-sm'
+              : 'bg-slate-900 text-slate-300 hover:bg-slate-850 hover:text-white border-slate-800'
           }`}
         >
-          <Users className="w-4 h-4 shrink-0" />
-          <span>Gestão de Acessos</span>
-          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-950/80 text-purple-300">
-            {cadastros.length}
-          </span>
-        </button>
-
-        {/* Aba 2: Prestadores no Local (Permanência Controlada) */}
-        <button
-          onClick={() => setAbaAtiva('permanencia')}
-          className={`w-full py-2.5 px-2 rounded-xl text-xs sm:text-sm font-black transition flex items-center justify-center gap-1.5 cursor-pointer text-center ${
-            abaAtiva === 'permanencia'
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
-              : 'bg-slate-900 text-slate-300 hover:bg-slate-850 hover:text-white border border-slate-800'
-          }`}
-        >
-          <Timer className="w-4 h-4 shrink-0" />
-          <div className="flex items-center gap-1">
-            <span>Permanência</span>
-            <span className="hidden sm:inline">Prestadores</span>
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-purple-300 shrink-0" />
+            <span className="uppercase font-black text-xs sm:text-sm tracking-wide">Gestão de Acessos</span>
+            <span className="text-[11px] text-slate-400 font-normal hidden sm:inline">• Lista e Liberação de Autorizados</span>
           </div>
-          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
-            estatisticas.estourados > 0 
-              ? 'bg-red-600 text-white animate-pulse' 
-              : 'bg-slate-950/80 text-blue-300'
+          <span className={`px-2 py-0.5 rounded-lg text-[11px] font-mono font-bold ${
+            abaAtiva === 'cadastros'
+              ? 'bg-purple-950/80 text-purple-200 border border-purple-400/30'
+              : 'bg-slate-800 text-slate-300 border border-slate-700'
           }`}>
-            {estatisticas.prestadoresDentro}
+            {cadastros.length} {cadastros.length === 1 ? 'liberado' : 'liberados'}
           </span>
         </button>
 
-        {/* Aba 3: Histórico de Acessos Auditados */}
-        <button
-          onClick={() => setAbaAtiva('historico')}
-          className={`w-full py-2.5 px-2 rounded-xl text-xs sm:text-sm font-black transition flex items-center justify-center gap-1.5 cursor-pointer text-center ${
-            abaAtiva === 'historico'
-              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-              : 'bg-slate-900 text-slate-300 hover:bg-slate-850 hover:text-white border border-slate-800'
-          }`}
-        >
-          <Clock className="w-4 h-4 shrink-0" />
-          <span>Histórico</span>
-          <span className="hidden sm:inline text-[10px] text-slate-400 font-normal">Auditado</span>
-        </button>
+        {/* Linha 2 Abaixo: Permanência de Prestadores e Histórico (Lado a Lado) */}
+        <div className="grid grid-cols-2 gap-2">
+          {/* Aba 2: Prestadores no Local (Permanência Controlada) */}
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('permanencia')}
+            className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-between cursor-pointer border ${
+              abaAtiva === 'permanencia'
+                ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-500 shadow-sm'
+                : 'bg-slate-900 text-slate-300 hover:bg-slate-850 hover:text-white border-slate-800'
+            }`}
+          >
+            <div className="flex items-center gap-1.5 truncate">
+              <Timer className="w-3.5 h-3.5 text-blue-300 shrink-0" />
+              <span className="truncate">Permanência Prestadores</span>
+            </div>
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-black shrink-0 ${
+              estatisticas.estourados > 0 
+                ? 'bg-red-600 text-white animate-pulse' 
+                : abaAtiva === 'permanencia'
+                ? 'bg-blue-950 text-blue-200'
+                : 'bg-slate-800 text-slate-300'
+            }`}>
+              {estatisticas.prestadoresDentro}
+            </span>
+          </button>
+
+          {/* Aba 3: Histórico de Acessos Auditados */}
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('historico')}
+            className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-between cursor-pointer border ${
+              abaAtiva === 'historico'
+                ? 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500 shadow-sm'
+                : 'bg-slate-900 text-slate-300 hover:bg-slate-850 hover:text-white border-slate-800'
+            }`}
+          >
+            <div className="flex items-center gap-1.5 truncate">
+              <Clock className="w-3.5 h-3.5 text-indigo-300 shrink-0" />
+              <span className="truncate">Histórico de Acessos</span>
+            </div>
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold shrink-0 ${
+              abaAtiva === 'historico'
+                ? 'bg-indigo-950 text-indigo-200'
+                : 'bg-slate-800 text-slate-300'
+            }`}>
+              {historicoAcessos.length}
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* ========================================================================= */}
@@ -1301,10 +1330,31 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
             
             {/* 1. Categorias de Entrada (Botões/Chips em Destaque) */}
             <div>
-              <label className="block text-[11px] font-black uppercase text-slate-400 mb-2 flex items-center gap-1.5">
-                <Filter className="w-3.5 h-3.5 text-purple-400" />
-                <span>Filtrar por:</span>
-              </label>
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <label className="text-[11px] font-black uppercase text-slate-400 flex items-center gap-1.5">
+                  <Filter className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Filtrar por:</span>
+                </label>
+
+                {/* Botão Filtrar que recolhe e abre as 2 listas de seleção e a barra de pesquisa */}
+                <button
+                  type="button"
+                  onClick={() => setMostrarFiltrosAvancados(!mostrarFiltrosAvancados)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+                    mostrarFiltrosAvancados || (busca.trim() || filtroStatus !== 'todos' || filtroUnidade !== 'todas')
+                      ? 'bg-purple-600 text-white border-purple-500 shadow-sm'
+                      : 'bg-slate-950 text-slate-300 border-slate-700 hover:bg-slate-800'
+                  }`}
+                  title="Abrir ou recolher filtros de status, unidade e busca"
+                >
+                  <Search className="w-3 h-3" />
+                  <span>Filtrar</span>
+                  {(busca.trim() || filtroStatus !== 'todos' || filtroUnidade !== 'todas') && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  )}
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${mostrarFiltrosAvancados ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {/* Todas as Categorias */}
@@ -1381,60 +1431,65 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
               </div>
             </div>
 
-            {/* 2. Subfiltros de Status e Unidade (Lado a lado acima da busca) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-              {/* Filtro por Status */}
-              <div>
-                <select
-                  value={filtroStatus}
-                  onChange={(e: any) => setFiltroStatus(e.target.value)}
-                  className="w-full bg-slate-950 text-white text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500 font-semibold cursor-pointer"
-                >
-                  <option value="todos">Todos os Status</option>
-                  <option value="dentro">⏱️ Prestadores Presentes Agora</option>
-                  <option value="entradas_hoje">🚪 Entradas Registradas Hoje</option>
-                  <option value="validos">🟢 Liberações Válidas</option>
-                  <option value="vencidos">⚠️ Liberações Vencidas / Expiradas</option>
-                </select>
-              </div>
+            {/* 2. Subfiltros de Status, Unidade e Busca (Recolhidos por padrão, abertos quando selecionado) */}
+            {(mostrarFiltrosAvancados || (busca.trim() || filtroStatus !== 'todos' || filtroUnidade !== 'todas')) && (
+              <div className="space-y-2.5 pt-1 animate-in fade-in duration-150">
+                {/* As 2 listas lado a lado */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* Filtro por Status */}
+                  <div>
+                    <select
+                      value={filtroStatus}
+                      onChange={(e: any) => setFiltroStatus(e.target.value)}
+                      className="w-full bg-slate-950 text-white text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500 font-semibold cursor-pointer"
+                    >
+                      <option value="todos">Todos os Status</option>
+                      <option value="dentro">⏱️ Prestadores Presentes Agora</option>
+                      <option value="entradas_hoje">🚪 Entradas Registradas Hoje</option>
+                      <option value="validos">🟢 Liberações Válidas</option>
+                      <option value="vencidos">⚠️ Liberações Vencidas / Expiradas</option>
+                    </select>
+                  </div>
 
-              {/* Filtro por Unidade / Casa */}
-              <div>
-                <select
-                  value={filtroUnidade}
-                  onChange={(e) => setFiltroUnidade(e.target.value)}
-                  className="w-full bg-slate-950 text-white text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500 font-semibold cursor-pointer"
-                >
-                  <option value="todas">Todas as Unidades</option>
-                  {listaUnidadesDisponiveis.map(u => (
-                    <option key={u} value={u}>
-                      {eEstruturaCasas ? `Casa ${u}` : `Apto/Unidade ${u}`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+                  {/* Filtro por Unidade / Casa */}
+                  <div>
+                    <select
+                      value={filtroUnidade}
+                      onChange={(e) => setFiltroUnidade(e.target.value)}
+                      className="w-full bg-slate-950 text-white text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500 font-semibold cursor-pointer"
+                    >
+                      <option value="todas">Todas as Unidades</option>
+                      {listaUnidadesDisponiveis.map(u => (
+                        <option key={u} value={u}>
+                          {eEstruturaCasas ? `Casa ${u}` : `Apto/Unidade ${u}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
-            {/* 3. Campo de Busca Rápida (Abaixo das listas de filtros) */}
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-              <input
-                type="text"
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                placeholder="Buscar por nome, CPF/RG, unidade, placa ou empresa..."
-                className="w-full bg-slate-950 text-white text-xs pl-9 pr-8 py-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500"
-              />
-              {busca && (
-                <button
-                  type="button"
-                  onClick={() => setBusca('')}
-                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-white cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
+                {/* Campo de Busca Rápida */}
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                  <input
+                    type="text"
+                    value={busca}
+                    onChange={(e) => setBusca(e.target.value)}
+                    placeholder="Buscar por nome, CPF/RG, unidade, placa ou empresa..."
+                    className="w-full bg-slate-950 text-white text-xs pl-9 pr-8 py-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500"
+                  />
+                  {busca && (
+                    <button
+                      type="button"
+                      onClick={() => setBusca('')}
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-white cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Contador de Resultados e Botão de Limpar */}
             <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/80">
