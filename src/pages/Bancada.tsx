@@ -540,6 +540,20 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
     return unidade.toUpperCase();
   };
 
+  // Formatação de Data e Hora para exibição em itens da bancada
+  const formatarDataHoraItem = (dataRaw?: string) => {
+    if (!dataRaw) return '';
+    try {
+      const d = new Date(dataRaw);
+      if (isNaN(d.getTime())) return dataRaw;
+      const dataFmt = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      const horaFmt = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return `${dataFmt} às ${horaFmt}`;
+    } catch {
+      return dataRaw;
+    }
+  };
+
   // Botão ativo atual
   const localAtivoAtual = useMemo(() => {
     return locaisConfig.find(l => l.id === localSelecionadoId) || locaisConfig.find(l => l.ativo) || LOCAIS_PADRAO_BANCADA[0];
@@ -1381,12 +1395,16 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
                             </p>
                           )}
 
-                          {/* HORA E OPERADOR EM LINHA ÚNICA TRUNCADA SE NECESSÁRIO */}
-                          <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-slate-500 font-medium truncate mt-1">
-                            <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <span>{new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          {/* OPERADOR E DATA/HORA AJUSTADOS */}
+                          <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-[11px] text-slate-500 font-medium flex-wrap mt-1">
+                            <span className="truncate">
+                              Operador: <strong className="text-slate-800 dark:text-slate-200 font-semibold">{item.operador_nome || 'Portaria'}</strong>
+                            </span>
                             <span className="text-slate-300">•</span>
-                            <span className="truncate">Operador: <strong className="text-slate-700 font-semibold">{item.operador_nome || 'Portaria'}</strong></span>
+                            <div className="flex items-center gap-1 shrink-0 text-slate-600 dark:text-slate-400">
+                              <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span>{formatarDataHoraItem(item.created_at)}</span>
+                            </div>
                           </div>
                         </div>
 
@@ -2048,11 +2066,15 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
                             </p>
                           )}
 
-                          <div className="flex items-center gap-1.5 text-[10.5px] sm:text-[11px] text-slate-500 font-medium mt-1 min-w-0 overflow-hidden">
-                            <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <span className="shrink-0">{new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          <div className="flex items-center gap-1.5 sm:gap-2 text-[10.5px] sm:text-[11px] text-slate-500 font-medium flex-wrap mt-1 min-w-0 overflow-hidden">
+                            <span className="truncate">
+                              Operador: <strong className="text-slate-800 dark:text-slate-200 font-semibold">{item.operador_nome || 'Portaria'}</strong>
+                            </span>
                             <span className="text-slate-300 shrink-0">•</span>
-                            <span className="truncate">Operador: <strong className="text-slate-700 font-semibold">{item.operador_nome || 'Portaria'}</strong></span>
+                            <div className="flex items-center gap-1 shrink-0 text-slate-600 dark:text-slate-400">
+                              <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span>{formatarDataHoraItem(item.created_at)}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
