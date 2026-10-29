@@ -2709,25 +2709,17 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                       </span>
                     </div>
 
-                    <div className="flex flex-col items-end text-right shrink-0">
-                      {/* EM FRENTE DA HORA: LOCAL ONDE ESTA O VOLUME */}
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[9.5px] font-bold text-emerald-950 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded flex items-center gap-1">
-                          <Boxes className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
-                          <span className="truncate max-w-[120px]">{item.local_armazenamento || 'Bancada Principal'}</span>
-                        </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {/* LOCAL ONDE ESTA O VOLUME */}
+                      <span className="text-[9.5px] font-bold text-emerald-950 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded flex items-center gap-1">
+                        <Boxes className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                        <span className="truncate max-w-[120px]">{item.local_armazenamento || 'Bancada'}</span>
+                      </span>
 
-                        {/* HORA */}
-                        <span className="text-[9px] bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-mono font-bold flex items-center gap-0.5">
-                          <Clock className="w-2.5 h-2.5 text-slate-400" />
-                          <span>{new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                        </span>
-                      </div>
-
-                      {/* NOME DE OPERADOR: EM BAIXO DA HORA */}
-                      <span className="text-[8.5px] text-slate-500 font-semibold truncate max-w-[140px] mt-0.5 flex items-center gap-0.5">
-                        <User className="w-2.5 h-2.5 text-slate-400 shrink-0" />
-                        <span>{obterOperadorPacote(item)}</span>
+                      {/* HORA */}
+                      <span className="text-[9px] bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-mono font-bold flex items-center gap-0.5">
+                        <Clock className="w-2.5 h-2.5 text-slate-400" />
+                        <span>{new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
                       </span>
                     </div>
                   </div>
@@ -3295,111 +3287,107 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                       <div 
                         key={item.id} 
                         onClick={() => toggleItemSelecao(item.id)}
-                        className={`p-2 rounded-xl border cursor-pointer transition flex gap-2 items-start ${
-                          selecionado ? 'border-emerald-500 bg-emerald-50/70 shadow-2xs ring-1 ring-emerald-500/30' : 'border-slate-200 bg-white hover:border-slate-300'
+                        className={`p-2 sm:p-2.5 rounded-xl border cursor-pointer transition-all duration-150 flex items-center gap-2.5 active:scale-[0.99] select-none ${
+                          selecionado 
+                            ? 'border-emerald-500 bg-emerald-50/80 shadow-xs ring-1 ring-emerald-500/30' 
+                            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/60 shadow-2xs'
                         }`}
                       >
-                        <div className="mt-0.5 text-slate-400 shrink-0">
-                          {selecionado ? <CheckSquare className="w-4 h-4 text-emerald-600" /> : <Square className="w-4 h-4" />}
+                        {/* Checkbox visual compacto */}
+                        <div className="shrink-0 flex items-center justify-center">
+                          {selecionado ? (
+                            <div className="w-5 h-5 rounded-md bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                            </div>
+                          ) : (
+                            <div className="w-5 h-5 rounded-md border-2 border-slate-300 bg-white hover:border-emerald-400 transition-colors flex items-center justify-center" />
+                          )}
                         </div>
+
+                        {/* Informações organizadas e compactas em 2 linhas */}
                         <div className="flex-1 min-w-0">
-                          {/* LINHA SUPERIOR: UNIDADE NA ESQUERDA, LOCAL EM FRENTE DA HORA E OPERADOR ABAIXO DA HORA */}
-                          <div className="flex justify-between items-start gap-1.5">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                          {/* LINHA 1: UNIDADE EM DESTAQUE + NOME DO MORADOR */}
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-900 bg-slate-100 border border-slate-200/80 px-1.5 py-0.5 rounded shrink-0">
                               {formatarIdentificacaoUnidade(item.unidade, item.bloco, condoConfig?.tipo_estrutura)}
                             </span>
-
-                            <div className="flex flex-col items-end text-right shrink-0">
-                              {/* EM FRENTE DA HORA: LOCAL ONDE ESTA O VOLUME */}
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-[9.5px] font-bold text-emerald-950 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded flex items-center gap-1">
-                                  <Boxes className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
-                                  <span className="truncate max-w-[120px]">{item.local_armazenamento || 'Bancada Principal'}</span>
-                                </span>
-
-                                {/* HORA DE ENTRADA */}
-                                <span className="text-[9px] bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-mono font-bold flex items-center gap-0.5" title={`Entrada: ${new Date(item.created_at).toLocaleDateString('pt-BR')} às ${new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}>
-                                  <Clock className="w-2.5 h-2.5 text-slate-400" />
-                                  <span>{new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                                </span>
-                              </div>
-
-                              {/* NOME DE OPERADOR EM BAIXO DA HORA */}
-                              <span className="text-[8.5px] text-slate-500 font-semibold truncate max-w-[150px] mt-0.5 flex items-center gap-0.5" title={`Operador de cadastro: ${obterOperadorPacote(item)}`}>
-                                <User className="w-2.5 h-2.5 text-slate-400 shrink-0" />
-                                <span>{obterOperadorPacote(item)}</span>
-                              </span>
-                            </div>
+                            <span className="text-xs font-bold text-slate-900 truncate">
+                              {item.moradores?.nome || 'Morador não vinculado'}
+                            </span>
                           </div>
 
-                          <div className="flex items-start justify-between gap-2 mt-1">
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-bold text-slate-900 truncate">
-                                {item.moradores?.nome || 'Morador não vinculado'}
-                              </p>
-                              <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono mt-0.5">
-                                <span className="truncate max-w-[150px] sm:max-w-[200px]">
-                                  {(() => {
-                                    const cod = item.codigo_barras?.trim();
-                                    if (!cod) return 'Rastreio: Sem código';
-                                    if (cod.startsWith('http')) return 'Rastreio: Link/QR';
-                                    return `Rastreio: ${cod.length > 14 ? cod.substring(0, 12) + '…' : cod}`;
-                                  })()}
-                                </span>
-                              </div>
-                            </div>
-
-                            {item.foto_etiqueta_url && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setModalFotoAmpliada(formatarUrlFoto(item.foto_etiqueta_url));
-                                }}
-                                className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg border border-blue-200 transition cursor-pointer shrink-0 flex items-center justify-center shadow-2xs"
-                                title="Ver foto da etiqueta/encomenda"
-                              >
-                                <Camera className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-
-                          {/* DATA E BOTÕES DE AÇÃO */}
-                          <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-100 flex-wrap gap-1">
-                            <span className="text-[9px] text-slate-400 font-mono">
-                              {new Date(item.created_at).toLocaleDateString('pt-BR')}
+                          {/* LINHA 2: LOCAL, HORA E CÓDIGO DE RASTREIO */}
+                          <div className="flex items-center gap-1.5 mt-1 text-[10px] text-slate-500 font-medium flex-wrap">
+                            {/* LOCAL ONDE ESTÁ O VOLUME */}
+                            <span className="text-[9.5px] font-bold text-emerald-900 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded flex items-center gap-1 shrink-0">
+                              <Boxes className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                              <span className="truncate max-w-[110px]">{item.local_armazenamento || 'Bancada'}</span>
                             </span>
 
-                            <div className="flex items-center gap-1 ml-auto">
-                              {podeEditarPacote && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    abrirEdicaoPacote(item);
-                                  }}
-                                  className="p-1 bg-slate-100 hover:bg-amber-100 text-slate-600 hover:text-amber-800 rounded border border-slate-200 transition cursor-pointer"
-                                  title="Editar pacote e alterar local físico"
-                                >
-                                  <Pencil className="w-3 h-3" />
-                                </button>
-                              )}
+                            {/* HORA */}
+                            <span 
+                              className="text-[9.5px] bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-mono font-bold flex items-center gap-0.5 shrink-0"
+                              title={`Cadastrado em: ${new Date(item.created_at).toLocaleDateString('pt-BR')} às ${new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
+                            >
+                              <Clock className="w-2.5 h-2.5 text-slate-400" />
+                              <span>{new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                            </span>
 
-                              {podeExcluirPacote && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    confirmarExcluirPacote(item);
-                                  }}
-                                  className="p-1 bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-700 rounded border border-slate-200 transition cursor-pointer"
-                                  title="Excluir este pacote retido"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              )}
-                            </div>
+                            {/* CÓDIGO DE RASTREIO */}
+                            <span className="text-[9.5px] text-slate-400 font-mono truncate max-w-[130px] sm:max-w-[160px]">
+                              {(() => {
+                                const cod = item.codigo_barras?.trim();
+                                if (!cod) return 'Sem código';
+                                if (cod.startsWith('http')) return 'Link/QR';
+                                return cod.length > 12 ? cod.substring(0, 10) + '…' : cod;
+                              })()}
+                            </span>
                           </div>
+                        </div>
+
+                        {/* BOTÕES DE AÇÃO AGRUPADOS DE FORMA DINÂMICA E COMPACTA */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {item.foto_etiqueta_url && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setModalFotoAmpliada(formatarUrlFoto(item.foto_etiqueta_url));
+                              }}
+                              className="w-7 h-7 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg border border-blue-200 transition cursor-pointer flex items-center justify-center shadow-2xs active:scale-95"
+                              title="Ver foto da etiqueta/encomenda"
+                            >
+                              <Camera className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {podeEditarPacote && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                abrirEdicaoPacote(item);
+                              }}
+                              className="w-7 h-7 bg-slate-100 hover:bg-amber-100 text-slate-600 hover:text-amber-800 rounded-lg border border-slate-200 transition cursor-pointer flex items-center justify-center shadow-2xs active:scale-95"
+                              title="Editar pacote e alterar local"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                          )}
+
+                          {podeExcluirPacote && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                confirmarExcluirPacote(item);
+                              }}
+                              className="w-7 h-7 bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-700 rounded-lg border border-slate-200 transition cursor-pointer flex items-center justify-center shadow-2xs active:scale-95"
+                              title="Excluir este pacote retido"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
