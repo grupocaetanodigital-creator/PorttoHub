@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Users, AlertTriangle } from 'lucide-react';
+import { HardHat, AlertTriangle } from 'lucide-react';
 import { supabase } from '../services/supabase';
 
 interface AlertaNoCondominioTopoProps {
@@ -19,9 +19,12 @@ export default function AlertaNoCondominioTopo({
 
   const carregarContagem = async () => {
     try {
+      // REGRA: Controle de permanência e alertas aplicam-se EXCLUSIVAMENTE a prestadores de serviço e obras.
+      // Visitantes e familiares possuem circulação livre e não requerem controle de tempo/saída.
       let queryAcessos = supabase
         .from('prestadores_acessos')
         .select('id, data_hora_entrada, limite_permanencia_ate, perfil_acesso, status_acesso')
+        .neq('perfil_acesso', 'autorizado')
         .eq('status_acesso', 'DENTRO');
 
       if (condominioId) {
@@ -32,19 +35,20 @@ export default function AlertaNoCondominioTopo({
 
       let lista: any[] = [];
       if (!errAcessos && acessosDb && acessosDb.length > 0) {
-        lista = acessosDb;
+        lista = acessosDb.filter((item: any) => item.perfil_acesso !== 'autorizado');
       } else {
-        // Fallback para tabela prestadores com status 'DENTRO' ou 'EM_ANDAMENTO'
+        // Fallback para tabela prestadores com status 'DENTRO' ou 'EM_ANDAMENTO' excluindo visitantes/família
         let qPrest = supabase
           .from('prestadores')
           .select('id, data_hora_entrada, limite_permanencia_ate, perfil_acesso, status_acesso')
+          .neq('perfil_acesso', 'autorizado')
           .in('status_acesso', ['DENTRO', 'EM_ANDAMENTO']);
 
         if (condominioId) {
           qPrest = qPrest.eq('condominio_id', condominioId);
         }
         const { data: prestDb } = await qPrest;
-        lista = prestDb || [];
+        lista = (prestDb || []).filter((item: any) => item.perfil_acesso !== 'autorizado');
       }
 
       listaAcessosRef.current = lista;
@@ -58,9 +62,13 @@ export default function AlertaNoCondominioTopo({
     const agora = Date.now();
     let estourados = 0;
 
-    lista.forEach((item) => {
-      const ehVisitante = item.perfil_acesso === 'autorizado';
-      if (!ehVisitante && item.limite_permanencia_ate) {
+    // Filtra estritamente apenas prestadores de serviço / obras
+    const prestadores = (lista || []).filter(
+      (item) => item && item.perfil_acesso !== 'autorizado'
+    );
+
+    prestadores.forEach((item) => {
+      if (item.limite_permanencia_ate) {
         const tLimite = new Date(item.limite_permanencia_ate).getTime();
         if (tLimite - agora <= 0) {
           estourados++;
@@ -68,7 +76,7 @@ export default function AlertaNoCondominioTopo({
       }
     });
 
-    setTotalNoCondominio(lista.length);
+    setTotalNoCondominio(prestadores.length);
     setTotalEstourados(estourados);
   };
 
@@ -110,7 +118,7 @@ export default function AlertaNoCondominioTopo({
       )
       .subscribe();
 
-    // Cálculo em memória a cada 10 segundos para detectar estouro de permanência sem requisição GET ao banco
+    // Cálculo em memória a cada 10 segundos para detectar estouro de permanência de prestadores sem requisições desnecessárias
     const intervalMemoria = setInterval(() => {
       if (listaAcessosRef.current.length > 0) {
         calcularEstourados(listaAcessosRef.current);
@@ -125,30 +133,37 @@ export default function AlertaNoCondominioTopo({
     };
   }, [condominioId]);
 
-  // Se não houver ninguém no condomínio, não renderiza o alerta
+  // Se não houver nenhum prestador em permanência no condomínio, não renderiza o botão
   if (totalNoCondominio === 0) {
     return null;
   }
 
   const temEstourados = totalEstourados > 0;
 
+  const handleClick = () => {
+    try {
+      window.dispatchEvent(new CustomEvent('infport_abrir_permanencia_prestadores'));
+    } catch {}
+    onNavegar();
+  };
+
   return (
     <button
       type="button"
-      onClick={onNavegar}
+      onClick={handleClick}
       title={
         temEstourados
-          ? `Alerta: ${totalNoCondominio} no condomínio (${totalEstourados} com permanência estourada!). Clique para ver.`
-          : `${totalNoCondominio} pessoa(s) no condomínio agora. Clique para abrir lista.`
+          ? `Alerta de Permanência: ${totalNoCondominio} prestador(es) no condomínio (${totalEstourados} com permanência estourada!). Clique para ver.`
+          : `Permanência de Prestadores: ${totalNoCondominio} prestador(es) em serviço no condomínio. Clique para abrir lista.`
       }
       className={`relative inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-black transition cursor-pointer select-none border shadow-xs active:scale-95 focus:outline-none ${
         temEstourados
           ? 'bg-red-950/80 hover:bg-red-900 border-red-500/70 text-white animate-pulse shadow-red-950/50'
-          : 'bg-purple-950/80 hover:bg-purple-900 border-purple-500/50 text-white shadow-purple-950/40'
+          : 'bg-amber-950/80 hover:bg-amber-900/90 border-amber-500/50 text-amber-200 shadow-amber-950/40'
       } ${className}`}
     >
-      <div className="relative">
-        <Users className="w-3.5 h-3.5" />
+      <div className="relative flex items-center">
+        <HardHat className={`w-3.5 h-3.5 ${temEstourados ? 'text-white' : 'text-amber-400'}`} />
         {temEstourados && (
           <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-ping" />
         )}
