@@ -3295,20 +3295,6 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                         <Boxes className="w-3 h-3" /> Mover Sel.
                       </button>
                     )}
-                    {podeExcluirPacote && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm(`Deseja realmente excluir os ${itensSelecionadosIds.length} pacote(s) selecionado(s)?`)) {
-                            executarExclusaoEmLote();
-                          }
-                        }}
-                        className="bg-red-600 hover:bg-red-700 text-white font-black text-[10px] px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs transition cursor-pointer"
-                        title="Excluir pacotes selecionados"
-                      >
-                        <Trash2 className="w-3 h-3" /> Excluir Sel.
-                      </button>
-                    )}
                   </div>
                 )}
               </div>
