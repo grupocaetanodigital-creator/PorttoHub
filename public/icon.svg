@@ -1,10 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <defs>
-    <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#1e293b"/>
-      <stop offset="100%" stop-color="#0f172a"/>
-    </radialGradient>
-  </defs>
-  <rect width="512" height="512" rx="110" fill="url(#bgGlow)"/>
-  <image href="/pwa-512x512.png" x="16" y="16" width="480" height="480" preserveAspectRatio="xMidYMid meet"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <circle cx="50" cy="50" r="48" fill="#0b1329" stroke="#f59e0b" stroke-width="3"/>
+  <path d="M50 18 L76 34 V66 L50 82 L24 66 V34 Z" fill="#b45309" stroke="#fbbf24" stroke-width="2.5"/>
+  <path d="M50 25 L70 38 V62 L50 75 L30 62 V38 Z" fill="#1e293b" stroke="#f59e0b" stroke-width="1.5"/>
+  <path d="M50 34 L54 44 L65 45 L57 53 L59 64 L50 58 L41 64 L43 53 L35 45 L46 44 Z" fill="#fcd34d"/>
+  <text x="50" y="86" text-anchor="middle" font-family="sans-serif" font-weight="900" font-size="7" fill="#fbbf24" letter-spacing="1">INFPORT</text>
 </svg>

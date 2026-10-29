@@ -53,7 +53,6 @@ export default function HeaderBarPrincipal({
         >
           <EmblemaInfport 
             tamanho="sm" 
-            comBrilho 
             condominioId={condominioId || operador?.condominio_id} 
             className="group-hover:scale-105 transition-transform"
           />

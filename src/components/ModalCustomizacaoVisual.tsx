@@ -38,6 +38,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import EmblemaInfport from './EmblemaInfport';
+import defaultEmblemImg from '../assets/images/infport_emblem_1790505567327.jpg';
 import {
   obterCustomizacaoVisual,
   salvarCustomizacaoVisual,
@@ -115,12 +116,19 @@ export default function ModalCustomizacaoVisual({
 
   if (!aberto) return null;
 
-  // Atualizar campo parcial
+  // Atualizar campo com persistência e broadcast instantâneo em tempo real
   const atualizarCampo = <K extends keyof CustomizacaoVisual>(campo: K, valor: CustomizacaoVisual[K]) => {
-    setDados(prev => ({
-      ...prev,
-      [campo]: valor
-    }));
+    setDados(prev => {
+      const proximo = {
+        ...prev,
+        [campo]: valor
+      };
+      salvarCustomizacaoVisual(proximo, escopoCondominio);
+      if (condominioAtualId && escopoCondominio === 'global') {
+        salvarCustomizacaoVisual(proximo, condominioAtualId);
+      }
+      return proximo;
+    });
   };
 
   // Salvar no storage e aplicar em tempo real
@@ -563,12 +571,17 @@ export default function ModalCustomizacaoVisual({
                         key={emb.id}
                         type="button"
                         onClick={() => {
-                          setDados(prev => ({
-                            ...prev,
+                          const proximo = {
+                            ...dados,
                             emblemaPreset: emb.id,
                             emblemaUrl: emb.url,
                             emblemaCorBrilho: emb.corBrilhoPadrao
-                          }));
+                          };
+                          setDados(proximo);
+                          salvarCustomizacaoVisual(proximo, escopoCondominio);
+                          if (condominioAtualId && escopoCondominio === 'global') {
+                            salvarCustomizacaoVisual(proximo, condominioAtualId);
+                          }
                         }}
                         className={`p-2.5 rounded-xl border flex flex-col items-center text-center gap-1.5 transition cursor-pointer ${
                           selecionado
@@ -577,7 +590,14 @@ export default function ModalCustomizacaoVisual({
                         }`}
                       >
                         <div className="w-10 h-10 flex items-center justify-center">
-                          <img src={emb.url} alt={emb.nome} className="w-9 h-9 object-contain rounded-full" />
+                          <img 
+                            src={emb.url} 
+                            alt={emb.nome} 
+                            className="w-9 h-9 object-contain rounded-full"
+                            onError={(e) => {
+                              e.currentTarget.src = defaultEmblemImg;
+                            }}
+                          />
                         </div>
                         <span className="text-[11px] font-bold line-clamp-1">{emb.nome.split(' ')[0]}</span>
                         <span className="text-[9px] text-slate-400 line-clamp-1">{emb.descricao.split(' ')[0]}</span>
@@ -677,7 +697,7 @@ export default function ModalCustomizacaoVisual({
 
                   <div>
                     <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">
-                      Efeito Glow / Brilho
+                      Luz de Fundo / Brilho do Ícone (Glow)
                     </label>
                     <div className="flex items-center gap-2">
                       <button
@@ -685,20 +705,22 @@ export default function ModalCustomizacaoVisual({
                         onClick={() => atualizarCampo('emblemaBrilho', !dados.emblemaBrilho)}
                         className={`flex-1 py-2 px-3 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                           dados.emblemaBrilho
-                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 ring-1 ring-amber-500/30'
                             : 'bg-slate-800 text-slate-400 border-slate-700'
                         }`}
+                        title={dados.emblemaBrilho ? "Clique para apagar a luz de fundo" : "Clique para acender a luz de fundo"}
                       >
-                        <Sparkles className="w-3 h-3" />
-                        <span>{dados.emblemaBrilho ? 'Brilho Ativo' : 'Desativado'}</span>
+                        <Sparkles className={`w-3.5 h-3.5 ${dados.emblemaBrilho ? 'text-amber-400' : 'text-slate-500'}`} />
+                        <span>{dados.emblemaBrilho ? 'Luz de Fundo Acesa' : 'Luz de Fundo Apagada'}</span>
                       </button>
 
                       <input
                         type="color"
                         value={dados.emblemaCorBrilho || '#f59e0b'}
+                        disabled={!dados.emblemaBrilho}
                         onChange={(e) => atualizarCampo('emblemaCorBrilho', e.target.value)}
-                        className="w-9 h-9 p-0.5 rounded-lg border border-slate-700 bg-slate-900 cursor-pointer"
-                        title="Cor do brilho"
+                        className={`w-9 h-9 p-0.5 rounded-lg border border-slate-700 bg-slate-900 cursor-pointer ${!dados.emblemaBrilho ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        title="Cor da luz de fundo / brilho"
                       />
                     </div>
                   </div>
@@ -814,9 +836,12 @@ export default function ModalCustomizacaoVisual({
                 <div className="flex flex-col sm:flex-row items-center gap-4 p-4 rounded-xl bg-slate-950 border border-slate-800">
                   <div className="w-20 h-20 rounded-2xl bg-slate-900 border border-slate-700 p-2 flex items-center justify-center shrink-0 shadow-lg">
                     <img
-                      src={dados.appIconUrl || '/pwa-192x192.png'}
+                      src={dados.appIconUrl || defaultEmblemImg || '/pwa-192x192.png'}
                       alt="Ícone do App"
                       className="w-16 h-16 object-contain rounded-xl"
+                      onError={(e) => {
+                        e.currentTarget.src = defaultEmblemImg;
+                      }}
                     />
                   </div>
 

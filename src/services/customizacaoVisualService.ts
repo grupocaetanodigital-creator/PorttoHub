@@ -12,6 +12,7 @@
  */
 import { useState, useEffect } from "react";
 import React from "react";
+import defaultEmblemImg from '../assets/images/infport_emblem_1790505567327.jpg';
 import {
   Package,
   PackageCheck,
@@ -393,7 +394,7 @@ export const CUSTOMIZACAO_PADRAO: CustomizacaoVisual = {
   exibirBadgeOnline: true,
   exibirBadgeEnterprise: true,
 
-  emblemaUrl: "/emblema-infport.png",
+  emblemaUrl: defaultEmblemImg || "/emblema-infport.png",
   emblemaPreset: "infport",
   emblemaTamanho: "md",
   emblemaBrilho: true,
@@ -432,7 +433,7 @@ export const PRESETS_EMBLEMAS = [
   {
     id: 'infport',
     nome: 'Águia Dourada Oficial (INFPORT)',
-    url: '/emblema-infport.png',
+    url: defaultEmblemImg || '/emblema-infport.png',
     descricao: 'Brasão clássico de segurança com águia e coroa dourada',
     corBrilhoPadrao: '#f59e0b'
   },
@@ -478,7 +479,7 @@ export const PRESETS_ESTILOS_COMPLETOS: PresetEstiloVisual[] = [
       nomeAplicacao: 'PorttoHub',
       tamanhoFonteNome: 'xl',
       emblemaPreset: 'infport',
-      emblemaUrl: '/emblema-infport.png',
+      emblemaUrl: defaultEmblemImg || '/emblema-infport.png',
       emblemaBrilho: true,
       emblemaCorBrilho: '#f59e0b',
       emblemaEstiloBorda: 'anel_dourado',
@@ -566,7 +567,7 @@ export const PRESETS_ESTILOS_COMPLETOS: PresetEstiloVisual[] = [
       nomeAplicacao: 'PorttoHub Operacional',
       tamanhoFonteNome: '2xl',
       emblemaPreset: 'infport',
-      emblemaUrl: '/emblema-infport.png',
+      emblemaUrl: defaultEmblemImg || '/emblema-infport.png',
       emblemaBrilho: false,
       emblemaEstiloBorda: 'sem_borda',
       familiaFonte: 'Roboto',
@@ -699,6 +700,7 @@ export function obterCustomizacaoVisual(condominioId?: string): CustomizacaoVisu
     const combinada: CustomizacaoVisual = {
       ...CUSTOMIZACAO_PADRAO,
       ...parse,
+      emblemaBrilho: parse.emblemaBrilho !== undefined ? parse.emblemaBrilho === true : CUSTOMIZACAO_PADRAO.emblemaBrilho,
       rotulosModulos: {
         ...MODULOS_PADRAO_ROTULOS,
         ...(parse.rotulosModulos || {})
@@ -733,6 +735,7 @@ export function salvarCustomizacaoVisual(
   const atualizado: CustomizacaoVisual = {
     ...atual,
     ...novosDados,
+    emblemaBrilho: novosDados.emblemaBrilho !== undefined ? novosDados.emblemaBrilho === true : atual.emblemaBrilho,
     rotulosModulos: {
       ...atual.rotulosModulos,
       ...(novosDados.rotulosModulos || {})

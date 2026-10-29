@@ -968,7 +968,7 @@ export default function App() {
           <div>
             <div className="p-4 border-b border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-3 overflow-hidden">
-                <EmblemaInfport tamanho="md" comBrilho />
+                <EmblemaInfport tamanho="md" condominioId={condominioAtivoId || operador?.condominio_id} />
                 {menuAberto && (
                   <div>
                     <h1 className="font-bold text-base leading-tight flex items-center gap-2">
@@ -1107,7 +1107,7 @@ export default function App() {
                 {/* Cabeçalho do Drawer */}
                 <div className="flex justify-between items-center pb-3 border-b border-slate-800">
                   <div className="flex items-center gap-2.5">
-                    <EmblemaInfport tamanho="sm" comBrilho />
+                    <EmblemaInfport tamanho="sm" condominioId={condominioAtivoId || operador?.condominio_id} />
                     <div>
                       <span className="font-black text-white text-sm tracking-tight block">
                         {customVisual.nomeAplicacao || 'PorttoHub'}
@@ -1650,7 +1650,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 text-white">
         <div className="w-16 h-16 mb-3 animate-pulse flex items-center justify-center">
-          <EmblemaInfport tamanho="xl" comBrilho />
+          <EmblemaInfport tamanho="xl" />
         </div>
         <h1 className="text-lg font-bold tracking-tight">INFPORT 1.0</h1>
         <p className="text-xs text-slate-400 mt-2 flex items-center gap-2 font-medium">
@@ -1685,7 +1685,7 @@ export default function App() {
       <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl shadow-slate-300/40 dark:shadow-slate-950/80 w-full max-w-md p-6 sm:p-8 my-auto border border-slate-200 dark:border-slate-800 transition-colors">
         <div className="text-center mb-6">
           <div className="w-20 h-20 mx-auto mb-3 flex items-center justify-center">
-            <EmblemaInfport tamanho="xl" comBrilho />
+            <EmblemaInfport tamanho="xl" />
           </div>
           <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">{NOME_APLICACAO}</h1>
           <button 
