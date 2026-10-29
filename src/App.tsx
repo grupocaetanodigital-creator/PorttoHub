@@ -15,6 +15,8 @@ import Bancada from './pages/Bancada';
 import Configuracoes from './pages/Configuracoes';
 import HistoricoAbsoluto from './pages/HistoricoAbsoluto';
 import PainelSindico from './pages/PainelSindico';
+import ReservaAreas from './pages/ReservaAreas';
+import ControleAcesso from './pages/ControleAcesso';
 import AlertaRondaGlobal from './components/AlertaRondaGlobal';
 import TutorialOperacionalPorttoHub from './components/TutorialOperacionalPorttoHub';
 import ModalGerenciadorModulosCondominio from './components/ModalGerenciadorModulosCondominio';
@@ -83,7 +85,9 @@ import {
   EyeOff,
   History,
   UserCheck,
-  Layers
+  Layers,
+  Calendar,
+  Scan
 } from 'lucide-react';
 
 const CHAVE_SESSAO = 'infport_sessao_ativa_v1';
@@ -131,7 +135,9 @@ export default function App() {
     mod11_bancada_conferencia: true,
     mod12_historico_absoluto: true,
     mod_portal_sindico: true,
-    mod_guia_operacional: true
+    mod_guia_operacional: true,
+    mod15_reserva_areas: true,
+    mod16_controle_acesso: true
   });
 
   const [moduloAtual, setModuloAtual] = useState('dashboard');
@@ -466,7 +472,9 @@ export default function App() {
       mod11_bancada_conferencia: true,
       mod12_historico_absoluto: true,
       mod_portal_sindico: true,
-      mod_guia_operacional: true
+      mod_guia_operacional: true,
+      mod15_reserva_areas: true,
+      mod16_controle_acesso: true
     });
   };
 
@@ -541,7 +549,9 @@ export default function App() {
           mod11_bancada_conferencia: resolverFlag('mod11_bancada_conferencia'),
           mod12_historico_absoluto: resolverFlag('mod12_historico_absoluto'),
           mod_portal_sindico: resolverFlag('mod_portal_sindico'),
-          mod_guia_operacional: resolverFlag('mod_guia_operacional')
+          mod_guia_operacional: resolverFlag('mod_guia_operacional'),
+          mod15_reserva_areas: resolverFlag('mod15_reserva_areas'),
+          mod16_controle_acesso: resolverFlag('mod16_controle_acesso')
         };
 
         setFeatureFlags(novasFlags);
@@ -899,6 +909,20 @@ export default function App() {
       flag: isModuloAtivo('historico_absoluto', featureFlags), 
       cor: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/60' 
     }] : []),
+    { 
+      id: 'controle_acesso', 
+      titulo: obterRotuloModulo('controle_acesso', customVisual.rotulosModulos, 'Controle de Acesso'), 
+      icone: obterIconeModuloDinamico('controle_acesso', customVisual.iconesModulos, Scan), 
+      flag: isModuloAtivo('controle_acesso', featureFlags) && (verificarPermissao(operadorContextoGlobal, 'controle_acesso', 'visualizar') || verificarPermissao(operadorContextoGlobal, 'autorizados', 'visualizar')), 
+      cor: 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800/60' 
+    },
+    { 
+      id: 'reservas', 
+      titulo: obterRotuloModulo('reservas', customVisual.rotulosModulos, 'Reserva de Áreas'), 
+      icone: obterIconeModuloDinamico('reservas', customVisual.iconesModulos, Calendar), 
+      flag: isModuloAtivo('reservas', featureFlags) && verificarPermissao(operadorContextoGlobal, 'reservas', 'visualizar'), 
+      cor: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60' 
+    },
   ]).filter(m => !isModuloOculto(m.id, customVisual.modulosOcultos));
 
   // Se o módulo ativo no momento for desativado nas flags ou bloqueado pelo perfil, redireciona para o dashboard
@@ -1428,6 +1452,12 @@ export default function App() {
                       eAdmin={eAdmin}
                     />
                   </div>
+                )}
+                {moduloAtual === 'reservas' && Boolean(featureFlags.mod15_reserva_areas ?? true) && (
+                  <ReservaAreas usuarioLogado={operadorContextoGlobal} />
+                )}
+                {moduloAtual === 'controle_acesso' && Boolean(featureFlags.mod16_controle_acesso ?? true) && (
+                  <ControleAcesso usuarioLogado={operadorContextoGlobal} />
                 )}
               </>
             )}

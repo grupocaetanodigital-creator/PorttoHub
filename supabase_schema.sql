@@ -1498,7 +1498,313 @@ BEGIN
 END $$;
 
 -- ==============================================================================
--- 24. SUPABASE REALTIME (Configuração de publicações em tempo real)
+-- 24. TABELAS PARA RESERVA DE ÁREAS COMUNS E CONTROLE DE ACESSO
+-- ==============================================================================
+
+-- 24.1 Áreas Comuns do Condomínio
+CREATE TABLE IF NOT EXISTS public.areas_comuns (
+  id TEXT PRIMARY KEY,
+  condominio_id UUID,
+  nome TEXT NOT NULL,
+  descricao TEXT,
+  capacidade_maxima INTEGER DEFAULT 30,
+  taxa_reserva NUMERIC(10,2) DEFAULT 0.00,
+  taxa_limpeza NUMERIC(10,2) DEFAULT 0.00,
+  valor_caucao NUMERIC(10,2) DEFAULT 0.00,
+  antecedencia_minima_dias INTEGER DEFAULT 1,
+  antecedencia_maxima_dias INTEGER DEFAULT 60,
+  horario_inicio TEXT DEFAULT '09:00',
+  horario_fim TEXT DEFAULT '22:00',
+  intervalo_limpeza_horas INTEGER DEFAULT 2,
+  turnos_disponiveis JSONB DEFAULT '["manha","tarde","noite","dia_todo"]'::jsonb,
+  dias_funcionamento JSONB DEFAULT '[0,1,2,3,4,5,6]'::jsonb,
+  regras_termo TEXT,
+  exige_aprovacao_sindico BOOLEAN DEFAULT TRUE,
+  foto_url TEXT,
+  ativa BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE IF EXISTS public.areas_comuns
+  ADD COLUMN IF NOT EXISTS condominio_id UUID,
+  ADD COLUMN IF NOT EXISTS nome TEXT,
+  ADD COLUMN IF NOT EXISTS descricao TEXT,
+  ADD COLUMN IF NOT EXISTS capacidade_maxima INTEGER DEFAULT 30,
+  ADD COLUMN IF NOT EXISTS taxa_reserva NUMERIC(10,2) DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS taxa_limpeza NUMERIC(10,2) DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS valor_caucao NUMERIC(10,2) DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS antecedencia_minima_dias INTEGER DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS antecedencia_maxima_dias INTEGER DEFAULT 60,
+  ADD COLUMN IF NOT EXISTS horario_inicio TEXT DEFAULT '09:00',
+  ADD COLUMN IF NOT EXISTS horario_fim TEXT DEFAULT '22:00',
+  ADD COLUMN IF NOT EXISTS intervalo_limpeza_horas INTEGER DEFAULT 2,
+  ADD COLUMN IF NOT EXISTS turnos_disponiveis JSONB DEFAULT '["manha","tarde","noite","dia_todo"]'::jsonb,
+  ADD COLUMN IF NOT EXISTS dias_funcionamento JSONB DEFAULT '[0,1,2,3,4,5,6]'::jsonb,
+  ADD COLUMN IF NOT EXISTS regras_termo TEXT,
+  ADD COLUMN IF NOT EXISTS exige_aprovacao_sindico BOOLEAN DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS foto_url TEXT,
+  ADD COLUMN IF NOT EXISTS ativa BOOLEAN DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
+
+CREATE INDEX IF NOT EXISTS idx_areas_comuns_condo ON public.areas_comuns(condominio_id);
+CREATE INDEX IF NOT EXISTS idx_areas_comuns_ativa ON public.areas_comuns(ativa);
+
+-- 24.2 Reservas de Áreas Comuns
+CREATE TABLE IF NOT EXISTS public.reservas_areas_comuns (
+  id TEXT PRIMARY KEY,
+  condominio_id UUID,
+  area_id TEXT,
+  area_nome TEXT NOT NULL,
+  morador_id UUID,
+  morador_nome TEXT NOT NULL,
+  morador_telefone TEXT,
+  unidade_bloco TEXT NOT NULL,
+  data_reserva DATE NOT NULL,
+  turno TEXT DEFAULT 'dia_todo',
+  horario_inicio TEXT,
+  horario_fim TEXT,
+  tipo_evento TEXT,
+  qtd_convidados_estimada INTEGER DEFAULT 10,
+  status TEXT DEFAULT 'pendente',
+  valor_total NUMERIC(10,2) DEFAULT 0.00,
+  pago BOOLEAN DEFAULT FALSE,
+  termo_aceito BOOLEAN DEFAULT TRUE,
+  data_aceite_termo TIMESTAMPTZ,
+  observacoes_solicitante TEXT,
+  motivo_recusa TEXT,
+  aprovado_por_nome TEXT,
+  aprovado_em TIMESTAMPTZ,
+  vistoria_entrada JSONB DEFAULT '{"realizada": false}'::jsonb,
+  vistoria_saida JSONB DEFAULT '{"realizada": false}'::jsonb,
+  lista_convidados JSONB DEFAULT '[]'::jsonb,
+  criado_em TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE IF EXISTS public.reservas_areas_comuns
+  ADD COLUMN IF NOT EXISTS condominio_id UUID,
+  ADD COLUMN IF NOT EXISTS area_id TEXT,
+  ADD COLUMN IF NOT EXISTS area_nome TEXT,
+  ADD COLUMN IF NOT EXISTS morador_id UUID,
+  ADD COLUMN IF NOT EXISTS morador_nome TEXT,
+  ADD COLUMN IF NOT EXISTS morador_telefone TEXT,
+  ADD COLUMN IF NOT EXISTS unidade_bloco TEXT,
+  ADD COLUMN IF NOT EXISTS data_reserva DATE,
+  ADD COLUMN IF NOT EXISTS turno TEXT DEFAULT 'dia_todo',
+  ADD COLUMN IF NOT EXISTS horario_inicio TEXT,
+  ADD COLUMN IF NOT EXISTS horario_fim TEXT,
+  ADD COLUMN IF NOT EXISTS tipo_evento TEXT,
+  ADD COLUMN IF NOT EXISTS qtd_convidados_estimada INTEGER DEFAULT 10,
+  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pendente',
+  ADD COLUMN IF NOT EXISTS valor_total NUMERIC(10,2) DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS pago BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS termo_aceito BOOLEAN DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS data_aceite_termo TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS observacoes_solicitante TEXT,
+  ADD COLUMN IF NOT EXISTS motivo_recusa TEXT,
+  ADD COLUMN IF NOT EXISTS aprovado_por_nome TEXT,
+  ADD COLUMN IF NOT EXISTS aprovado_em TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS vistoria_entrada JSONB DEFAULT '{"realizada": false}'::jsonb,
+  ADD COLUMN IF NOT EXISTS vistoria_saida JSONB DEFAULT '{"realizada": false}'::jsonb,
+  ADD COLUMN IF NOT EXISTS lista_convidados JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS criado_em TIMESTAMPTZ DEFAULT now();
+
+CREATE INDEX IF NOT EXISTS idx_reservas_condo_data ON public.reservas_areas_comuns(condominio_id, data_reserva);
+CREATE INDEX IF NOT EXISTS idx_reservas_area ON public.reservas_areas_comuns(area_id);
+CREATE INDEX IF NOT EXISTS idx_reservas_status ON public.reservas_areas_comuns(status);
+CREATE INDEX IF NOT EXISTS idx_reservas_unidade ON public.reservas_areas_comuns(unidade_bloco);
+
+-- 24.3 Pontos de Acesso
+CREATE TABLE IF NOT EXISTS public.pontos_acesso (
+  id TEXT PRIMARY KEY,
+  condominio_id UUID,
+  nome TEXT NOT NULL,
+  tipo TEXT DEFAULT 'pedestre',
+  localizacao TEXT,
+  ativo BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE IF EXISTS public.pontos_acesso
+  ADD COLUMN IF NOT EXISTS condominio_id UUID,
+  ADD COLUMN IF NOT EXISTS nome TEXT,
+  ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'pedestre',
+  ADD COLUMN IF NOT EXISTS localizacao TEXT,
+  ADD COLUMN IF NOT EXISTS ativo BOOLEAN DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
+
+CREATE INDEX IF NOT EXISTS idx_pontos_acesso_condo ON public.pontos_acesso(condominio_id);
+
+-- 24.4 Registros de Acesso (Entradas & Saídas)
+CREATE TABLE IF NOT EXISTS public.registros_acesso (
+  id TEXT PRIMARY KEY,
+  condominio_id UUID,
+  tipo TEXT NOT NULL,
+  nome TEXT NOT NULL,
+  documento TEXT,
+  telefone TEXT,
+  empresa TEXT,
+  unidade_bloco TEXT NOT NULL,
+  morador_responsavel TEXT,
+  ponto_acesso_entrada TEXT,
+  ponto_acesso_saida TEXT,
+  veiculo_placa TEXT,
+  veiculo_modelo TEXT,
+  veiculo_cor TEXT,
+  data_hora_entrada TIMESTAMPTZ DEFAULT now(),
+  data_hora_saida TIMESTAMPTZ,
+  status TEXT DEFAULT 'presente',
+  foto_entrada_url TEXT,
+  foto_saida_url TEXT,
+  operador_entrada_nome TEXT,
+  operador_saida_nome TEXT,
+  observacoes TEXT,
+  cracha_ou_tag TEXT,
+  reserva_area_id TEXT,
+  passe_qr_id TEXT,
+  motivo_bloqueio TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE IF EXISTS public.registros_acesso
+  ADD COLUMN IF NOT EXISTS condominio_id UUID,
+  ADD COLUMN IF NOT EXISTS tipo TEXT,
+  ADD COLUMN IF NOT EXISTS nome TEXT,
+  ADD COLUMN IF NOT EXISTS documento TEXT,
+  ADD COLUMN IF NOT EXISTS telefone TEXT,
+  ADD COLUMN IF NOT EXISTS empresa TEXT,
+  ADD COLUMN IF NOT EXISTS unidade_bloco TEXT,
+  ADD COLUMN IF NOT EXISTS morador_responsavel TEXT,
+  ADD COLUMN IF NOT EXISTS ponto_acesso_entrada TEXT,
+  ADD COLUMN IF NOT EXISTS ponto_acesso_saida TEXT,
+  ADD COLUMN IF NOT EXISTS veiculo_placa TEXT,
+  ADD COLUMN IF NOT EXISTS veiculo_modelo TEXT,
+  ADD COLUMN IF NOT EXISTS veiculo_cor TEXT,
+  ADD COLUMN IF NOT EXISTS data_hora_entrada TIMESTAMPTZ DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS data_hora_saida TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'presente',
+  ADD COLUMN IF NOT EXISTS foto_entrada_url TEXT,
+  ADD COLUMN IF NOT EXISTS foto_saida_url TEXT,
+  ADD COLUMN IF NOT EXISTS operador_entrada_nome TEXT,
+  ADD COLUMN IF NOT EXISTS operador_saida_nome TEXT,
+  ADD COLUMN IF NOT EXISTS observacoes TEXT,
+  ADD COLUMN IF NOT EXISTS cracha_ou_tag TEXT,
+  ADD COLUMN IF NOT EXISTS reserva_area_id TEXT,
+  ADD COLUMN IF NOT EXISTS passe_qr_id TEXT,
+  ADD COLUMN IF NOT EXISTS motivo_bloqueio TEXT,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
+
+CREATE INDEX IF NOT EXISTS idx_reg_acesso_condo ON public.registros_acesso(condominio_id);
+CREATE INDEX IF NOT EXISTS idx_reg_acesso_status ON public.registros_acesso(status);
+CREATE INDEX IF NOT EXISTS idx_reg_acesso_data ON public.registros_acesso(condominio_id, data_hora_entrada DESC);
+CREATE INDEX IF NOT EXISTS idx_reg_acesso_placa ON public.registros_acesso(veiculo_placa);
+CREATE INDEX IF NOT EXISTS idx_reg_acesso_unidade ON public.registros_acesso(unidade_bloco);
+
+-- 24.5 Passes Virtuais & QR Codes de Acesso
+CREATE TABLE IF NOT EXISTS public.passes_virtuais_qr (
+  id TEXT PRIMARY KEY,
+  token TEXT UNIQUE NOT NULL,
+  condominio_id UUID,
+  morador_nome TEXT NOT NULL,
+  morador_telefone TEXT,
+  unidade_bloco TEXT NOT NULL,
+  visitante_nome TEXT NOT NULL,
+  visitante_documento TEXT,
+  tipo TEXT DEFAULT 'visitante',
+  data_validade DATE NOT NULL,
+  hora_inicio TEXT,
+  hora_fim TEXT,
+  max_usos INTEGER DEFAULT 1,
+  usos_realizados INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'valido',
+  observacoes TEXT,
+  criado_em TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE IF EXISTS public.passes_virtuais_qr
+  ADD COLUMN IF NOT EXISTS token TEXT,
+  ADD COLUMN IF NOT EXISTS condominio_id UUID,
+  ADD COLUMN IF NOT EXISTS morador_nome TEXT,
+  ADD COLUMN IF NOT EXISTS morador_telefone TEXT,
+  ADD COLUMN IF NOT EXISTS unidade_bloco TEXT,
+  ADD COLUMN IF NOT EXISTS visitante_nome TEXT,
+  ADD COLUMN IF NOT EXISTS visitante_documento TEXT,
+  ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'visitante',
+  ADD COLUMN IF NOT EXISTS data_validade DATE,
+  ADD COLUMN IF NOT EXISTS hora_inicio TEXT,
+  ADD COLUMN IF NOT EXISTS hora_fim TEXT,
+  ADD COLUMN IF NOT EXISTS max_usos INTEGER DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS usos_realizados INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'valido',
+  ADD COLUMN IF NOT EXISTS observacoes TEXT,
+  ADD COLUMN IF NOT EXISTS criado_em TIMESTAMPTZ DEFAULT now();
+
+CREATE INDEX IF NOT EXISTS idx_passes_token ON public.passes_virtuais_qr(token);
+CREATE INDEX IF NOT EXISTS idx_passes_condo ON public.passes_virtuais_qr(condominio_id);
+CREATE INDEX IF NOT EXISTS idx_passes_status ON public.passes_virtuais_qr(status);
+
+-- 24.6 Blacklist & Alertas de Bloqueio de Acesso
+CREATE TABLE IF NOT EXISTS public.blacklist_bloqueios (
+  id TEXT PRIMARY KEY,
+  condominio_id UUID,
+  tipo TEXT NOT NULL,
+  nome_ou_placa TEXT NOT NULL,
+  documento TEXT,
+  motivo TEXT NOT NULL,
+  gravidade TEXT DEFAULT 'bloqueio_total',
+  registrado_por TEXT,
+  ativo BOOLEAN DEFAULT TRUE,
+  criado_em TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE IF EXISTS public.blacklist_bloqueios
+  ADD COLUMN IF NOT EXISTS condominio_id UUID,
+  ADD COLUMN IF NOT EXISTS tipo TEXT,
+  ADD COLUMN IF NOT EXISTS nome_ou_placa TEXT,
+  ADD COLUMN IF NOT EXISTS documento TEXT,
+  ADD COLUMN IF NOT EXISTS motivo TEXT,
+  ADD COLUMN IF NOT EXISTS gravidade TEXT DEFAULT 'bloqueio_total',
+  ADD COLUMN IF NOT EXISTS registrado_por TEXT,
+  ADD COLUMN IF NOT EXISTS ativo BOOLEAN DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS criado_em TIMESTAMPTZ DEFAULT now();
+
+CREATE INDEX IF NOT EXISTS idx_blacklist_condo ON public.blacklist_bloqueios(condominio_id);
+CREATE INDEX IF NOT EXISTS idx_blacklist_busca ON public.blacklist_bloqueios(nome_ou_placa);
+CREATE INDEX IF NOT EXISTS idx_blacklist_ativo ON public.blacklist_bloqueios(ativo);
+
+-- ==============================================================================
+-- 25. POLÍTICAS DE SEGURANÇA (RLS) PARA AS NOVAS TABELAS
+-- ==============================================================================
+ALTER TABLE public.areas_comuns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reservas_areas_comuns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pontos_acesso ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.registros_acesso ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.passes_virtuais_qr ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.blacklist_bloqueios ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  DROP POLICY IF EXISTS "Acesso total areas_comuns" ON public.areas_comuns;
+  CREATE POLICY "Acesso total areas_comuns" ON public.areas_comuns FOR ALL USING (true) WITH CHECK (true);
+
+  DROP POLICY IF EXISTS "Acesso total reservas_areas_comuns" ON public.reservas_areas_comuns;
+  CREATE POLICY "Acesso total reservas_areas_comuns" ON public.reservas_areas_comuns FOR ALL USING (true) WITH CHECK (true);
+
+  DROP POLICY IF EXISTS "Acesso total pontos_acesso" ON public.pontos_acesso;
+  CREATE POLICY "Acesso total pontos_acesso" ON public.pontos_acesso FOR ALL USING (true) WITH CHECK (true);
+
+  DROP POLICY IF EXISTS "Acesso total registros_acesso" ON public.registros_acesso;
+  CREATE POLICY "Acesso total registros_acesso" ON public.registros_acesso FOR ALL USING (true) WITH CHECK (true);
+
+  DROP POLICY IF EXISTS "Acesso total passes_virtuais_qr" ON public.passes_virtuais_qr;
+  CREATE POLICY "Acesso total passes_virtuais_qr" ON public.passes_virtuais_qr FOR ALL USING (true) WITH CHECK (true);
+
+  DROP POLICY IF EXISTS "Acesso total blacklist_bloqueios" ON public.blacklist_bloqueios;
+  CREATE POLICY "Acesso total blacklist_bloqueios" ON public.blacklist_bloqueios FOR ALL USING (true) WITH CHECK (true);
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- ==============================================================================
+-- 26. SUPABASE REALTIME (Configuração de publicações em tempo real)
 -- ==============================================================================
 DO $$
 DECLARE
@@ -1512,7 +1818,13 @@ DECLARE
     'chaves',
     'movimentacao_chaves',
     'prestadores_acessos',
-    'passagens_posto'
+    'passagens_posto',
+    'areas_comuns',
+    'reservas_areas_comuns',
+    'pontos_acesso',
+    'registros_acesso',
+    'passes_virtuais_qr',
+    'blacklist_bloqueios'
   ];
 BEGIN
   FOREACH tbl_rt IN ARRAY tabelas_realtime LOOP
@@ -1534,6 +1846,7 @@ END $$;
 COMMIT;
 
 -- ==============================================================================
--- 25. RECARREGAR O CACHE DO SCHEMA POSTGREST DO SUPABASE
+-- 27. RECARREGAR O CACHE DO SCHEMA POSTGREST DO SUPABASE
 -- ==============================================================================
 NOTIFY pgrst, 'reload schema';
+

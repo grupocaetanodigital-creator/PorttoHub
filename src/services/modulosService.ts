@@ -143,6 +143,24 @@ export const LISTA_DEFINICAO_MODULOS: ModuloDefinicao[] = [
     tituloPadrao: 'Manual & Guia Operacional',
     descricaoPadrao: 'Instruções e manual oficial de operação do sistema',
     categoria: 'sistema'
+  },
+  {
+    id: 'reservas',
+    flagKey: 'mod15_reserva_areas',
+    moduloNum: '15',
+    aliases: ['mod15_reserva_areas', 'reservas', 'areas_comuns', 'reserva_areas'],
+    tituloPadrao: 'Reserva de Áreas',
+    descricaoPadrao: 'Agendamento de salão de festas, churrasqueiras, convidados e termos',
+    categoria: 'gestao'
+  },
+  {
+    id: 'controle_acesso',
+    flagKey: 'mod16_controle_acesso',
+    moduloNum: '16',
+    aliases: ['mod16_controle_acesso', 'controle_acesso', 'acesso', 'portaria_acesso'],
+    tituloPadrao: 'Controle de Acesso',
+    descricaoPadrao: 'Entradas, saídas, QR Code, leitores, cancelas e liberação de visitantes',
+    categoria: 'seguranca'
   }
 ];
 
@@ -160,7 +178,9 @@ export const MAPA_MODULO_PADRAO: Record<string, boolean> = {
   mod11_bancada_conferencia: true,
   mod12_historico_absoluto: true,
   mod_portal_sindico: true,
-  mod_guia_operacional: true
+  mod_guia_operacional: true,
+  mod15_reserva_areas: true,
+  mod16_controle_acesso: true
 };
 
 /**
@@ -303,7 +323,9 @@ export async function salvarModulosCondominio(
       mod10_prestadores_servico: flagsConsolidadas.mod10_prestadores_servico,
       mod11_bancada_conferencia: flagsConsolidadas.mod11_bancada_conferencia,
       mod12_historico_absoluto: flagsConsolidadas.mod12_historico_absoluto,
-      mod_portal_sindico: flagsConsolidadas.mod_portal_sindico
+      mod_portal_sindico: flagsConsolidadas.mod_portal_sindico,
+      mod15_reserva_areas: flagsConsolidadas.mod15_reserva_areas,
+      mod16_controle_acesso: flagsConsolidadas.mod16_controle_acesso
     };
 
     if (isUUID(condominioId)) {

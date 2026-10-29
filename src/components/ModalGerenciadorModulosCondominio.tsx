@@ -32,7 +32,9 @@ import {
   ShieldAlert,
   Users,
   KeyRound,
-  Hammer
+  Hammer,
+  Calendar,
+  Scan
 } from 'lucide-react';
 import {
   MODULOS_PADRAO_ROTULOS,
@@ -190,6 +192,24 @@ const DEFINICAO_MODULOS: ModuloConfigItem[] = [
     iconePadrao: HelpCircle,
     corBg: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
     corTexto: 'text-indigo-400'
+  },
+  {
+    id: 'reservas',
+    flagKey: 'mod15_reserva_areas',
+    tituloPadrao: 'Reserva de Áreas Comuns',
+    descricaoPadrao: 'Agendamento de salão de festas, churrasqueiras, convidados e termos',
+    iconePadrao: Calendar,
+    corBg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+    corTexto: 'text-emerald-400'
+  },
+  {
+    id: 'controle_acesso',
+    flagKey: 'mod16_controle_acesso',
+    tituloPadrao: 'Controle de Acesso',
+    descricaoPadrao: 'Entradas, saídas, QR Code, cancelas e liberação de visitantes',
+    iconePadrao: Scan,
+    corBg: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+    corTexto: 'text-blue-400'
   }
 ];
 

@@ -326,7 +326,11 @@ export const MODULOS_PADRAO_ROTULOS: Record<string, string> = {
   sindico: "Portal do Síndico",
   painel_sindico: "Portal do Síndico",
   configuracoes: "Configurações",
-  guia_operacional: "Manual & Guia"
+  guia_operacional: "Manual & Guia",
+  reservas: "Reserva de Áreas",
+  areas_comuns: "Reserva de Áreas",
+  controle_acesso: "Controle de Acesso",
+  acesso: "Controle de Acesso"
 };
 
 export const MODULOS_PADRAO_ICONES: Record<string, string> = {
@@ -348,7 +352,11 @@ export const MODULOS_PADRAO_ICONES: Record<string, string> = {
   sindico: "ShieldCheck",
   painel_sindico: "ShieldCheck",
   configuracoes: "Settings",
-  guia_operacional: "BookOpen"
+  guia_operacional: "BookOpen",
+  reservas: "Calendar",
+  areas_comuns: "Calendar",
+  controle_acesso: "Scan",
+  acesso: "Scan"
 };
 
 export const MODULOS_PADRAO_DESCRICOES: Record<string, string> = {
@@ -370,7 +378,11 @@ export const MODULOS_PADRAO_DESCRICOES: Record<string, string> = {
   sindico: "Dashboard executivo com métricas e conformidade condominial",
   painel_sindico: "Dashboard executivo com métricas e conformidade condominial",
   configuracoes: "Parâmetros operacionais, permissões e personalização de módulos",
-  guia_operacional: "Instruções e manual de todas as funções da guarita (desative quando a equipe já estiver treinada)"
+  guia_operacional: "Instruções e manual de todas as funções da guarita (desative quando a equipe já estiver treinada)",
+  reservas: "Agendamento de salão de festas, churrasqueiras, convidados e termos",
+  areas_comuns: "Agendamento de salão de festas, churrasqueiras, convidados e termos",
+  controle_acesso: "Liberação de pedestres e veículos, passes QR Code e portaria",
+  acesso: "Liberação de pedestres e veículos, passes QR Code e portaria"
 };
 
 export const CUSTOMIZACAO_PADRAO: CustomizacaoVisual = {

@@ -89,6 +89,19 @@ export interface PermissoesModulo {
     zerar?: boolean;
     historico?: boolean;
   };
+  reservas?: PermissaoModuloPadrao & {
+    aprovar?: boolean;
+    cancelar?: boolean;
+    gerenciar_areas?: boolean;
+    vistoria?: boolean;
+  };
+  controle_acesso?: PermissaoModuloPadrao & {
+    liberar_entrada?: boolean;
+    registrar_saida?: boolean;
+    bloquear?: boolean;
+    gerar_passe_qr?: boolean;
+    configurar_portoes?: boolean;
+  };
 }
 
 export interface NivelAcessoItem {
@@ -239,6 +252,28 @@ export const MODULOS_DEFINICAO_RBAC: ModuloDefinicaoInfo[] = [
       { id: 'zerar', label: 'Zerar / Nova Conferência' },
       { id: 'historico', label: 'Ver Histórico de Auditoria' }
     ]
+  },
+  {
+    id: 'reservas',
+    nome: 'Reserva de Áreas Comuns',
+    acoesEspecificas: [
+      { id: 'criar', label: 'Solicitar / Criar Reserva' },
+      { id: 'aprovar', label: 'Aprovar ou Recusar Reservas' },
+      { id: 'cancelar', label: 'Cancelar Reserva' },
+      { id: 'gerenciar_areas', label: 'Cadastrar / Configurar Espaços' },
+      { id: 'vistoria', label: 'Vistoria Pré/Pós Evento' }
+    ]
+  },
+  {
+    id: 'controle_acesso',
+    nome: 'Controle de Acesso & Portaria',
+    acoesEspecificas: [
+      { id: 'liberar_entrada', label: 'Liberar Entrada (Pedestres / Veículos)' },
+      { id: 'registrar_saida', label: 'Registrar Saída do Posto' },
+      { id: 'bloquear', label: 'Gerenciar Blacklist / Bloqueios' },
+      { id: 'gerar_passe_qr', label: 'Gerar Convite / Passe Virtual QR' },
+      { id: 'configurar_portoes', label: 'Configurar Pontos de Acesso / Cancelas' }
+    ]
   }
 ];
 
@@ -263,7 +298,9 @@ export const NIVEIS_PADRAO: NivelAcessoItem[] = [
       moradores: { visualizar: true, criar: true, editar: true, excluir: true, adicionar: true },
       historico_absoluto: { visualizar: true, criar: true, editar: true, excluir: true, ver_feed: true, ver_metricas: true, exportar_csv: true, limpar_dados: true },
       configuracoes: { visualizar: true, criar: true, editar: true, excluir: true, gerenciar_niveis: true, feature_flags: true },
-      bancada: { visualizar: true, criar: true, editar: true, excluir: true, lancar: true, baixa: true, zerar: true, historico: true }
+      bancada: { visualizar: true, criar: true, editar: true, excluir: true, lancar: true, baixa: true, zerar: true, historico: true },
+      reservas: { visualizar: true, criar: true, editar: true, excluir: true, aprovar: true, cancelar: true, gerenciar_areas: true, vistoria: true },
+      controle_acesso: { visualizar: true, criar: true, editar: true, excluir: true, liberar_entrada: true, registrar_saida: true, bloquear: true, gerar_passe_qr: true, configurar_portoes: true }
     }
   },
   {
@@ -286,7 +323,9 @@ export const NIVEIS_PADRAO: NivelAcessoItem[] = [
       moradores: { visualizar: true, criar: true, editar: true, excluir: false, adicionar: true },
       historico_absoluto: { visualizar: true, criar: false, editar: false, excluir: false, ver_feed: true, ver_metricas: true, exportar_csv: true, limpar_dados: false },
       configuracoes: { visualizar: true, criar: false, editar: false, excluir: false, gerenciar_niveis: false, feature_flags: false },
-      bancada: { visualizar: true, criar: true, editar: true, excluir: false, lancar: true, baixa: true, zerar: true, historico: true }
+      bancada: { visualizar: true, criar: true, editar: true, excluir: false, lancar: true, baixa: true, zerar: true, historico: true },
+      reservas: { visualizar: true, criar: true, editar: true, excluir: false, aprovar: true, cancelar: true, gerenciar_areas: true, vistoria: true },
+      controle_acesso: { visualizar: true, criar: true, editar: true, excluir: false, liberar_entrada: true, registrar_saida: true, bloquear: true, gerar_passe_qr: true, configurar_portoes: true }
     }
   },
   {
@@ -309,7 +348,9 @@ export const NIVEIS_PADRAO: NivelAcessoItem[] = [
       moradores: { visualizar: true, criar: true, editar: true, excluir: false, adicionar: true },
       historico_absoluto: { visualizar: true, criar: false, editar: false, excluir: false, ver_feed: true, ver_metricas: true, exportar_csv: false, limpar_dados: false },
       configuracoes: { visualizar: false, criar: false, editar: false, excluir: false, gerenciar_niveis: false, feature_flags: false },
-      bancada: { visualizar: true, criar: true, editar: true, excluir: false, lancar: true, baixa: true, zerar: false, historico: true }
+      bancada: { visualizar: true, criar: true, editar: true, excluir: false, lancar: true, baixa: true, zerar: false, historico: true },
+      reservas: { visualizar: true, criar: true, editar: true, excluir: false, aprovar: true, cancelar: true, gerenciar_areas: false, vistoria: true },
+      controle_acesso: { visualizar: true, criar: true, editar: true, excluir: false, liberar_entrada: true, registrar_saida: true, bloquear: true, gerar_passe_qr: true, configurar_portoes: false }
     }
   },
   {
@@ -332,7 +373,9 @@ export const NIVEIS_PADRAO: NivelAcessoItem[] = [
       moradores: { visualizar: true, criar: true, editar: false, excluir: false, adicionar: true },
       historico_absoluto: { visualizar: true, criar: false, editar: false, excluir: false, ver_feed: true, ver_metricas: false, exportar_csv: false, limpar_dados: false },
       configuracoes: { visualizar: false, criar: false, editar: false, excluir: false, gerenciar_niveis: false, feature_flags: false },
-      bancada: { visualizar: true, criar: true, editar: false, excluir: false, lancar: true, baixa: true, zerar: false, historico: false }
+      bancada: { visualizar: true, criar: true, editar: false, excluir: false, lancar: true, baixa: true, zerar: false, historico: false },
+      reservas: { visualizar: true, criar: true, editar: false, excluir: false, aprovar: false, cancelar: false, gerenciar_areas: false, vistoria: true },
+      controle_acesso: { visualizar: true, criar: true, editar: true, excluir: false, liberar_entrada: true, registrar_saida: true, bloquear: false, gerar_passe_qr: true, configurar_portoes: false }
     }
   },
   {
@@ -355,7 +398,9 @@ export const NIVEIS_PADRAO: NivelAcessoItem[] = [
       cadastros: { visualizar: true, criar: false, editar: false, excluir: false, operadores: false, moradores: false, condominios: false, gerenciar_niveis: false },
       moradores: { visualizar: true, criar: false, editar: false, excluir: false, adicionar: false },
       historico_absoluto: { visualizar: true, criar: false, editar: false, excluir: false, ver_feed: true, ver_metricas: true, exportar_csv: true, limpar_dados: false },
-      configuracoes: { visualizar: false, criar: false, editar: false, excluir: false, gerenciar_niveis: false, feature_flags: false }
+      configuracoes: { visualizar: false, criar: false, editar: false, excluir: false, gerenciar_niveis: false, feature_flags: false },
+      reservas: { visualizar: true, criar: true, editar: true, excluir: false, aprovar: true, cancelar: true, gerenciar_areas: true, vistoria: true },
+      controle_acesso: { visualizar: true, criar: false, editar: false, excluir: false, liberar_entrada: false, registrar_saida: false, bloquear: true, gerar_passe_qr: false, configurar_portoes: false }
     }
   }
 ];
