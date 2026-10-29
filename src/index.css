@@ -1,0 +1,232 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ==========================================================================
+   PADRONIZAÇÃO GLOBAL DE UI / CONTRASTE OBRIGATÓRIO (MODO CLARO E ESCURO)
+   Regra Geral Estática para todos os elementos interativos de entrada
+   de dados e componentes de listagem:
+   - Cor de Fundo (Background Color): #FFFFFF (Branco puro)
+   - Cor do Texto (Text Color): #000000 (Preto puro)
+   - Cor do Texto de Sugestão (Placeholder Color): #666666 (Cinza escuro legível)
+   - Cor do Cursor / Ícone de Busca (Caret / Icon Color): #000000 (Preto puro)
+   ========================================================================== */
+
+/* 1. CAMPOS DE ENTRADA DE TEXTO (Input, TextInput, TextField, Textarea) */
+input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]):not([type="color"]):not([type="file"]),
+textarea,
+select,
+input[type="text"],
+input[type="search"],
+input[type="tel"],
+input[type="url"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+  caret-color: #000000 !important;
+  color-scheme: light !important;
+  border-color: #cbd5e1;
+}
+
+/* Força absoluta em Modo Escuro (.dark) e [data-theme="dark"] */
+.dark input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]):not([type="color"]):not([type="file"]),
+.dark textarea,
+.dark select,
+.dark input[type="text"],
+.dark input[type="search"],
+.dark input[type="tel"],
+.dark input[type="url"],
+.dark input[type="email"],
+.dark input[type="password"],
+.dark input[type="number"],
+.dark input[type="date"],
+.dark input[type="time"],
+.dark input[type="datetime-local"],
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]):not([type="color"]):not([type="file"]),
+[data-theme="dark"] textarea,
+[data-theme="dark"] select {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+  caret-color: #000000 !important;
+  color-scheme: light !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* Cor do Texto de Sugestão (Placeholder Color: #666666 legível) */
+input::placeholder,
+textarea::placeholder,
+.dark input::placeholder,
+.dark textarea::placeholder,
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder {
+  color: #666666 !important;
+  -webkit-text-fill-color: #666666 !important;
+  opacity: 1 !important;
+}
+
+/* 2. CAMPOS E BARRAS DE PESQUISA (SearchBar, SearchInput) */
+.search-input,
+[role="searchbox"],
+input[type="search"],
+input[placeholder*="Busc" i],
+input[placeholder*="Pesquis" i],
+.dark .search-input,
+.dark [role="searchbox"],
+.dark input[type="search"],
+.dark input[placeholder*="Busc" i],
+.dark input[placeholder*="Pesquis" i] {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+  caret-color: #000000 !important;
+  color-scheme: light !important;
+}
+
+/* Ícones de busca associados a campos de pesquisa */
+.relative:has(input) > svg,
+.relative:has(input[type="text"]) > svg,
+.relative:has(input[type="search"]) > svg {
+  color: #000000 !important;
+}
+
+/* 3. COMPONENTES DE SELEÇÃO (Select, Dropdown, Picker, Autocomplete) */
+select,
+select option,
+select optgroup,
+.dark select,
+.dark select option,
+.dark select optgroup,
+[data-theme="dark"] select,
+[data-theme="dark"] select option,
+[data-theme="dark"] select optgroup,
+[role="combobox"],
+[role="listbox"],
+[role="option"],
+.autocomplete-items,
+.dropdown-menu {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+  color-scheme: light !important;
+}
+
+/* 4. LISTAGENS E TABELAS (List, ListView, Table, Registros) */
+table,
+.dark table,
+[data-theme="dark"] table {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+  color-scheme: light !important;
+}
+
+table thead,
+table thead th,
+.dark table thead,
+.dark table thead th,
+[data-theme="dark"] table thead,
+[data-theme="dark"] table thead th {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+  border-color: #e2e8f0 !important;
+}
+
+table tbody,
+table tbody tr,
+table tbody td,
+table tfoot,
+table tfoot tr,
+table tfoot td,
+.dark table tbody,
+.dark table tbody tr,
+.dark table tbody td,
+.dark table tfoot,
+.dark table tfoot tr,
+.dark table tfoot td,
+[data-theme="dark"] table tbody,
+[data-theme="dark"] table tbody tr,
+[data-theme="dark"] table tbody td {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* Hover suave em linhas da tabela com legibilidade garantida */
+table tbody tr:hover,
+.dark table tbody tr:hover,
+[data-theme="dark"] table tbody tr:hover {
+  background-color: #f8fafc !important;
+}
+
+/* Textos e rótulos dentro de células da tabela */
+table td,
+table td p,
+table td strong,
+table td b,
+table td label,
+table th,
+.dark table td,
+.dark table td p,
+.dark table td strong,
+.dark table td b,
+.dark table td label,
+.dark table th,
+[data-theme="dark"] table td,
+[data-theme="dark"] table td p,
+[data-theme="dark"] table td strong,
+[data-theme="dark"] table td b,
+[data-theme="dark"] table td label,
+[data-theme="dark"] table th {
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+}
+
+/* Elementos de listagem com papéis ARIA */
+[role="table"],
+[role="row"],
+[role="cell"],
+[role="grid"],
+[role="gridcell"] {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+  color-scheme: light !important;
+}
+
+/* Classes semânticas de listagens e registros */
+.lista-registros,
+.registro-item,
+.card-registro,
+.item-listagem,
+.item-lista,
+.listing-card {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+}
+
+/* Proteção adicional contra tema escuro do sistema operacional */
+@media (prefers-color-scheme: dark) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]):not([type="color"]):not([type="file"]),
+  textarea,
+  select,
+  table,
+  table tr,
+  table td,
+  table th {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
+    caret-color: #000000 !important;
+    color-scheme: light !important;
+  }
+}

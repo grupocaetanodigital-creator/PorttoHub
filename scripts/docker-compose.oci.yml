@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. Banco de Dados PostgreSQL 16 com persistência de dados
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: porttohub_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: porttohub
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: porttohub_postgres_root_pwd_2026
+    ports:
+      # Exposição da porta do Postgres (restrita localmente ou na VM para segurança)
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./../oracle_cloud_postgresql_porttohub.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d porttohub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------------------------
+  # 2. Camada REST PostgREST (Compatível com @supabase/supabase-js)
+  # Transforma o PostgreSQL em uma API REST ultra-rápida nativa (< 50MB RAM)
+  # ----------------------------------------------------------------------------
+  postgrest:
+    image: postgrest/postgrest:v12.0.2
+    container_name: porttohub_api_rest
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # String de conexão com o Postgres
+      PGRST_DB_URI: postgres://postgres:porttohub_postgres_root_pwd_2026@postgres:5432/porttohub
+      # Schema a ser exposto
+      PGRST_DB_SCHEMAS: public
+      # Papel anônimo padrão para requisições
+      PGRST_DB_ANON_ROLE: anon
+      # Porta da API REST PostgREST
+      PGRST_SERVER_PORT: 3000
+      # Chave JWT secreta para autenticação (mínimo 32 caracteres)
+      PGRST_JWT_SECRET: "porttohub_oci_jwt_super_secret_key_2026_always_free_tier"
+      # CORS liberado para o PWA React
+      PGRST_CORS_ALLOWED_ORIGINS: "*"
+    ports:
+      # Esta é a porta onde o seu Frontend PWA React irá se conectar!
+      - "8000:3000"
+
+volumes:
+  postgres_data:
+    driver: local
