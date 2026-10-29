@@ -1,7 +1,7 @@
 {
   "name": "porttohub",
   "private": true,
-  "version": "29.10.26-1529",
+  "version": "29.10.26-1544",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",

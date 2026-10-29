@@ -3305,7 +3305,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                     const selecionado = itensSelecionadosIds.includes(item.id);
                     const operadorNome = obterOperadorPacote(item);
                     const dataHoraRegistro = item.created_at || item.data_recebimento
-                      ? `${new Date(item.created_at || item.data_recebimento).toLocaleDateString('pt-BR')} às ${new Date(item.created_at || item.data_recebimento).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+                      ? `${new Date(item.created_at || item.data_recebimento).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às ${new Date(item.created_at || item.data_recebimento).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
                       : null;
                     return (
                       <div 
@@ -3331,7 +3331,8 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                           </div>
 
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
+                            {/* Linha 1: Identificação da Unidade e Nome do Morador */}
+                            <div className="flex items-center gap-2 min-w-0">
                               <span className="text-[10px] font-black uppercase tracking-wider text-slate-900 bg-slate-100 border border-slate-200/80 px-2 py-0.5 rounded shrink-0 font-mono">
                                 {formatarIdentificacaoUnidade(item.unidade, item.bloco, condoConfig?.tipo_estrutura)}
                               </span>
@@ -3341,19 +3342,19 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                               </span>
                             </div>
 
-                            {/* Informações de Registro: Data/Hora e Nome do Operador */}
-                            <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium mt-0.5 flex-wrap">
+                            {/* Linha 2: Data e Hora ANTES do Nome do Operador (Mantendo estritamente 2 linhas no card) */}
+                            <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-[11px] text-slate-500 font-medium mt-0.5 min-w-0 truncate leading-tight">
                               {dataHoraRegistro && (
-                                <span className="flex items-center gap-1 text-slate-600 shrink-0">
+                                <span className="flex items-center gap-1 text-slate-600 shrink-0 font-mono">
                                   <Clock className="w-3 h-3 text-slate-400 shrink-0" />
                                   <span>{dataHoraRegistro}</span>
                                 </span>
                               )}
                               {dataHoraRegistro && operadorNome && (
-                                <span className="text-slate-300 hidden sm:inline">•</span>
+                                <span className="text-slate-300 shrink-0">•</span>
                               )}
                               {operadorNome && (
-                                <span className="flex items-center gap-1 text-slate-600 shrink-0 truncate max-w-[160px] sm:max-w-[220px]" title={`Operador: ${operadorNome}`}>
+                                <span className="flex items-center gap-1 text-slate-600 truncate min-w-0" title={`Operador: ${operadorNome}`}>
                                   <User className="w-3 h-3 text-slate-400 shrink-0" />
                                   <span className="truncate">Op: <strong className="font-semibold text-slate-700">{operadorNome}</strong></span>
                                 </span>
