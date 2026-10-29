@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../services/supabase';
 import ModalLeitorDocumentoOCR from '../components/ModalLeitorDocumentoOCR';
 import { registrarAtividade } from '../services/auditoriaService';
@@ -11,6 +11,7 @@ import {
   getCondominioAtivoId
 } from '../services/condominioService';
 import { formatarLinkWhatsApp } from '../services/configWhatsappService';
+import { verificarPermissao } from '../services/permissoesService';
 import { 
   UserCheck, 
   Building2, 
@@ -27,14 +28,9 @@ import {
   LogOut, 
   Phone, 
   MessageSquare, 
-  Copy, 
-  Check, 
-  ExternalLink, 
   RefreshCw, 
   FileText, 
-  Database, 
   Calendar, 
-  Eye, 
   Volume2, 
   VolumeX, 
   Shield, 
@@ -42,15 +38,18 @@ import {
   UserPlus, 
   Car, 
   Tag, 
-  Edit3,
-  Users,
-  Timer,
-  AlertCircle,
-  FileSpreadsheet,
-  Pencil,
-  HardHat,
-  Filter,
-  ChevronDown
+  Users, 
+  Timer, 
+  Pencil, 
+  HardHat, 
+  Filter, 
+  ChevronDown,
+  Info,
+  KeyRound,
+  Check,
+  ShieldCheck,
+  Sparkles,
+  Home
 } from 'lucide-react';
 
 export type PerfilAcesso = 'autorizado' | 'prestador_unidade' | 'prestador_condominio';
@@ -79,7 +78,20 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
   const [idCondominio, setIdCondominio] = useState(() => getCondominioAtivoId(usuarioLogado));
   const operadorNome = usuarioLogado?.nome || usuarioLogado?.login || 'Operador da Portaria';
 
-  // Configuração da estrutura do condomínio (Casas vs Torres vs Blocos)
+  // Permissões do operador para este módulo
+  const permissoesOperador = useMemo(() => {
+    return {
+      visualizar: verificarPermissao(usuarioLogado, 'autorizados', 'visualizar'),
+      cadastrar: verificarPermissao(usuarioLogado, 'autorizados', 'cadastrar') || verificarPermissao(usuarioLogado, 'autorizados', 'criar'),
+      darEntrada: verificarPermissao(usuarioLogado, 'autorizados', 'dar_entrada'),
+      darSaida: verificarPermissao(usuarioLogado, 'autorizados', 'dar_saida'),
+      editar: verificarPermissao(usuarioLogado, 'autorizados', 'editar'),
+      excluir: verificarPermissao(usuarioLogado, 'autorizados', 'excluir'),
+      perfil: usuarioLogado?.perfil || 'Operador'
+    };
+  }, [usuarioLogado]);
+
+  // Configuração da estrutura do condomínio
   const [condoConfig, setCondoConfig] = useState<any>(null);
 
   useEffect(() => {
@@ -111,22 +123,26 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
 
   const eEstruturaCasas = isEstruturaCasas(condoConfig?.tipo_estrutura);
 
-  // Abas principais (Removida aba SQL da tela conforme solicitação)
-  const [abaAtiva, setAbaAtiva] = useState<'dentro' | 'cadastros' | 'historico'>('dentro');
+  // Abas principais
+  const [abaAtiva, setAbaAtiva] = useState<'permanencia' | 'cadastros' | 'historico' | 'permissoes'>('cadastros');
 
   // Dados
   const [cadastros, setCadastros] = useState<any[]>([]);
-  const [acessosAtivos, setAcessosAtivos] = useState<any[]>([]);
+  const [prestadoresAtivos, setPrestadoresAtivos] = useState<any[]>([]);
+  const [visitasHoje, setVisitasHoje] = useState<any[]>([]);
   const [historicoAcessos, setHistoricoAcessos] = useState<any[]>([]);
   const [moradores, setMoradores] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [mensagem, setMensagem] = useState({ tipo: '', texto: '' });
-  const [busca, setBusca] = useState('');
-  const [filtroPerfil, setFiltroPerfil] = useState<string>('todos');
-  const [filtroValidade, setFiltroValidade] = useState<string>('todos');
-  const [mostrarFiltrosCadastros, setMostrarFiltrosCadastros] = useState(false);
 
-  // Hora atual em tempo real para cálculo dos cronômetros regressivos
+  // Filtros Avançados por Categoria de Entrada
+  const [filtroCategoria, setFiltroCategoria] = useState<'todos' | 'autorizado' | 'prestador_unidade' | 'prestador_condominio'>('todos');
+  const [filtroStatus, setFiltroStatus] = useState<'todos' | 'dentro' | 'entradas_hoje' | 'validos' | 'vencidos'>('todos');
+  const [busca, setBusca] = useState('');
+  const [filtroUnidade, setFiltroUnidade] = useState<string>('todas');
+  const [mostrarFiltrosAvancados, setMostrarFiltrosAvancados] = useState(false);
+
+  // Tempo e Alerta Sonoro
   const [tempoAtual, setTempoAtual] = useState(Date.now());
   const [alertaSonoroHabilitado, setAlertaSonoroHabilitado] = useState(true);
 
@@ -140,6 +156,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
   const [modalProrrogar, setModalProrrogar] = useState(false);
   const [modalOcrAberto, setModalOcrAberto] = useState(false);
   const [modalVisualizarFoto, setModalVisualizarFoto] = useState<string | null>(null);
+  const [modalPermissoes, setModalPermissoes] = useState(false);
   const [itemSelecionado, setItemSelecionado] = useState<any | null>(null);
 
   // Formulário de Cadastro / Liberação / Edição
@@ -164,14 +181,14 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
   const [sugestoesReutilizacao, setSugestoesReutilizacao] = useState<any[]>([]);
 
   // Formulário de Entrada
-  const [tempoMaximoMinutos, setTempoMaximoMinutos] = useState<number>(240); // Padrão: 4 horas para prestadores
+  const [tempoMaximoMinutos, setTempoMaximoMinutos] = useState<number>(240);
   const [tempoMaximoCustomizado, setTempoMaximoCustomizado] = useState<string>('');
   const [crachaEntrada, setCrachaEntrada] = useState('');
   const [placaEntrada, setPlacaEntrada] = useState('');
   const [observacoesEntrada, setObservacoesEntrada] = useState('');
   const [alertaExpiracaoConfirmado, setAlertaExpiracaoConfirmado] = useState(false);
 
-  // Formulário de Saída
+  // Formulário de Saída (Apenas Prestadores)
   const [crachaDevolvido, setCrachaDevolvido] = useState(true);
   const [observacoesSaida, setObservacoesSaida] = useState('');
 
@@ -179,7 +196,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
   const [minutosProrrogacao, setMinutosProrrogacao] = useState(60);
   const [prorrogarCustomizado, setProrrogarCustomizado] = useState<string>('');
 
-  // Atualiza relógio do cronômetro a cada 1 segundo
+  // Atualização em tempo real do cronômetro a cada 1 segundo
   useEffect(() => {
     const timer = setInterval(() => {
       setTempoAtual(Date.now());
@@ -187,25 +204,45 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
     return () => clearInterval(timer);
   }, []);
 
+  // Beep sonoro sutil quando há prestador estourado
+  const emitirAlertaSonoro = () => {
+    if (!alertaSonoroHabilitado) return;
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.setValueAtTime(440, ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.3);
+    } catch {}
+  };
+
   // Carrega dados iniciais
   useEffect(() => {
     carregarTudo();
     carregarMoradores();
   }, [idCondominio]);
 
-  // Carrega moradores do condomínio para vínculo rápido
+  // Carrega moradores para autocompletar unidades e telefones
   const carregarMoradores = async () => {
     if (!idCondominio || idCondominio === 'global' || idCondominio === 'todos') {
       setMoradores([]);
       return;
     }
     try {
-      const query = supabase
+      const { data } = await supabase
         .from('moradores')
         .select('id, nome, bloco, unidade, telefone')
         .eq('condominio_id', idCondominio)
         .order('unidade');
-      const { data } = await query;
       if (data) setMoradores(data);
     } catch (e) {
       console.warn('Erro ao carregar moradores:', e);
@@ -215,84 +252,107 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
   const carregarTudo = async () => {
     if (!idCondominio || idCondominio === 'global' || idCondominio === 'todos') {
       setCadastros([]);
-      setAcessosAtivos([]);
+      setPrestadoresAtivos([]);
+      setVisitasHoje([]);
       setHistoricoAcessos([]);
       return;
     }
 
     setLoading(true);
     try {
-      // 1. Carrega cadastros mestres com projeção estrita de colunas e paginação
+      // 1. Cadastros mestres de pessoas autorizadas e prestadores
       const cadQuery = supabase
         .from('prestadores')
-        .select('id, condominio_id, nome_profissional, documento, empresa, perfil_acesso, unidade, bloco, cracha_atribuido, data_hora_entrada, limite_permanencia_ate, status_acesso, telefone, placa_veiculo, modelo_veiculo, foto_rosto, foto_documento, parentesco_vinculo, created_at')
+        .select('*')
         .eq('condominio_id', idCondominio)
         .order('created_at', { ascending: false })
-        .range(0, 49);
+        .range(0, 79);
       const { data: dadosCadastros, error: erroCad } = await cadQuery;
-
       if (erroCad) throw erroCad;
       setCadastros(dadosCadastros || []);
 
-      // 2. Carrega acessos ativos (Dentro do Condomínio)
-      let ativos: any[] = [];
+      // 2. Acessos de Prestadores com Permanência Ativa (Saída Pendente)
+      // REGRA: Apenas prestadores (prestador_unidade e prestador_condominio) necessitam de controle de permanência e saída!
+      let prestadoresDentro: any[] = [];
       try {
         const acessosQuery = supabase
           .from('prestadores_acessos')
-          .select('id, prestador_id, condominio_id, perfil_acesso, nome_completo, documento, empresa, parentesco_vinculo, unidade, bloco, foto_rosto, foto_documento, cracha, placa_veiculo, modelo_veiculo, data_hora_entrada, tempo_maximo_minutos, limite_permanencia_ate, operador_entrada_nome, status_acesso')
+          .select('*')
           .eq('condominio_id', idCondominio)
+          .neq('perfil_acesso', 'autorizado')
           .is('data_hora_saida', null)
           .order('data_hora_entrada', { ascending: false })
           .range(0, 49);
         const { data: acessosDb, error: erroAcessos } = await acessosQuery;
 
         if (!erroAcessos && acessosDb && acessosDb.length > 0) {
-          ativos = acessosDb;
+          prestadoresDentro = acessosDb;
         } else {
-          // Fallback para prestadores com status 'DENTRO' ou 'EM_ANDAMENTO'
-          ativos = (dadosCadastros || []).filter((p: any) => 
-            p.status_acesso === 'EM_ANDAMENTO' || p.status_acesso === 'DENTRO'
-          ).map((p: any) => ({
-            id: p.id,
-            prestador_id: p.id,
-            condominio_id: p.condominio_id,
-            perfil_acesso: p.perfil_acesso || (p.atende_condominio ? 'prestador_condominio' : 'prestador_unidade'),
-            nome_completo: p.nome_profissional || p.nome_completo,
-            documento: p.documento,
-            empresa: p.empresa,
-            parentesco_vinculo: p.parentesco_vinculo,
-            unidade: p.unidade,
-            bloco: p.bloco,
-            foto_rosto: p.foto_rosto,
-            cracha: p.cracha_atribuido || p.cracha,
-            placa_veiculo: p.placa_veiculo,
-            data_hora_entrada: p.data_hora_entrada || p.created_at,
-            tempo_maximo_minutos: p.perfil_acesso === 'autorizado' ? null : (p.tempo_maximo_minutos || 240),
-            limite_permanencia_ate: p.perfil_acesso === 'autorizado' ? null : p.limite_permanencia_ate,
-            operador_entrada_nome: p.operador_entrada_nome || 'Operador',
-            status_acesso: 'DENTRO'
-          }));
+          // Fallback para tabela prestadores onde status_acesso seja DENTRO e NÃO seja perfil 'autorizado'
+          prestadoresDentro = (dadosCadastros || [])
+            .filter((p: any) => 
+              p.perfil_acesso !== 'autorizado' && 
+              (p.status_acesso === 'EM_ANDAMENTO' || p.status_acesso === 'DENTRO')
+            )
+            .map((p: any) => ({
+              id: p.id,
+              prestador_id: p.id,
+              condominio_id: p.condominio_id,
+              perfil_acesso: p.perfil_acesso || (p.atende_condominio ? 'prestador_condominio' : 'prestador_unidade'),
+              nome_completo: p.nome_profissional || p.nome_completo,
+              documento: p.documento,
+              empresa: p.empresa,
+              parentesco_vinculo: p.parentesco_vinculo,
+              unidade: p.unidade,
+              bloco: p.bloco,
+              foto_rosto: p.foto_rosto,
+              cracha: p.cracha_atribuido || p.cracha,
+              placa_veiculo: p.placa_veiculo,
+              data_hora_entrada: p.data_hora_entrada || p.created_at,
+              tempo_maximo_minutos: p.tempo_maximo_minutos || 240,
+              limite_permanencia_ate: p.limite_permanencia_ate,
+              operador_entrada_nome: p.operador_entrada_nome || 'Operador',
+              status_acesso: 'DENTRO'
+            }));
         }
       } catch {
-        ativos = (dadosCadastros || []).filter((p: any) => 
-          p.status_acesso === 'EM_ANDAMENTO' || p.status_acesso === 'DENTRO'
+        prestadoresDentro = (dadosCadastros || []).filter((p: any) => 
+          p.perfil_acesso !== 'autorizado' && 
+          (p.status_acesso === 'EM_ANDAMENTO' || p.status_acesso === 'DENTRO')
         );
       }
-      setAcessosAtivos(ativos);
+      setPrestadoresAtivos(prestadoresDentro);
 
-      // 3. Carrega histórico de acessos concluídos com range pagination
+      // 3. Entradas de Visitantes & Família Registradas Hoje (Circulação Livre)
+      const dataHojeInicio = new Date();
+      dataHojeInicio.setHours(0, 0, 0, 0);
+      try {
+        const visitasQuery = supabase
+          .from('prestadores_acessos')
+          .select('*')
+          .eq('condominio_id', idCondominio)
+          .eq('perfil_acesso', 'autorizado')
+          .gte('data_hora_entrada', dataHojeInicio.toISOString())
+          .order('data_hora_entrada', { ascending: false })
+          .range(0, 49);
+        const { data: dadosVisitas } = await visitasQuery;
+        if (dadosVisitas) {
+          setVisitasHoje(dadosVisitas);
+        }
+      } catch {}
+
+      // 4. Histórico Geral Concluído
       try {
         const histQuery = supabase
           .from('prestadores_acessos')
-          .select('id, prestador_id, condominio_id, perfil_acesso, nome_completo, documento, empresa, unidade, bloco, cracha, placa_veiculo, data_hora_entrada, data_hora_saida, status_acesso')
+          .select('*')
           .eq('condominio_id', idCondominio)
-          .not('data_hora_saida', 'is', null)
-          .order('data_hora_saida', { ascending: false })
+          .order('data_hora_entrada', { ascending: false })
           .range(0, 49);
         const { data: histDb } = await histQuery;
-
         if (histDb) setHistoricoAcessos(histDb);
       } catch {}
+
     } catch (err: any) {
       setMensagem({ tipo: 'erro', texto: 'Erro ao carregar dados: ' + err.message });
     } finally {
@@ -300,7 +360,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
     }
   };
 
-  // Autocomplete / Busca rápida de histórico para reutilização de cadastro
+  // Autocomplete para reutilização de cadastros anteriores
   useEffect(() => {
     if (!termoReutilizacao || termoReutilizacao.trim().length < 2) {
       setSugestoesReutilizacao([]);
@@ -314,7 +374,6 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
     setSugestoesReutilizacao(filtrados);
   }, [termoReutilizacao, cadastros]);
 
-  // Preenche dados ao selecionar uma pessoa já cadastrada anteriormente
   const selecionarParaReutilizar = (item: any) => {
     setNomeCompleto(item.nome_profissional || item.nome_completo || '');
     setDocumento(item.documento || '');
@@ -332,10 +391,10 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
     if (item.bloco && item.bloco !== 'Área Comum') setBloco(item.bloco);
     setSugestoesReutilizacao([]);
     setTermoReutilizacao('');
-    setMensagem({ tipo: 'sucesso', texto: 'Dados do histórico recuperados! Ajuste e confirme a liberação.' });
+    setMensagem({ tipo: 'sucesso', texto: 'Dados recuperados com sucesso! Ajuste a validade e confirme.' });
   };
 
-  // Abertura do Modal de Edição de Cadastro
+  // Edição de cadastro
   const abrirEdicaoCadastro = (item: any) => {
     setIdEdicao(item.id);
     setNomeCompleto(item.nome_profissional || item.nome_completo || '');
@@ -358,60 +417,26 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
     setModalEditarCadastro(true);
   };
 
-  // Salvar Edição
-  const salvarEdicaoCadastro = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!idEdicao) return;
-    setLoading(true);
-
-    try {
-      const datasValidade = calcularDatasValidade(tipoValidade);
-      const payload: any = {
-        perfil_acesso: perfilAcesso,
-        nome_profissional: nomeCompleto.trim(),
-        documento: documento.trim(),
-        tipo_documento: tipoDocumento,
-        empresa: perfilAcesso === 'autorizado' ? (parentescoVinculo || 'Visitante/Família') : empresa.trim(),
-        parentesco_vinculo: parentescoVinculo.trim() || null,
-        telefone: telefone.trim() || null,
-        placa_veiculo: placaVeiculo.trim() || null,
-        foto_rosto: fotoRosto || null,
-        foto_url: fotoRosto || null,
-        foto_documento: fotoDocumento || null,
-        tipo_servico: tipoServico.trim() || null,
-        atende_condominio: perfilAcesso === 'prestador_condominio',
-        unidade: perfilAcesso === 'prestador_condominio' ? 'Condomínio' : unidade.trim(),
-        bloco: perfilAcesso === 'prestador_condominio' ? 'Área Comum' : (eEstruturaCasas ? 'Casa' : bloco.trim()),
-        observacoes: observacoes.trim(),
-        tipo_validade: tipoValidade,
-        data_validade_inicio: datasValidade.inicio,
-        data_validade_fim: datasValidade.fim
-      };
-
-      const { error } = await supabase
-        .from('prestadores')
-        .update(payload)
-        .eq('id', idEdicao);
-
-      if (error) throw error;
-
-      await registrarAtividade({
-        modulo: 'Prestadores',
-        acao: 'EDITAR',
-        descricao: `Atualizou dados cadastrais de ${nomeCompleto.trim()} (${perfilNome(perfilAcesso)}). Validade: ${tipoValidade}.`,
-        detalhes: { id: idEdicao, nome: nomeCompleto.trim(), perfil: perfilAcesso },
-        operador_nome: operadorNome,
-        condominio_id: idCondominio
-      });
-
-      setMensagem({ tipo: 'sucesso', texto: `Cadastro de ${nomeCompleto} atualizado com sucesso!` });
-      fecharModalCadastro();
-      await carregarTudo();
-    } catch (err: any) {
-      setMensagem({ tipo: 'erro', texto: 'Erro ao atualizar cadastro: ' + err.message });
-    } finally {
-      setLoading(false);
-    }
+  const fecharModalCadastro = () => {
+    setModalNovoCadastro(false);
+    setModalEditarCadastro(false);
+    setIdEdicao(null);
+    setNomeCompleto('');
+    setDocumento('');
+    setTipoDocumento('CPF');
+    setEmpresa('');
+    setParentescoVinculo('');
+    setTelefone('');
+    setPlacaVeiculo('');
+    setUnidade('');
+    setBloco('');
+    setTipoServico('');
+    setObservacoes('');
+    setFotoRosto('');
+    setFotoDocumento('');
+    setTipoValidade('hoje');
+    setTermoReutilizacao('');
+    setSugestoesReutilizacao([]);
   };
 
   // OCR de Documentos
@@ -419,10 +444,6 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
     nomeCompleto: string;
     documento: string;
     tipoDocumento: string;
-    cpf?: string;
-    rg?: string;
-    cnhRegistro?: string;
-    validade?: string;
     fotoDocumentoBase64?: string;
     fotoRostoBase64?: string;
     empresa?: string;
@@ -436,25 +457,24 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
     setModalOcrAberto(false);
     setMensagem({ 
       tipo: 'sucesso', 
-      texto: `Documento extraído com sucesso! Titular: ${dados.nomeCompleto} | Doc: ${dados.documento}` 
+      texto: `Documento digitalizado: ${dados.nomeCompleto} (${dados.documento})` 
     });
   };
 
-  // Upload manual de foto do rosto otimizada
+  // Upload manual de foto do rosto
   const handleFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
       const b64 = await comprimirImagemBase64(file, 800, 800, 0.75);
       setFotoRosto(b64);
-      setMensagem({ tipo: 'sucesso', texto: 'Foto do rosto otimizada e carregada com sucesso!' });
-    } catch (err: any) {
-      console.error('Erro ao processar foto:', err);
+      setMensagem({ tipo: 'sucesso', texto: 'Foto do rosto carregada e otimizada!' });
+    } catch {
       setMensagem({ tipo: 'erro', texto: 'Falha ao processar foto.' });
     }
   };
 
-  // Helper de datas de validade da liberação
+  // Cálculo de datas de validade da autorização
   const calcularDatasValidade = (tipo: TipoValidade): { inicio: string; fim: string | null } => {
     const agora = new Date();
     const hojeStr = agora.toISOString().slice(0, 10);
@@ -462,45 +482,43 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
     if (tipo === 'permanente') {
       return { inicio: hojeStr, fim: null };
     }
-
     if (tipo === 'hoje') {
       const fimHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate(), 23, 59, 59);
       return { inicio: hojeStr, fim: fimHoje.toISOString() };
     }
-
     if (tipo === 'amanha') {
       const amanhaInicio = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + 1, 0, 0, 0);
       const amanhaFim = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + 1, 23, 59, 59);
       return { inicio: amanhaInicio.toISOString(), fim: amanhaFim.toISOString() };
     }
-
     if (tipo === '3_dias') {
       const fim3 = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + 3, 23, 59, 59);
       return { inicio: hojeStr, fim: fim3.toISOString() };
     }
-
     if (tipo === '7_dias') {
       const fim7 = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + 7, 23, 59, 59);
       return { inicio: hojeStr, fim: fim7.toISOString() };
     }
-
     if (tipo === '30_dias') {
       const fim30 = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + 30, 23, 59, 59);
       return { inicio: hojeStr, fim: fim30.toISOString() };
     }
-
     return {
       inicio: dataValidadeInicio ? `${dataValidadeInicio}T00:00:00.000Z` : hojeStr,
       fim: dataValidadeFim ? `${dataValidadeFim}T23:59:59.999Z` : null
     };
   };
 
-  // Validação de expiração da liberação
+  // Verificação de validade da liberação cadastrada
   const checarValidade = (item: any): { valido: boolean; expirou: boolean; texto: string; cor: string } => {
     if (item.tipo_validade === 'permanente' || !item.data_validade_fim) {
-      return { valido: true, expirou: false, texto: 'Permanente (Sem Expiração)', cor: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' };
+      return { 
+        valido: true, 
+        expirou: false, 
+        texto: 'Permanente (Livre)', 
+        cor: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' 
+      };
     }
-
     const tFim = new Date(item.data_validade_fim).getTime();
     const dataFimFormatada = new Date(item.data_validade_fim).toLocaleDateString('pt-BR');
 
@@ -508,30 +526,28 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
       return {
         valido: false,
         expirou: true,
-        texto: `Liberação expirada em ${dataFimFormatada}`,
-        cor: 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+        texto: `Venceu em ${dataFimFormatada}`,
+        cor: 'bg-amber-500/15 text-amber-300 border-amber-500/40'
       };
     }
-
     return {
       valido: true,
       expirou: false,
       texto: `Válido até ${dataFimFormatada}`,
-      cor: 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+      cor: 'bg-blue-500/15 text-blue-300 border-blue-500/30'
     };
   };
 
-  // Cronômetro de permanência: Visitantes/Família NÃO têm limite de permanência!
+  // Cronômetro de permanência: Apenas para PRESTADORES!
   const checarPermanencia = (item: any) => {
     const ehVisitante = item.perfil_acesso === 'autorizado';
-
     if (ehVisitante || !item.limite_permanencia_ate) {
       return {
-        status: 'normal',
-        minutosRestantes: 999,
-        texto: 'Permanência Livre (Família / Visitante)',
+        status: 'livre',
+        minutosRestantes: 9999,
+        texto: 'Permanência Livre (Visita)',
         corFundo: 'bg-slate-900 border-slate-800',
-        badge: 'bg-purple-500/20 text-purple-300 border border-purple-500/30',
+        badge: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
         estourado: false
       };
     }
@@ -551,19 +567,19 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
         status: 'estourado',
         minutosRestantes: 0,
         texto: `ESTOURADO: +${formatado}`,
-        corFundo: 'bg-red-950/60 border-red-500/70 shadow-lg shadow-red-950/50 animate-pulse',
-        badge: 'bg-red-600 text-white font-black',
+        corFundo: 'bg-red-950/70 border-red-500/80 shadow-lg shadow-red-950/40',
+        badge: 'bg-red-600 text-white font-black animate-pulse',
         estourado: true
       };
     }
 
     const minutosTotais = Math.floor(diffMs / 60000);
-    if (minutosTotais < 15) {
+    if (minutosTotais < 20) {
       return {
         status: 'alerta',
         minutosRestantes: minutosTotais,
         texto: `Atenção: resta ${formatado}`,
-        corFundo: 'bg-amber-950/40 border-amber-500/60',
+        corFundo: 'bg-amber-950/50 border-amber-500/70',
         badge: 'bg-amber-500 text-slate-950 font-black',
         estourado: false
       };
@@ -590,17 +606,12 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
     }
 
     if (perfilAcesso === 'autorizado' && !unidade.trim()) {
-      setMensagem({ tipo: 'erro', texto: `Para Autorizados (Visitantes/Família), informe ${eEstruturaCasas ? 'o Número da Casa' : 'a Unidade/Apartamento'} de destino.` });
+      setMensagem({ tipo: 'erro', texto: `Para Visitante / Família, informe ${eEstruturaCasas ? 'o Número da Casa' : 'a Unidade'} de destino.` });
       return;
     }
 
     if (perfilAcesso === 'prestador_unidade' && (!documento.trim() || !unidade.trim())) {
-      setMensagem({ tipo: 'erro', texto: `Para Prestadores da Unidade, o Documento e ${eEstruturaCasas ? 'o Número da Casa' : 'a Unidade'} de destino são obrigatórios.` });
-      return;
-    }
-
-    if (perfilAcesso === 'prestador_condominio' && !documento.trim()) {
-      setMensagem({ tipo: 'erro', texto: 'Para Prestadores do Condomínio, o Documento é obrigatório.' });
+      setMensagem({ tipo: 'erro', texto: `Para Prestador da Unidade, o Documento e ${eEstruturaCasas ? 'o Número da Casa' : 'a Unidade'} são obrigatórios.` });
       return;
     }
 
@@ -611,17 +622,11 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
         ? getCondominioAtivoId(usuarioLogado)
         : idCondominio;
 
-      if (!condoEfetivo || condoEfetivo === 'global' || condoEfetivo === 'todos') {
-        setMensagem({ tipo: 'erro', texto: 'Selecione um condomínio válido antes de cadastrar pessoa/prestador.' });
-        setLoading(false);
-        return;
-      }
-
       const payload: any = {
         condominio_id: condoEfetivo,
         perfil_acesso: perfilAcesso,
         nome_profissional: nomeCompleto.trim(),
-        documento: documento.trim(),
+        documento: documento.trim() || null,
         tipo_documento: tipoDocumento,
         empresa: perfilAcesso === 'autorizado' ? (parentescoVinculo || 'Visitante/Família') : empresa.trim(),
         parentesco_vinculo: parentescoVinculo.trim() || null,
@@ -630,7 +635,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
         foto_rosto: fotoRosto || null,
         foto_url: fotoRosto || null,
         foto_documento: fotoDocumento || null,
-        tipo_servico: tipoServico.trim() || (perfilAcesso === 'autorizado' ? 'Visita Familiar' : 'Prestação de Serviço'),
+        tipo_servico: tipoServico.trim() || (perfilAcesso === 'autorizado' ? 'Visita Familiar' : 'Serviços Gerais'),
         atende_condominio: perfilAcesso === 'prestador_condominio',
         unidade: perfilAcesso === 'prestador_condominio' ? 'Condomínio' : unidade.trim(),
         bloco: perfilAcesso === 'prestador_condominio' ? 'Área Comum' : (eEstruturaCasas ? 'Casa' : bloco.trim()),
@@ -646,15 +651,20 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
       if (error) throw error;
 
       await registrarAtividade({
-        modulo: 'Prestadores',
+        modulo: 'Autorizados',
         acao: 'CRIAR',
-        descricao: `Cadastrou liberação para ${nomeCompleto.trim()} (${perfilNome(perfilAcesso)}) - Destino: ${payload.unidade} ${payload.bloco || ''}. Validade: ${tipoValidade}.`,
+        descricao: `Cadastrou liberação para ${nomeCompleto.trim()} (${perfilNome(perfilAcesso)}) - Destino: ${payload.unidade} ${payload.bloco || ''}.`,
         detalhes: { nome: nomeCompleto.trim(), perfil: perfilAcesso, unidade: payload.unidade, tipoValidade },
         operador_nome: operadorNome,
         condominio_id: idCondominio
       });
 
-      setMensagem({ tipo: 'sucesso', texto: `Liberação de ${nomeCompleto} cadastrada com sucesso!` });
+      setMensagem({ 
+        tipo: 'sucesso', 
+        texto: perfilAcesso === 'autorizado'
+          ? `Visitante/Familiar ${nomeCompleto} autorizado! Entrada pode ser dada com 1 clique (sem necessidade de saída).`
+          : `Prestador ${nomeCompleto} cadastrado com sucesso!`
+      });
       fecharModalCadastro();
       await carregarTudo();
     } catch (err: any) {
@@ -664,32 +674,66 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
     }
   };
 
-  const fecharModalCadastro = () => {
-    setModalNovoCadastro(false);
-    setModalEditarCadastro(false);
-    setIdEdicao(null);
-    setNomeCompleto('');
-    setDocumento('');
-    setTipoDocumento('CPF');
-    setEmpresa('');
-    setParentescoVinculo('');
-    setTelefone('');
-    setPlacaVeiculo('');
-    setUnidade('');
-    setBloco('');
-    setTipoServico('');
-    setObservacoes('');
-    setFotoRosto('');
-    setFotoDocumento('');
-    setTipoValidade('hoje');
-    setTermoReutilizacao('');
-    setSugestoesReutilizacao([]);
+  // Salvar Edição
+  const salvarEdicaoCadastro = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!idEdicao) return;
+    setLoading(true);
+
+    try {
+      const datasValidade = calcularDatasValidade(tipoValidade);
+      const payload: any = {
+        perfil_acesso: perfilAcesso,
+        nome_profissional: nomeCompleto.trim(),
+        documento: documento.trim() || null,
+        tipo_documento: tipoDocumento,
+        empresa: perfilAcesso === 'autorizado' ? (parentescoVinculo || 'Visitante/Família') : empresa.trim(),
+        parentesco_vinculo: parentescoVinculo.trim() || null,
+        telefone: telefone.trim() || null,
+        placa_veiculo: placaVeiculo.trim() || null,
+        foto_rosto: fotoRosto || null,
+        foto_url: fotoRosto || null,
+        foto_documento: fotoDocumento || null,
+        tipo_servico: tipoServico.trim() || null,
+        atende_condominio: perfilAcesso === 'prestador_condominio',
+        unidade: perfilAcesso === 'prestador_condominio' ? 'Condomínio' : unidade.trim(),
+        bloco: perfilAcesso === 'prestador_condominio' ? 'Área Comum' : (eEstruturaCasas ? 'Casa' : bloco.trim()),
+        observacoes: observacoes.trim(),
+        tipo_validade: tipoValidade,
+        data_validade_inicio: datasValidade.inicio,
+        data_validade_fim: datasValidade.fim
+      };
+
+      const { error } = await supabase.from('prestadores').update(payload).eq('id', idEdicao);
+      if (error) throw error;
+
+      await registrarAtividade({
+        modulo: 'Autorizados',
+        acao: 'EDITAR',
+        descricao: `Atualizou autorização de ${nomeCompleto.trim()} (${perfilNome(perfilAcesso)}).`,
+        detalhes: { id: idEdicao, nome: nomeCompleto.trim(), perfil: perfilAcesso },
+        operador_nome: operadorNome,
+        condominio_id: idCondominio
+      });
+
+      setMensagem({ tipo: 'sucesso', texto: `Cadastro de ${nomeCompleto} atualizado com sucesso!` });
+      fecharModalCadastro();
+      await carregarTudo();
+    } catch (err: any) {
+      setMensagem({ tipo: 'erro', texto: 'Erro ao atualizar: ' + err.message });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Entrada
+  // =========================================================================
+  // FLUXO DE ENTRADA INTELIGENTE:
+  // - VISITANTES / FAMÍLIA: SÓ DAR ENTRADA, NÃO PRECISA DAR SAÍDA!
+  // - PRESTADORES: CONTROLE DE TEMPO, LIMITE DE PERMANÊNCIA E SAÍDA OBRIGATÓRIA
+  // =========================================================================
   const abrirModalEntradaPara = (pessoa: any) => {
     setItemSelecionado(pessoa);
-    setTempoMaximoMinutos(240); // 4 horas para prestadores
+    setTempoMaximoMinutos(240);
     setTempoMaximoCustomizado('');
     setCrachaEntrada(pessoa.cracha_atribuido || '');
     setPlacaEntrada(pessoa.placa_veiculo || '');
@@ -704,83 +748,146 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
 
     const statusValidade = checarValidade(itemSelecionado);
     if (statusValidade.expirou && !alertaExpiracaoConfirmado) {
-      setMensagem({ tipo: 'erro', texto: 'Atenção: A liberação desta pessoa está expirada. Confirme com o morador para prosseguir.' });
+      setMensagem({ 
+        tipo: 'erro', 
+        texto: 'Atenção: A liberação está vencida. Interfone para o morador e confirme a autorização de hoje.' 
+      });
       return;
     }
 
     setLoading(true);
     try {
       const ehVisitante = itemSelecionado.perfil_acesso === 'autorizado';
-      const minutosEfetivos = ehVisitante ? null : (tempoMaximoCustomizado ? parseInt(tempoMaximoCustomizado, 10) || 240 : tempoMaximoMinutos);
       const agora = new Date();
-      const limitePermanencia = (ehVisitante || !minutosEfetivos) ? null : new Date(agora.getTime() + minutosEfetivos * 60000).toISOString();
 
-      // 1. Atualiza status no cadastro mestre
-      await supabase
-        .from('prestadores')
-        .update({
-          status_acesso: 'DENTRO',
-          data_hora_entrada: agora.toISOString(),
-          data_hora_saida: null,
-          cracha_atribuido: crachaEntrada.trim() || null,
-          tempo_maximo_minutos: minutosEfetivos,
-          limite_permanencia_ate: limitePermanencia,
-          operador_entrada_nome: operadorNome
-        })
-        .eq('id', itemSelecionado.id);
+      if (ehVisitante) {
+        // =====================================================================
+        // REGRA DE OURO: VISITANTE / FAMÍLIA
+        // Apenas registra a entrada auditada. NÃO precisa dar saída!
+        // Não gera cronômetro regressivo, não exige devolução de crachá.
+        // =====================================================================
+        await supabase
+          .from('prestadores')
+          .update({
+            data_hora_entrada: agora.toISOString(),
+            status_acesso: 'AUTORIZADO', // Mantém liberado sem pendência de saída!
+            operador_entrada_nome: operadorNome,
+            placa_veiculo: placaEntrada.trim() || itemSelecionado.placa_veiculo || null
+          })
+          .eq('id', itemSelecionado.id);
 
-      // 2. Grava histórico na tabela prestadores_acessos
-      try {
-        await supabase.from('prestadores_acessos').insert([{
-          condominio_id: idCondominio,
-          prestador_id: itemSelecionado.id,
-          perfil_acesso: itemSelecionado.perfil_acesso || 'prestador_unidade',
-          nome_completo: itemSelecionado.nome_profissional || itemSelecionado.nome_completo,
-          documento: itemSelecionado.documento,
-          empresa: itemSelecionado.empresa,
-          parentesco_vinculo: itemSelecionado.parentesco_vinculo,
-          unidade: itemSelecionado.unidade,
-          bloco: itemSelecionado.bloco,
-          foto_rosto: itemSelecionado.foto_rosto,
-          cracha: crachaEntrada.trim() || null,
-          placa_veiculo: placaEntrada.trim() || itemSelecionado.placa_veiculo || null,
-          data_hora_entrada: agora.toISOString(),
-          tempo_maximo_minutos: minutosEfetivos,
-          limite_permanencia_ate: limitePermanencia,
-          status_acesso: 'DENTRO',
-          operador_entrada_nome: operadorNome,
-          observacoes: observacoesEntrada.trim() || null
-        }]);
-      } catch {}
+        try {
+          await supabase.from('prestadores_acessos').insert([{
+            condominio_id: idCondominio,
+            prestador_id: itemSelecionado.id,
+            perfil_acesso: 'autorizado',
+            nome_completo: itemSelecionado.nome_profissional || itemSelecionado.nome_completo,
+            documento: itemSelecionado.documento || null,
+            empresa: itemSelecionado.parentesco_vinculo || itemSelecionado.empresa || 'Visitante/Família',
+            parentesco_vinculo: itemSelecionado.parentesco_vinculo || null,
+            unidade: itemSelecionado.unidade,
+            bloco: itemSelecionado.bloco,
+            foto_rosto: itemSelecionado.foto_rosto,
+            cracha: null,
+            placa_veiculo: placaEntrada.trim() || itemSelecionado.placa_veiculo || null,
+            data_hora_entrada: agora.toISOString(),
+            data_hora_saida: null, // Sem controle de permanência
+            tempo_maximo_minutos: null,
+            limite_permanencia_ate: null,
+            status_acesso: 'CONCLUIDO', // Entrada direta concluída com sucesso
+            operador_entrada_nome: operadorNome,
+            observacoes: observacoesEntrada.trim() || 'Entrada de visitante/família (circulação livre)'
+          }]);
+        } catch {}
 
-      // 3. Auditoria no Histórico Absoluto
-      await registrarAtividade({
-        modulo: 'Prestadores',
-        acao: 'ENTRADA',
-        descricao: `Registrou ENTRADA de ${itemSelecionado.nome_profissional || itemSelecionado.nome_completo} para ${itemSelecionado.unidade} ${itemSelecionado.bloco || ''}. ${ehVisitante ? 'Permanência Livre' : `Tempo max: ${Math.floor((minutosEfetivos || 0) / 60)}h`}. Crachá: ${crachaEntrada || 'N/A'}.`,
-        detalhes: {
-          pessoaId: itemSelecionado.id,
-          nome: itemSelecionado.nome_profissional || itemSelecionado.nome_completo,
-          unidade: itemSelecionado.unidade,
-          cracha: crachaEntrada,
-          ehVisitante
-        },
-        operador_nome: operadorNome,
-        condominio_id: idCondominio
-      });
+        await registrarAtividade({
+          modulo: 'Autorizados',
+          acao: 'ENTRADA',
+          descricao: `Registrou ENTRADA de ${itemSelecionado.nome_profissional || itemSelecionado.nome_completo} (Visitante/Família) para ${itemSelecionado.unidade} ${itemSelecionado.bloco || ''}. Permanência livre (sem necessidade de saída).`,
+          detalhes: {
+            pessoaId: itemSelecionado.id,
+            nome: itemSelecionado.nome_profissional || itemSelecionado.nome_completo,
+            unidade: itemSelecionado.unidade,
+            ehVisitante: true
+          },
+          operador_nome: operadorNome,
+          condominio_id: idCondominio
+        });
 
-      const horaLimiteFmt = limitePermanencia 
-        ? new Date(limitePermanencia).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-        : null;
+        setMensagem({ 
+          tipo: 'sucesso', 
+          texto: `✅ Entrada registrada! ${itemSelecionado.nome_profissional || itemSelecionado.nome_completo} liberado para acesso à unidade (Visita livre - sem necessidade de dar saída).` 
+        });
 
-      setMensagem({ 
-        tipo: 'sucesso', 
-        texto: horaLimiteFmt 
-          ? `Entrada de ${itemSelecionado.nome_profissional || itemSelecionado.nome_completo} registrada! Permanência autorizada até às ${horaLimiteFmt}.`
-          : `Entrada de ${itemSelecionado.nome_profissional || itemSelecionado.nome_completo} registrada (Permanência livre)!` 
-      });
+      } else {
+        // =====================================================================
+        // PRESTADORES DE SERVIÇO / OBRAS:
+        // Controle estrito de permanência, horário limite e saída necessária.
+        // =====================================================================
+        const minutosEfetivos = tempoMaximoCustomizado ? parseInt(tempoMaximoCustomizado, 10) || 240 : tempoMaximoMinutos;
+        const limitePermanencia = new Date(agora.getTime() + minutosEfetivos * 60000).toISOString();
+
+        await supabase
+          .from('prestadores')
+          .update({
+            status_acesso: 'DENTRO',
+            data_hora_entrada: agora.toISOString(),
+            data_hora_saida: null,
+            cracha_atribuido: crachaEntrada.trim() || null,
+            tempo_maximo_minutos: minutosEfetivos,
+            limite_permanencia_ate: limitePermanencia,
+            operador_entrada_nome: operadorNome,
+            placa_veiculo: placaEntrada.trim() || itemSelecionado.placa_veiculo || null
+          })
+          .eq('id', itemSelecionado.id);
+
+        try {
+          await supabase.from('prestadores_acessos').insert([{
+            condominio_id: idCondominio,
+            prestador_id: itemSelecionado.id,
+            perfil_acesso: itemSelecionado.perfil_acesso || 'prestador_unidade',
+            nome_completo: itemSelecionado.nome_profissional || itemSelecionado.nome_completo,
+            documento: itemSelecionado.documento,
+            empresa: itemSelecionado.empresa,
+            parentesco_vinculo: itemSelecionado.parentesco_vinculo,
+            unidade: itemSelecionado.unidade,
+            bloco: itemSelecionado.bloco,
+            foto_rosto: itemSelecionado.foto_rosto,
+            cracha: crachaEntrada.trim() || null,
+            placa_veiculo: placaEntrada.trim() || itemSelecionado.placa_veiculo || null,
+            data_hora_entrada: agora.toISOString(),
+            tempo_maximo_minutos: minutosEfetivos,
+            limite_permanencia_ate: limitePermanencia,
+            status_acesso: 'DENTRO',
+            operador_entrada_nome: operadorNome,
+            observacoes: observacoesEntrada.trim() || null
+          }]);
+        } catch {}
+
+        await registrarAtividade({
+          modulo: 'Autorizados',
+          acao: 'ENTRADA',
+          descricao: `Registrou ENTRADA de prestador ${itemSelecionado.nome_profissional || itemSelecionado.nome_completo} para ${itemSelecionado.unidade} ${itemSelecionado.bloco || ''}. Tempo max: ${Math.floor(minutosEfetivos / 60)}h. Crachá: ${crachaEntrada || 'N/A'}.`,
+          detalhes: {
+            pessoaId: itemSelecionado.id,
+            nome: itemSelecionado.nome_profissional || itemSelecionado.nome_completo,
+            unidade: itemSelecionado.unidade,
+            cracha: crachaEntrada,
+            tempoMaximo: minutosEfetivos
+          },
+          operador_nome: operadorNome,
+          condominio_id: idCondominio
+        });
+
+        const horaLimiteFmt = new Date(limitePermanencia).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        setMensagem({ 
+          tipo: 'sucesso', 
+          texto: `Entrada de ${itemSelecionado.nome_profissional || itemSelecionado.nome_completo} registrada! Permanência autorizada até às ${horaLimiteFmt}.` 
+        });
+        setAbaAtiva('permanencia');
+      }
+
       setModalEntrada(false);
-      setAbaAtiva('dentro');
       await carregarTudo();
     } catch (err: any) {
       setMensagem({ tipo: 'erro', texto: 'Erro ao registrar entrada: ' + err.message });
@@ -789,7 +896,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
     }
   };
 
-  // Saída
+  // Saída de Prestadores (Apenas Prestadores)
   const abrirModalSaidaPara = (item: any) => {
     setItemSelecionado(item);
     setCrachaDevolvido(true);
@@ -828,9 +935,9 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
       } catch {}
 
       await registrarAtividade({
-        modulo: 'Prestadores',
+        modulo: 'Autorizados',
         acao: 'SAIDA',
-        descricao: `Registrou SAÍDA de ${itemSelecionado.nome_completo || itemSelecionado.nome_profissional}. Crachá: ${crachaDevolvido ? 'Devolvido' : 'Pendente'}.`,
+        descricao: `Registrou SAÍDA do prestador ${itemSelecionado.nome_completo || itemSelecionado.nome_profissional}. Crachá: ${crachaDevolvido ? 'Devolvido' : 'Pendente'}.`,
         detalhes: {
           nome: itemSelecionado.nome_completo || itemSelecionado.nome_profissional,
           cracha: itemSelecionado.cracha || itemSelecionado.cracha_atribuido,
@@ -840,7 +947,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
         condominio_id: idCondominio
       });
 
-      setMensagem({ tipo: 'sucesso', texto: `Saída de ${itemSelecionado.nome_completo || itemSelecionado.nome_profissional} registrada!` });
+      setMensagem({ tipo: 'sucesso', texto: `Saída de ${itemSelecionado.nome_completo || itemSelecionado.nome_profissional} concluída com sucesso!` });
       setModalSaida(false);
       await carregarTudo();
     } catch (err: any) {
@@ -850,7 +957,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
     }
   };
 
-  // Prorrogação de Tempo de Permanência
+  // Prorrogação de Tempo de Prestador
   const handleProrrogarTempo = async () => {
     if (!itemSelecionado) return;
     setLoading(true);
@@ -876,9 +983,9 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
       } catch {}
 
       await registrarAtividade({
-        modulo: 'Prestadores',
+        modulo: 'Autorizados',
         acao: 'EDITAR',
-        descricao: `Prorrogou tempo de permanência de ${itemSelecionado.nome_completo || itemSelecionado.nome_profissional} em +${minAdicionados} minutos (Autorizado até às ${novoLimiteFmt}).`,
+        descricao: `Prorrogou tempo do prestador ${itemSelecionado.nome_completo || itemSelecionado.nome_profissional} em +${minAdicionados} minutos (Novo limite: ${novoLimiteFmt}).`,
         detalhes: { novoLimite, minutosAdicionados: minAdicionados },
         operador_nome: operadorNome,
         condominio_id: idCondominio
@@ -886,7 +993,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
 
       setMensagem({ 
         tipo: 'sucesso', 
-        texto: `Tempo prorrogado em +${minAdicionados} minutos! Novo horário limite de permanência: até às ${novoLimiteFmt}.` 
+        texto: `Permanência prorrogada em +${minAdicionados}m! Novo limite: até às ${novoLimiteFmt}.` 
       });
       setModalProrrogar(false);
       setProrrogarCustomizado('');
@@ -898,22 +1005,22 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
     }
   };
 
-  // WhatsApp
+  // Notificações WhatsApp Inteligentes (Visitante vs Prestador)
   const dispararWhatsAppEntrada = (item: any) => {
     const nome = item.nome_profissional || item.nome_completo;
     const agora = new Date();
     const dataHoje = agora.toLocaleDateString('pt-BR');
     const hora = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    const nomeOp = usuarioLogado?.nome || usuarioLogado?.login || 'Portaria';
-    const perfil = item.perfil_acesso || (item.atende_condominio ? 'prestador_condominio' : 'prestador_unidade');
-    const horaLimiteStr = item.limite_permanencia_ate 
-      ? new Date(item.limite_permanencia_ate).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) 
-      : null;
-    const linhaLimite = horaLimiteStr ? `\n⏰ *Permanência autorizada até às:* ${horaLimiteStr}` : '';
+    const nomeOp = operadorNome;
+    const perfil = item.perfil_acesso || 'autorizado';
+    const ehVisitante = perfil === 'autorizado';
 
     if (perfil === 'prestador_condominio') {
       const telSindico = usuarioLogado?.condominio?.sindico_whatsapp?.replace(/\D/g, '') || '';
-      const texto = `Aviso Portaria: O prestador *${nome}* da empresa *${item.empresa || 'Serviços'}* registrou *ENTRADA* para manutenção no condomínio às *${hora}* em *${dataHoje}*. Crachá: ${item.cracha || item.cracha_atribuido || 'N/A'}.${linhaLimite}\n• Operador Responsável: ${nomeOp}\n• Data/Hora: ${dataHoje} às ${hora}`;
+      const horaLimiteStr = item.limite_permanencia_ate 
+        ? `\n⏰ *Permanência autorizada até às:* ${new Date(item.limite_permanencia_ate).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` 
+        : '';
+      const texto = `🛠️ *AVISO DE MANUTENÇÃO - PORTARIA*\nO prestador *${nome}* (${item.empresa || 'Serviços'}) registrou *ENTRADA* no condomínio às *${hora}* em *${dataHoje}*. Crachá: ${item.cracha || item.cracha_atribuido || 'N/A'}.${horaLimiteStr}\n• Operador: ${nomeOp}`;
       const url = formatarLinkWhatsApp(telSindico, texto, nomeOp);
       window.open(url, '_blank');
     } else {
@@ -923,63 +1030,16 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
       );
       const telMorador = moradorDestino?.telefone?.replace(/\D/g, '') || item.telefone?.replace(/\D/g, '') || '';
       const rotuloDestino = formatarIdentificacaoUnidade(item.unidade, item.bloco, condoConfig?.tipo_estrutura);
-      const texto = `Olá! Informamos que o prestador *${nome}* acabou de registrar *ENTRADA* na portaria para ${rotuloDestino} às *${hora}* do dia *${dataHoje}*.${linhaLimite}\n• Operador Responsável: ${nomeOp}\n• Data/Hora: ${dataHoje} às ${hora}`;
-      const url = formatarLinkWhatsApp(telMorador, texto, nomeOp);
-      window.open(url, '_blank');
-    }
-  };
 
-  const dispararWhatsAppProrrogacao = (item: any, novoLimiteIso?: string, minAdicionados?: number) => {
-    const nome = item.nome_profissional || item.nome_completo;
-    const agora = new Date();
-    const dataHoje = agora.toLocaleDateString('pt-BR');
-    const hora = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    const nomeOp = usuarioLogado?.nome || usuarioLogado?.login || 'Portaria';
-    const perfil = item.perfil_acesso || (item.atende_condominio ? 'prestador_condominio' : 'prestador_unidade');
-    const targetLimite = novoLimiteIso || item.limite_permanencia_ate;
-    const horaLimiteStr = targetLimite 
-      ? new Date(targetLimite).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) 
-      : 'Horário estendido';
-    const strTempo = minAdicionados ? ` em *+${minAdicionados} minutos*` : '';
-
-    if (perfil === 'prestador_condominio') {
-      const telSindico = usuarioLogado?.condominio?.sindico_whatsapp?.replace(/\D/g, '') || '';
-      const texto = `⏱️ *PRORROGAÇÃO DE PERMANÊNCIA - PORTARIA*\nO prestador *${nome}* (${item.empresa || 'Serviços'}) teve seu prazo de permanência estendido.\n⏰ *Novo Horário Limite de Saída:* até às *${horaLimiteStr}*.\n• Operador Responsável: ${nomeOp}\n• Atualizado em: ${dataHoje} às ${hora}`;
-      const url = formatarLinkWhatsApp(telSindico, texto, nomeOp);
-      window.open(url, '_blank');
-    } else {
-      const moradorDestino = moradores.find((m: any) => 
-        m.unidade?.toString().trim().toLowerCase() === item.unidade?.toString().trim().toLowerCase() &&
-        (!item.bloco || m.bloco?.toString().trim().toLowerCase() === item.bloco?.toString().trim().toLowerCase())
-      );
-      const telMorador = moradorDestino?.telefone?.replace(/\D/g, '') || item.telefone?.replace(/\D/g, '') || '';
-      const rotuloDestino = formatarIdentificacaoUnidade(item.unidade, item.bloco, condoConfig?.tipo_estrutura);
-      const texto = `⏱️ *PRORROGAÇÃO DE PERMANÊNCIA - PORTARIA*\nInformamos que a permanência do prestador *${nome}* para ${rotuloDestino} foi estendida na portaria.\n⏰ *Novo Horário Limite de Saída:* até às *${horaLimiteStr}*.\n• Operador Responsável: ${nomeOp}\n• Atualizado em: ${dataHoje} às ${hora}`;
-      const url = formatarLinkWhatsApp(telMorador, texto, nomeOp);
-      window.open(url, '_blank');
-    }
-  };
-
-  const dispararWhatsAppSaida = (item: any) => {
-    const nome = item.nome_profissional || item.nome_completo;
-    const agora = new Date();
-    const dataHoje = agora.toLocaleDateString('pt-BR');
-    const hora = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    const nomeOp = usuarioLogado?.nome || usuarioLogado?.login || 'Portaria';
-    const perfil = item.perfil_acesso || (item.atende_condominio ? 'prestador_condominio' : 'prestador_unidade');
-
-    if (perfil === 'prestador_condominio') {
-      const telSindico = usuarioLogado?.condominio?.sindico_whatsapp?.replace(/\D/g, '') || '';
-      const texto = `Aviso Portaria: O prestador *${nome}* da empresa *${item.empresa || 'Serviços'}* registrou *SAÍDA* do condomínio às *${hora}* em *${dataHoje}*.\n• Operador Responsável: ${nomeOp}\n• Data/Hora: ${dataHoje} às ${hora}`;
-      const url = formatarLinkWhatsApp(telSindico, texto, nomeOp);
-      window.open(url, '_blank');
-    } else {
-      const moradorDestino = moradores.find((m: any) => 
-        m.unidade?.toString().trim().toLowerCase() === item.unidade?.toString().trim().toLowerCase() &&
-        (!item.bloco || m.bloco?.toString().trim().toLowerCase() === item.bloco?.toString().trim().toLowerCase())
-      );
-      const telMorador = moradorDestino?.telefone?.replace(/\D/g, '') || item.telefone?.replace(/\D/g, '') || '';
-      const texto = `Olá! Informamos que *${nome}* registrou *SAÍDA* na portaria às *${hora}* do dia *${dataHoje}*.\n• Operador Responsável: ${nomeOp}\n• Data/Hora: ${dataHoje} às ${hora}`;
+      let texto = '';
+      if (ehVisitante) {
+        texto = `👋 *AVISO DE VISITA - PORTARIA*\nOlá! Informamos que seu visitante/familiar *${nome}* (${item.parentesco_vinculo || 'Visita'}) acabou de registrar entrada na portaria para ${rotuloDestino} às *${hora}* do dia *${dataHoje}*.\n• Tenha uma excelente visita!\n• Operador: ${nomeOp}`;
+      } else {
+        const horaLimiteStr = item.limite_permanencia_ate 
+          ? `\n⏰ *Permanência autorizada até às:* ${new Date(item.limite_permanencia_ate).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` 
+          : '';
+        texto = `🔧 *AVISO DE PRESTADOR - PORTARIA*\nInformamos que o prestador *${nome}* (${item.empresa || 'Serviços'}) registrou entrada para ${rotuloDestino} às *${hora}* do dia *${dataHoje}*.${horaLimiteStr}\n• Operador: ${nomeOp}`;
+      }
       const url = formatarLinkWhatsApp(telMorador, texto, nomeOp);
       window.open(url, '_blank');
     }
@@ -1007,38 +1067,93 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
     }
   };
 
+  // Filtragem Dinâmica por Categoria, Status, Busca e Unidade
   const cadastrosFiltrados = useMemo(() => {
     return cadastros.filter((c: any) => {
-      const nome = (c.nome_profissional || c.nome_completo || '').toLowerCase();
-      const doc = (c.documento || '').toLowerCase();
-      const emp = (c.empresa || '').toLowerCase();
-      const uni = (c.unidade || '').toLowerCase();
-      const buscaTermo = busca.toLowerCase();
+      // 1. Filtro por Categoria de Entrada
+      if (filtroCategoria !== 'todos') {
+        if (c.perfil_acesso !== filtroCategoria) return false;
+      }
 
-      const bateBusca = !busca || nome.includes(buscaTermo) || doc.includes(buscaTermo) || emp.includes(buscaTermo) || uni.includes(buscaTermo);
-      if (!bateBusca) return false;
-
-      if (filtroPerfil !== 'todos' && c.perfil_acesso !== filtroPerfil) return false;
-
-      if (filtroValidade !== 'todos') {
+      // 2. Filtro por Status
+      if (filtroStatus === 'dentro') {
+        const estaDentro = prestadoresAtivos.some((a: any) => (a.prestador_id || a.id) === c.id);
+        if (!estaDentro) return false;
+      } else if (filtroStatus === 'entradas_hoje') {
+        const dataHojeStr = new Date().toISOString().slice(0, 10);
+        const teveEntradaHoje = c.data_hora_entrada && c.data_hora_entrada.startsWith(dataHojeStr);
+        if (!teveEntradaHoje) return false;
+      } else if (filtroStatus === 'validos') {
         const infoVal = checarValidade(c);
-        if (filtroValidade === 'validos' && !infoVal.valido) return false;
-        if (filtroValidade === 'vencidos' && !infoVal.expirou) return false;
-        if (filtroValidade === 'permanentes' && c.tipo_validade !== 'permanente') return false;
+        if (!infoVal.valido) return false;
+      } else if (filtroStatus === 'vencidos') {
+        const infoVal = checarValidade(c);
+        if (!infoVal.expirou) return false;
+      }
+
+      // 3. Filtro por Unidade / Bloco
+      if (filtroUnidade !== 'todas') {
+        if ((c.unidade || '').toString().trim() !== filtroUnidade) return false;
+      }
+
+      // 4. Busca em tempo real
+      if (busca.trim()) {
+        const b = busca.toLowerCase();
+        const nome = (c.nome_profissional || c.nome_completo || '').toLowerCase();
+        const doc = (c.documento || '').toLowerCase();
+        const emp = (c.empresa || '').toLowerCase();
+        const uni = (c.unidade || '').toLowerCase();
+        const blo = (c.bloco || '').toLowerCase();
+        const pla = (c.placa_veiculo || '').toLowerCase();
+        const vin = (c.parentesco_vinculo || '').toLowerCase();
+        const bate = nome.includes(b) || doc.includes(b) || emp.includes(b) || uni.includes(b) || blo.includes(b) || pla.includes(b) || vin.includes(b);
+        if (!bate) return false;
       }
 
       return true;
     });
-  }, [cadastros, busca, filtroPerfil, filtroValidade]);
+  }, [cadastros, filtroCategoria, filtroStatus, busca, filtroUnidade, prestadoresAtivos]);
 
-  const totalEstourados = useMemo(() => {
-    return acessosAtivos.filter(a => checarPermanencia(a).estourado).length;
-  }, [acessosAtivos, tempoAtual]);
+  // Lista única de unidades para o filtro
+  const listaUnidadesDisponiveis = useMemo(() => {
+    const sets = new Set<string>();
+    cadastros.forEach(c => {
+      if (c.unidade && c.unidade !== 'Condomínio') sets.add(c.unidade.toString().trim());
+    });
+    return Array.from(sets).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [cadastros]);
+
+  // Contagens de estatísticas
+  const estatisticas = useMemo(() => {
+    const totalPrestadoresDentro = prestadoresAtivos.length;
+    const estourados = prestadoresAtivos.filter(a => checarPermanencia(a).estourado).length;
+    const totalVisitantes = cadastros.filter(c => c.perfil_acesso === 'autorizado').length;
+    const totalPrestadoresCadastrados = cadastros.filter(c => c.perfil_acesso !== 'autorizado').length;
+    const totalVisitasHoje = visitasHoje.length;
+
+    return {
+      prestadoresDentro: totalPrestadoresDentro,
+      estourados,
+      visitantes: totalVisitantes,
+      prestadores: totalPrestadoresCadastrados,
+      visitasHoje: totalVisitasHoje,
+      totalCadastros: cadastros.length
+    };
+  }, [cadastros, prestadoresAtivos, visitasHoje, tempoAtual]);
+
+  // Toca alerta sonoro se tiver algum prestador estourado e o som estiver habilitado
+  useEffect(() => {
+    if (estatisticas.estourados > 0 && alertaSonoroHabilitado) {
+      emitirAlertaSonoro();
+    }
+  }, [estatisticas.estourados, alertaSonoroHabilitado]);
 
   return (
-    <div className="space-y-4 max-w-7xl mx-auto pb-12 animate-in fade-in duration-200">
+    <div className="space-y-4 max-w-7xl mx-auto pb-16 animate-in fade-in duration-200">
       
-      {/* CABEÇALHO DO MÓDULO */}
+      {/* ========================================================================= */}
+      {/* 1. CABEÇALHO DO PAINEL DE AUTORIZADOS */}
+      {/* ========================================================================= */}
       <div className="bg-slate-900 p-3 sm:p-3.5 rounded-2xl border border-slate-800 shadow-md flex items-center justify-between gap-3 text-white">
         <div className="flex items-center gap-2.5">
           <span className="p-2 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center border border-purple-500/30 shrink-0">
@@ -1048,15 +1163,30 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
             <h2 className="text-base sm:text-lg font-black uppercase tracking-tight">
               Autorizados
             </h2>
-            {totalEstourados > 0 && (
+            {estatisticas.estourados > 0 && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-red-600 text-white animate-pulse">
-                <AlertTriangle className="w-3 h-3" /> {totalEstourados}
+                <AlertTriangle className="w-3 h-3" /> {estatisticas.estourados}
               </span>
             )}
           </div>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {/* Alternador de Alerta Sonoro */}
+          <button
+            type="button"
+            onClick={() => setAlertaSonoroHabilitado(!alertaSonoroHabilitado)}
+            className={`p-2 rounded-xl border text-xs font-bold transition cursor-pointer ${
+              alertaSonoroHabilitado
+                ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25'
+                : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
+            }`}
+            title={alertaSonoroHabilitado ? 'Alerta Sonoro Ativo (Beep para tempo estourado)' : 'Alerta Sonoro Silenciado'}
+          >
+            {alertaSonoroHabilitado ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </button>
+
+          {/* Atualizar */}
           <button
             type="button"
             onClick={carregarTudo}
@@ -1067,18 +1197,21 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-purple-400' : ''}`} />
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              fecharModalCadastro();
-              setModalNovoCadastro(true);
-            }}
-            className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black px-3.5 py-2 rounded-xl text-xs uppercase flex items-center gap-1.5 transition shadow-sm active:scale-95 cursor-pointer"
-            title="Liberação de Acesso"
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>Liberação</span>
-          </button>
+          {/* Liberação de Acesso */}
+          {permissoesOperador.cadastrar && (
+            <button
+              type="button"
+              onClick={() => {
+                fecharModalCadastro();
+                setModalNovoCadastro(true);
+              }}
+              className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black px-3.5 py-2 rounded-xl text-xs uppercase flex items-center gap-1.5 transition shadow-sm active:scale-95 cursor-pointer"
+              title="Liberação de Acesso"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Liberação</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1090,105 +1223,486 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
             : 'bg-red-950/80 text-red-300 border-red-500/40'
         }`}>
           <div className="flex items-center gap-2">
-            {mensagem.tipo === 'sucesso' ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <AlertTriangle className="w-4 h-4 text-red-400" />}
+            {mensagem.tipo === 'sucesso' ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" /> : <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />}
             <span>{mensagem.texto}</span>
           </div>
-          <button onClick={() => setMensagem({ tipo: '', texto: '' })} className="text-slate-400 hover:text-white">
+          <button onClick={() => setMensagem({ tipo: '', texto: '' })} className="text-slate-400 hover:text-white cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
-      {/* NAVEGAÇÃO DE ABAS (Removida aba SQL da tela conforme instrução) */}
+      {/* ========================================================================= */}
+      {/* 2. NAVEGAÇÃO ENTRE ABAS DO PAINEL */}
+      {/* ========================================================================= */}
       <div className="grid grid-cols-3 gap-1.5 sm:gap-2 border-b border-slate-800 pb-2 w-full">
-        <button
-          onClick={() => setAbaAtiva('dentro')}
-          className={`w-full py-2 px-1 sm:px-3 sm:py-2.5 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs md:text-sm font-black transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 cursor-pointer text-center ${
-            abaAtiva === 'dentro'
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20'
-              : 'bg-slate-850 text-slate-300 hover:bg-slate-800 hover:text-white border border-slate-800'
-          }`}
-        >
-          <div className="flex flex-col sm:flex-row items-center justify-center leading-tight">
-            <div className="flex items-center gap-1 shrink-0">
-              <Timer className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-              <span>No</span>
-            </div>
-            <span className="sm:ml-1">Condomínio</span>
-          </div>
-          <span className={`px-1.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-black shrink-0 ${
-            totalEstourados > 0 
-              ? 'bg-red-600 text-white animate-pulse' 
-              : abaAtiva === 'dentro' ? 'bg-slate-950 text-purple-300' : 'bg-slate-800 text-slate-300'
-          }`}>
-            {acessosAtivos.length}
-          </span>
-        </button>
-
+        {/* Aba 1: Gestão de Acessos & Liberados */}
         <button
           onClick={() => setAbaAtiva('cadastros')}
-          className={`w-full py-2 px-1 sm:px-3 sm:py-2.5 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs md:text-sm font-black transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 cursor-pointer text-center ${
+          className={`w-full py-2.5 px-2 rounded-xl text-xs sm:text-sm font-black transition flex items-center justify-center gap-1.5 cursor-pointer text-center ${
             abaAtiva === 'cadastros'
-              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-              : 'bg-slate-850 text-slate-300 hover:bg-slate-800 hover:text-white border border-slate-800'
+              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20'
+              : 'bg-slate-900 text-slate-300 hover:bg-slate-850 hover:text-white border border-slate-800'
           }`}
         >
-          <div className="flex items-center justify-center gap-1 leading-tight shrink-0">
-            <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-            <span>Liberados</span>
-          </div>
-          <span className="px-1.5 py-0.5 rounded-full text-[9px] sm:text-[10px] bg-slate-900/60 text-slate-300 shrink-0">
+          <Users className="w-4 h-4 shrink-0" />
+          <span>Gestão de Acessos</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-950/80 text-purple-300">
             {cadastros.length}
           </span>
         </button>
 
+        {/* Aba 2: Prestadores no Local (Permanência Controlada) */}
         <button
-          onClick={() => setAbaAtiva('historico')}
-          className={`w-full py-2 px-1 sm:px-3 sm:py-2.5 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs md:text-sm font-black transition flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer text-center ${
-            abaAtiva === 'historico'
-              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-              : 'bg-slate-850 text-slate-300 hover:bg-slate-800 hover:text-white border border-slate-800'
+          onClick={() => setAbaAtiva('permanencia')}
+          className={`w-full py-2.5 px-2 rounded-xl text-xs sm:text-sm font-black transition flex items-center justify-center gap-1.5 cursor-pointer text-center ${
+            abaAtiva === 'permanencia'
+              ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
+              : 'bg-slate-900 text-slate-300 hover:bg-slate-850 hover:text-white border border-slate-800'
           }`}
         >
-          <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+          <Timer className="w-4 h-4 shrink-0" />
+          <div className="flex items-center gap-1">
+            <span>Permanência</span>
+            <span className="hidden sm:inline">Prestadores</span>
+          </div>
+          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
+            estatisticas.estourados > 0 
+              ? 'bg-red-600 text-white animate-pulse' 
+              : 'bg-slate-950/80 text-blue-300'
+          }`}>
+            {estatisticas.prestadoresDentro}
+          </span>
+        </button>
+
+        {/* Aba 3: Histórico de Acessos Auditados */}
+        <button
+          onClick={() => setAbaAtiva('historico')}
+          className={`w-full py-2.5 px-2 rounded-xl text-xs sm:text-sm font-black transition flex items-center justify-center gap-1.5 cursor-pointer text-center ${
+            abaAtiva === 'historico'
+              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+              : 'bg-slate-900 text-slate-300 hover:bg-slate-850 hover:text-white border border-slate-800'
+          }`}
+        >
+          <Clock className="w-4 h-4 shrink-0" />
           <span>Histórico</span>
+          <span className="hidden sm:inline text-[10px] text-slate-400 font-normal">Auditado</span>
         </button>
       </div>
 
-      {/* ABA 1: DENTRO DO CONDOMÍNIO */}
-      {abaAtiva === 'dentro' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between text-xs text-slate-400 bg-slate-900 p-3 rounded-2xl border border-slate-800">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping inline-block" />
-              <span>Presentes no condomínio agora: <strong className="text-white">{acessosAtivos.length}</strong></span>
+      {/* ========================================================================= */}
+      {/* ABA 1: GESTÃO DE ACESSOS & FILTROS POR CATEGORIA DE ENTRADA */}
+      {/* ========================================================================= */}
+      {abaAtiva === 'cadastros' && (
+        <div className="space-y-3.5">
+          
+          {/* BARRA DE FILTROS POR CATEGORIA DE ENTRADA (VISUALIZAÇÃO INTUITIVA) */}
+          <div className="bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-800 space-y-3 shadow-sm">
+            
+            {/* 1. Categorias de Entrada (Botões/Chips em Destaque) */}
+            <div>
+              <label className="block text-[11px] font-black uppercase text-slate-400 mb-2 flex items-center gap-1.5">
+                <Filter className="w-3.5 h-3.5 text-purple-400" />
+                <span>Filtrar por:</span>
+              </label>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {/* Todas as Categorias */}
+                <button
+                  type="button"
+                  onClick={() => setFiltroCategoria('todos')}
+                  className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                    filtroCategoria === 'todos'
+                      ? 'bg-purple-600 text-white border-purple-500 shadow-md shadow-purple-600/20 font-black'
+                      : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-800'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5" /> Todas as Pessoas
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-900/80">
+                    {cadastros.length}
+                  </span>
+                </button>
+
+                {/* Categoria 1: Visitantes & Família (Sem saída necessária!) */}
+                <button
+                  type="button"
+                  onClick={() => setFiltroCategoria('autorizado')}
+                  className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                    filtroCategoria === 'autorizado'
+                      ? 'bg-purple-600 text-white border-purple-500 shadow-md shadow-purple-600/20 font-black'
+                      : 'bg-purple-950/20 text-purple-300 border-purple-900/60 hover:bg-purple-950/40'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-purple-400" /> Visitantes & Família
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-purple-900/60 text-purple-200">
+                    {cadastros.filter(c => c.perfil_acesso === 'autorizado').length}
+                  </span>
+                </button>
+
+                {/* Categoria 2: Prestadores da Unidade (Obras e Serviços com Saída) */}
+                <button
+                  type="button"
+                  onClick={() => setFiltroCategoria('prestador_unidade')}
+                  className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                    filtroCategoria === 'prestador_unidade'
+                      ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-600/20 font-black'
+                      : 'bg-blue-950/20 text-blue-300 border-blue-900/60 hover:bg-blue-950/40'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <HardHat className="w-3.5 h-3.5 text-blue-400" /> Prestador da Unidade
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-blue-900/60 text-blue-200">
+                    {cadastros.filter(c => c.perfil_acesso === 'prestador_unidade').length}
+                  </span>
+                </button>
+
+                {/* Categoria 3: Prestadores do Condomínio (Manutenção Predial) */}
+                <button
+                  type="button"
+                  onClick={() => setFiltroCategoria('prestador_condominio')}
+                  className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                    filtroCategoria === 'prestador_condominio'
+                      ? 'bg-amber-600 text-white border-amber-500 shadow-md shadow-amber-600/20 font-black'
+                      : 'bg-amber-950/20 text-amber-300 border-amber-900/60 hover:bg-amber-950/40'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-amber-400" /> Condomínio / Obras
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-900/60 text-amber-200">
+                    {cadastros.filter(c => c.perfil_acesso === 'prestador_condominio').length}
+                  </span>
+                </button>
+              </div>
             </div>
-            {totalEstourados > 0 && (
+
+            {/* 2. Subfiltros de Status e Unidade (Lado a lado acima da busca) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              {/* Filtro por Status */}
+              <div>
+                <select
+                  value={filtroStatus}
+                  onChange={(e: any) => setFiltroStatus(e.target.value)}
+                  className="w-full bg-slate-950 text-white text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500 font-semibold cursor-pointer"
+                >
+                  <option value="todos">Todos os Status</option>
+                  <option value="dentro">⏱️ Prestadores Presentes Agora</option>
+                  <option value="entradas_hoje">🚪 Entradas Registradas Hoje</option>
+                  <option value="validos">🟢 Liberações Válidas</option>
+                  <option value="vencidos">⚠️ Liberações Vencidas / Expiradas</option>
+                </select>
+              </div>
+
+              {/* Filtro por Unidade / Casa */}
+              <div>
+                <select
+                  value={filtroUnidade}
+                  onChange={(e) => setFiltroUnidade(e.target.value)}
+                  className="w-full bg-slate-950 text-white text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500 font-semibold cursor-pointer"
+                >
+                  <option value="todas">Todas as Unidades</option>
+                  {listaUnidadesDisponiveis.map(u => (
+                    <option key={u} value={u}>
+                      {eEstruturaCasas ? `Casa ${u}` : `Apto/Unidade ${u}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* 3. Campo de Busca Rápida (Abaixo das listas de filtros) */}
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+              <input
+                type="text"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar por nome, CPF/RG, unidade, placa ou empresa..."
+                className="w-full bg-slate-950 text-white text-xs pl-9 pr-8 py-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500"
+              />
+              {busca && (
+                <button
+                  type="button"
+                  onClick={() => setBusca('')}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Contador de Resultados e Botão de Limpar */}
+            <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/80">
+              <span className="flex items-center gap-1.5">
+                Exibindo <strong className="text-white">{cadastrosFiltrados.length}</strong> pessoa(s) autorizada(s)
+              </span>
+
+              {(busca.trim() || filtroCategoria !== 'todos' || filtroStatus !== 'todos' || filtroUnidade !== 'todas') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBusca('');
+                    setFiltroCategoria('todos');
+                    setFiltroStatus('todos');
+                    setFiltroUnidade('todas');
+                  }}
+                  className="text-[11px] text-red-400 hover:text-red-300 font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" /> Limpar Filtros
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* LISTA DE PESSOAS AUTORIZADAS COM AÇÕES INTELIGENTES */}
+          {cadastrosFiltrados.length === 0 ? (
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-10 text-center space-y-3">
+              <Users className="w-12 h-12 text-slate-600 mx-auto" />
+              <h3 className="text-sm sm:text-base font-bold text-slate-300">Nenhum autorizado encontrado</h3>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                Nenhum registro corresponde aos filtros selecionados. Tente ajustar os filtros ou clique em "Nova Liberação" para cadastrar.
+              </p>
+              {permissoesOperador.cadastrar && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    fecharModalCadastro();
+                    setModalNovoCadastro(true);
+                  }}
+                  className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black px-4 py-2 rounded-xl text-xs uppercase inline-flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Cadastrar Autorizado</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {cadastrosFiltrados.map((item) => {
+                const perfil = item.perfil_acesso || 'autorizado';
+                const ehVisitante = perfil === 'autorizado';
+                const infoValidade = checarValidade(item);
+                const prestadorNoLocal = prestadoresAtivos.find((a: any) => (a.prestador_id || a.id) === item.id);
+                const jaEstaDentro = Boolean(prestadorNoLocal);
+
+                return (
+                  <div
+                    key={item.id}
+                    className={`bg-slate-900 hover:bg-slate-850 p-3.5 sm:p-4 rounded-2xl border transition duration-150 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-sm ${
+                      infoValidade.expirou 
+                        ? 'border-amber-500/40 bg-amber-950/10' 
+                        : jaEstaDentro 
+                        ? 'border-blue-500/40 bg-blue-950/10' 
+                        : 'border-slate-800'
+                    }`}
+                  >
+                    {/* Foto e Informações Principais */}
+                    <div className="flex items-start sm:items-center gap-3.5 min-w-0 flex-1">
+                      
+                      {/* Avatar com Foto Otimizada */}
+                      <div
+                        onClick={() => (item.foto_rosto || item.foto_url) && setModalVisualizarFoto(item.foto_rosto || item.foto_url)}
+                        className="w-12 h-12 rounded-2xl bg-slate-800 border border-slate-700 overflow-hidden shrink-0 flex items-center justify-center text-slate-400 cursor-pointer hover:border-purple-400 transition"
+                      >
+                        {(item.foto_rosto || item.foto_url) ? (
+                          <ImagemOtimizada 
+                            src={item.foto_rosto || item.foto_url} 
+                            alt={item.nome_profissional || 'Autorizado'} 
+                            permitirAmpliar={false}
+                            className="w-full h-full object-cover" 
+                          />
+                        ) : ehVisitante ? (
+                          <Users className="w-6 h-6 text-purple-400" />
+                        ) : (
+                          <HardHat className="w-6 h-6 text-blue-400" />
+                        )}
+                      </div>
+
+                      {/* Dados e Badges */}
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {/* Badge de Categoria */}
+                          <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase border ${perfilBadge(perfil)}`}>
+                            {perfilNome(perfil)}
+                          </span>
+
+                          {/* Validade */}
+                          <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border ${infoValidade.cor}`}>
+                            {infoValidade.texto}
+                          </span>
+
+                          {/* Se for visitante: Badge de livre permanência */}
+                          {ehVisitante && (
+                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                              Livre Circulação (Sem Saída)
+                            </span>
+                          )}
+
+                          {/* Se for prestador e estiver no local */}
+                          {!ehVisitante && jaEstaDentro && (
+                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase bg-blue-500 text-slate-950 flex items-center gap-1">
+                              <Timer className="w-3 h-3" /> No Local (Saída Pendente)
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Nome Completo */}
+                        <h4 className="font-extrabold text-sm text-white truncate">
+                          {item.nome_profissional || item.nome_completo}
+                        </h4>
+
+                        {/* Detalhes de Destino, Empresa ou Vínculo */}
+                        <div className="flex items-center gap-2.5 text-xs text-slate-400 flex-wrap">
+                          {item.documento && (
+                            <span>Doc: <strong className="text-slate-300 font-mono">{item.documento}</strong></span>
+                          )}
+                          {item.empresa && (
+                            <span>Empresa: <strong className="text-slate-300">{item.empresa}</strong></span>
+                          )}
+                          {item.parentesco_vinculo && (
+                            <span>Vínculo: <strong className="text-purple-300">{item.parentesco_vinculo}</strong></span>
+                          )}
+                          <span>
+                            Destino: <strong className="text-amber-300 font-bold">
+                              {perfil === 'prestador_condominio' 
+                                ? 'Área Comum / Condomínio' 
+                                : formatarIdentificacaoUnidade(item.unidade, item.bloco, condoConfig?.tipo_estrutura)}
+                            </strong>
+                          </span>
+                          {item.placa_veiculo && (
+                            <span className="flex items-center gap-1 font-mono text-slate-300">
+                              <Car className="w-3 h-3 text-slate-400" /> {item.placa_veiculo}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* AÇÕES DE ENTRADA, SAÍDA E EDIÇÃO */}
+                    <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                      
+                      {/* Editar Cadastro */}
+                      {permissoesOperador.editar && (
+                        <button
+                          type="button"
+                          onClick={() => abrirEdicaoCadastro(item)}
+                          className="bg-slate-800 hover:bg-slate-700 text-slate-200 p-2 rounded-xl border border-slate-700 transition cursor-pointer"
+                          title="Editar cadastro ou renovar validade"
+                        >
+                          <Pencil className="w-4 h-4 text-purple-400" />
+                        </button>
+                      )}
+
+                      {/* Notificar WhatsApp */}
+                      <button
+                        type="button"
+                        onClick={() => dispararWhatsAppEntrada(item)}
+                        className="bg-slate-800 hover:bg-slate-700 text-emerald-400 p-2 rounded-xl border border-slate-700 transition cursor-pointer"
+                        title="Enviar mensagem WhatsApp ao morador"
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                      </button>
+
+                      {/* BOTÃO DE ENTRADA / SAÍDA ESPECÍFICO POR CATEGORIA */}
+                      {ehVisitante ? (
+                        /* VISITANTES: SÓ DAR ENTRADA! NUNCA PEDE SAÍDA! */
+                        <button
+                          type="button"
+                          onClick={() => abrirModalEntradaPara(item)}
+                          disabled={!permissoesOperador.darEntrada}
+                          className="bg-purple-600 hover:bg-purple-500 text-white font-black px-3.5 py-2 rounded-xl text-xs uppercase flex items-center gap-1.5 transition shadow-sm active:scale-95 cursor-pointer disabled:bg-slate-800 disabled:text-slate-500"
+                          title="Registrar entrada do visitante (sem necessidade de saída)"
+                        >
+                          <LogIn className="w-3.5 h-3.5" />
+                          <span>Dar Entrada</span>
+                        </button>
+                      ) : jaEstaDentro ? (
+                        /* PRESTADOR DENTRO: DAR SAÍDA */
+                        <button
+                          type="button"
+                          onClick={() => abrirModalSaidaPara(prestadorNoLocal || item)}
+                          disabled={!permissoesOperador.darSaida}
+                          className="bg-red-600 hover:bg-red-700 text-white font-black px-3.5 py-2 rounded-xl text-xs uppercase flex items-center gap-1.5 transition shadow-md active:scale-95 cursor-pointer disabled:bg-slate-800 disabled:text-slate-500"
+                        >
+                          <LogOut className="w-3.5 h-3.5" />
+                          <span>Dar Saída</span>
+                        </button>
+                      ) : (
+                        /* PRESTADOR FORA: REGISTRAR ENTRADA COM TEMPO LIMITE */
+                        <button
+                          type="button"
+                          onClick={() => abrirModalEntradaPara(item)}
+                          disabled={!permissoesOperador.darEntrada}
+                          className={`font-black px-3.5 py-2 rounded-xl text-xs uppercase flex items-center gap-1.5 transition shadow-sm active:scale-95 cursor-pointer disabled:bg-slate-800 disabled:text-slate-500 ${
+                            infoValidade.expirou
+                              ? 'bg-amber-500 hover:bg-amber-600 text-slate-950'
+                              : 'bg-emerald-500 hover:bg-emerald-600 text-slate-950'
+                          }`}
+                        >
+                          <LogIn className="w-3.5 h-3.5" />
+                          <span>{infoValidade.expirou ? 'Entrada (Vencido)' : 'Registrar Entrada'}</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* ABA 2: PRESTADORES NO LOCAL (PERMANÊNCIA & CRONÔMETRO DE SAÍDA) */}
+      {/* ========================================================================= */}
+      {abaAtiva === 'permanencia' && (
+        <div className="space-y-4">
+          
+          {/* Banner Explicativo */}
+          <div className="bg-slate-900 p-3 sm:p-3.5 rounded-2xl border border-slate-800 flex items-center justify-between text-xs text-slate-300">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-ping" />
+              <span>
+                Prestadores em serviço no condomínio com controle de tempo: <strong className="text-white">{prestadoresAtivos.length}</strong>
+              </span>
+            </div>
+            {estatisticas.estourados > 0 && (
               <span className="text-red-400 font-bold flex items-center gap-1">
-                <AlertTriangle className="w-3.5 h-3.5" /> {totalEstourados} estouraram o limite de permanência!
+                <AlertTriangle className="w-3.5 h-3.5" /> {estatisticas.estourados} com tempo estourado!
               </span>
             )}
           </div>
 
-          {acessosAtivos.length === 0 ? (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 text-center flex items-center justify-center">
+          {/* Cards de Prestadores Ativos */}
+          {prestadoresAtivos.length === 0 ? (
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-10 text-center space-y-3">
+              <Timer className="w-12 h-12 text-slate-600 mx-auto" />
+              <h3 className="text-sm sm:text-base font-bold text-slate-300">Nenhum prestador em permanência no momento</h3>
+              <p className="text-xs text-slate-400 max-w-md mx-auto">
+                Não há prestadores de serviço ou equipes de obra no condomínio com saída pendente. Visitantes e familiares possuem livre circulação e não requerem controle de permanência.
+              </p>
               <button
                 type="button"
                 onClick={() => setAbaAtiva('cadastros')}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition inline-flex items-center gap-2 cursor-pointer shadow-sm active:scale-95"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl text-xs transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
               >
                 <Users className="w-4 h-4" />
-                <span>Lista de Liberados</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                <span>Ver Lista de Autorizados</span>
               </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-              {acessosAtivos.map((item) => {
+              {prestadoresAtivos.map((item) => {
                 const infoPermanencia = checarPermanencia(item);
-                const perfil = item.perfil_acesso || (item.atende_condominio ? 'prestador_condominio' : 'prestador_unidade');
-                const horaEntradaFmt = item.data_hora_entrada ? new Date(item.data_hora_entrada).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--:--';
-                const ehVisitante = perfil === 'autorizado';
+                const perfil = item.perfil_acesso || 'prestador_unidade';
+                const horaEntradaFmt = item.data_hora_entrada 
+                  ? new Date(item.data_hora_entrada).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) 
+                  : '--:--';
 
                 return (
                   <div
@@ -1200,17 +1714,17 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                         <div className="flex items-center gap-3">
                           <div 
                             onClick={() => (item.foto_rosto || item.foto_url) && setModalVisualizarFoto(item.foto_rosto || item.foto_url)}
-                            className="w-14 h-14 rounded-2xl bg-slate-800 border-2 border-slate-700 overflow-hidden shrink-0 cursor-pointer flex items-center justify-center text-slate-500 relative group"
+                            className="w-14 h-14 rounded-2xl bg-slate-800 border-2 border-slate-700 overflow-hidden shrink-0 cursor-pointer flex items-center justify-center text-slate-500"
                           >
                             {(item.foto_rosto || item.foto_url) ? (
                               <ImagemOtimizada 
                                 src={item.foto_rosto || item.foto_url} 
-                                alt={item.nome_completo || 'Visitante/Prestador'} 
+                                alt={item.nome_completo || 'Prestador'} 
                                 permitirAmpliar={false}
-                                className="w-full h-full object-cover group-hover:scale-105 transition" 
+                                className="w-full h-full object-cover" 
                               />
                             ) : (
-                              <UserCheck className="w-7 h-7" />
+                              <HardHat className="w-7 h-7 text-blue-400" />
                             )}
                           </div>
 
@@ -1222,7 +1736,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                               {item.nome_completo || item.nome_profissional}
                             </h4>
                             <p className="text-[11px] text-slate-300 truncate">
-                              {item.empresa || item.parentesco_vinculo || 'Visitante'}
+                              {item.empresa || 'Serviços'}
                             </p>
                           </div>
                         </div>
@@ -1234,7 +1748,8 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                         )}
                       </div>
 
-                      <div className="bg-slate-950/60 p-2.5 rounded-2xl border border-slate-800/80 space-y-1 text-xs">
+                      {/* Destino e Dados de Entrada */}
+                      <div className="bg-slate-950/70 p-2.5 rounded-2xl border border-slate-800/80 space-y-1 text-xs">
                         <div className="flex items-center justify-between text-slate-300">
                           <span className="text-slate-400">Destino:</span>
                           <span className="font-bold text-white">
@@ -1245,22 +1760,11 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                         </div>
                         <div className="flex items-center justify-between text-slate-300">
                           <span className="text-slate-400">Entrada registrada:</span>
-                          <span className="font-mono text-emerald-400 font-bold">{horaEntradaFmt} ({item.operador_entrada_nome || 'Operador'})</span>
+                          <span className="font-mono text-emerald-400 font-bold">{horaEntradaFmt} ({item.operador_entrada_nome || 'Op'})</span>
                         </div>
-                        {item.placa_veiculo && (
-                          <div className="flex items-center justify-between text-slate-300">
-                            <span className="text-slate-400">Veículo:</span>
-                            <span className="font-mono text-slate-200 uppercase font-bold flex items-center gap-1">
-                              <Car className="w-3 h-3 text-slate-400" /> {item.placa_veiculo}
-                            </span>
-                          </div>
-                        )}
-
-                        {!ehVisitante && item.limite_permanencia_ate && (
-                          <div className="flex items-center justify-between text-slate-200 bg-amber-500/10 px-2.5 py-1.5 rounded-xl border border-amber-500/25 mt-1">
-                            <span className="text-amber-400 font-bold flex items-center gap-1 text-[11px]">
-                              <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" /> Autorizado até:
-                            </span>
+                        {item.limite_permanencia_ate && (
+                          <div className="flex items-center justify-between text-slate-200 bg-amber-500/10 px-2.5 py-1 rounded-xl border border-amber-500/25 mt-1">
+                            <span className="text-amber-400 font-bold text-[11px]">Autorizado até:</span>
                             <span className="font-mono text-amber-200 font-black text-xs">
                               Até às {new Date(item.limite_permanencia_ate).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                             </span>
@@ -1268,7 +1772,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                         )}
                       </div>
 
-                      {/* Cronômetro Regressivo (Apenas para prestadores; visitantes têm permanência livre) */}
+                      {/* Cronômetro Regressivo */}
                       <div className={`p-3 rounded-2xl border text-center space-y-1 ${
                         infoPermanencia.estourado 
                           ? 'bg-red-950/80 border-red-500 text-red-200' 
@@ -1277,8 +1781,8 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                           : 'bg-slate-950 border-slate-800 text-slate-300'
                       }`}>
                         <div className="flex items-center justify-center gap-1.5 text-[11px] font-black uppercase">
-                          <Timer className={`w-3.5 h-3.5 ${infoPermanencia.estourado ? 'animate-bounce text-red-400' : 'text-purple-400'}`} />
-                          <span>{ehVisitante ? 'Status de Permanência' : (infoPermanencia.estourado ? 'Tempo Esgotado' : 'Permanência Interna')}</span>
+                          <Timer className={`w-3.5 h-3.5 ${infoPermanencia.estourado ? 'animate-bounce text-red-400' : 'text-blue-400'}`} />
+                          <span>{infoPermanencia.estourado ? 'Tempo Esgotado' : 'Permanência em Andamento'}</span>
                         </div>
                         <div className="font-mono text-sm sm:text-base font-black tracking-wider">
                           {infoPermanencia.texto}
@@ -1286,12 +1790,14 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                       </div>
                     </div>
 
+                    {/* Ações: Dar Saída e Prorrogar */}
                     <div className="pt-2 border-t border-slate-800 space-y-2">
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
                           onClick={() => abrirModalSaidaPara(item)}
-                          className="bg-red-600 hover:bg-red-700 text-white font-black py-2 px-3 rounded-xl text-xs uppercase flex items-center justify-center gap-1 transition shadow-md active:scale-95 cursor-pointer"
+                          disabled={!permissoesOperador.darSaida}
+                          className="bg-red-600 hover:bg-red-700 text-white font-black py-2 px-3 rounded-xl text-xs uppercase flex items-center justify-center gap-1 transition shadow-md active:scale-95 cursor-pointer disabled:bg-slate-800 disabled:text-slate-500"
                         >
                           <LogOut className="w-3.5 h-3.5" />
                           <span>Dar Saída</span>
@@ -1308,272 +1814,90 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                         </button>
                       </div>
 
-                      {!ehVisitante && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setItemSelecionado(item);
-                            setMinutosProrrogacao(60);
-                            setModalProrrogar(true);
-                          }}
-                          className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-1.5 px-3 rounded-xl text-[11px] flex items-center justify-center gap-1.5 transition border border-slate-700 cursor-pointer"
-                        >
-                          <Clock className="w-3 h-3 text-amber-400" />
-                          <span>Prorrogar Tempo (+1h / +2h)</span>
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setItemSelecionado(item);
+                          setMinutosProrrogacao(60);
+                          setModalProrrogar(true);
+                        }}
+                        className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-1.5 px-3 rounded-xl text-[11px] flex items-center justify-center gap-1.5 transition border border-slate-700 cursor-pointer"
+                      >
+                        <Clock className="w-3 h-3 text-amber-400" />
+                        <span>Prorrogar Tempo (+1h / +2h)</span>
+                      </button>
                     </div>
                   </div>
                 );
               })}
             </div>
           )}
-        </div>
-      )}
 
-      {/* ABA 2: LIBERAÇÕES & CADASTROS */}
-      {abaAtiva === 'cadastros' && (
-        <div className="space-y-3">
-          {/* Barra Superior com Botão de Pesquisa e Filtros */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5">
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setMostrarFiltrosCadastros(!mostrarFiltrosCadastros)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer border shadow-2xs ${
-                  mostrarFiltrosCadastros || (busca.trim() || filtroPerfil !== 'todos' || filtroValidade !== 'todos')
-                    ? 'bg-purple-600 hover:bg-purple-500 text-white border-purple-500'
-                    : 'bg-slate-900 hover:bg-slate-850 text-slate-200 border-slate-800'
-                }`}
-              >
-                <Search className="w-3.5 h-3.5" />
-                <Filter className="w-3.5 h-3.5" />
-                <span>Pesquisa e Filtros</span>
-                {(busca.trim() || filtroPerfil !== 'todos' || filtroValidade !== 'todos') && (
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Filtros ativos" />
-                )}
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${mostrarFiltrosCadastros ? 'rotate-180' : ''}`} />
-              </button>
-
-              {/* 4º Mover para o lado do botão pesquisa e filtros */}
-              <span className="bg-slate-900 border border-slate-800 px-2.5 py-2 rounded-xl text-slate-300 font-bold text-xs inline-flex items-center gap-1.5 shadow-2xs">
-                <span>{cadastrosFiltrados.length}</span>
-                <span className="text-slate-400 font-normal">{cadastrosFiltrados.length === 1 ? 'liberação' : 'liberações'}</span>
-              </span>
+          {/* Feed de Visitas de Hoje (Sem Saída Necessária) */}
+          <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-black uppercase text-purple-300 flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-purple-400" />
+                <span>Entradas de Visitantes e Familiares Registradas Hoje ({visitasHoje.length})</span>
+              </h3>
+              <span className="text-[10px] text-slate-400">Circulação livre • Sem necessidade de saída</span>
             </div>
 
-            {(busca.trim() || filtroPerfil !== 'todos' || filtroValidade !== 'todos') && (
-              <button
-                type="button"
-                onClick={() => {
-                  setBusca('');
-                  setFiltroPerfil('todos');
-                  setFiltroValidade('todos');
-                }}
-                className="text-[11px] text-red-400 hover:text-red-300 flex items-center gap-1 font-bold transition cursor-pointer px-2 py-1 rounded-lg hover:bg-red-950/40"
-              >
-                <X className="w-3 h-3" /> Limpar filtros
-              </button>
-            )}
-          </div>
-
-          {/* Menus de Pesquisa e Filtros (Colocados dentro do botão) */}
-          {mostrarFiltrosCadastros && (
-            <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-3 shadow-xl animate-in fade-in duration-150">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">
-                    Buscar Autorizado / Prestador
-                  </label>
-                  <div className="relative">
-                    <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-                    <input
-                      type="text"
-                      value={busca}
-                      onChange={(e) => setBusca(e.target.value)}
-                      placeholder="Nome, documento, ap., empresa..."
-                      className="w-full bg-slate-950 text-white text-xs pl-9 pr-3 py-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500 font-medium"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">
-                    Filtrar por Perfil
-                  </label>
-                  <select
-                    value={filtroPerfil}
-                    onChange={(e) => setFiltroPerfil(e.target.value)}
-                    className="w-full bg-slate-950 text-white text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500 font-semibold cursor-pointer"
-                  >
-                    <option value="todos">Todos os Perfis (3 Categorias)</option>
-                    <option value="autorizado">🟣 1. Autorizados (Visitantes / Família)</option>
-                    <option value="prestador_unidade">🔵 2. Prestadores da Unidade</option>
-                    <option value="prestador_condominio">🟠 3. Prestadores do Condomínio</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">
-                    Status da Validade
-                  </label>
-                  <select
-                    value={filtroValidade}
-                    onChange={(e) => setFiltroValidade(e.target.value)}
-                    className="w-full bg-slate-950 text-white text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500 font-semibold cursor-pointer"
-                  >
-                    <option value="todos">Todas as Validades</option>
-                    <option value="validos">🟢 Liberações Válidas</option>
-                    <option value="vencidos">⚠️ Liberações Expiradas (Aviso Amarelo)</option>
-                    <option value="permanentes">♾️ Permanentes / Recorrentes</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {cadastrosFiltrados.length === 0 ? (
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-12 text-center space-y-3">
-              <Users className="w-12 h-12 text-slate-600 mx-auto" />
-              <h3 className="text-base font-bold text-slate-300">Nenhum cadastro encontrado</h3>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                Não há pessoas cadastradas para os filtros aplicados. Clique em "Nova Liberação / Cadastro" acima.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              {cadastrosFiltrados.map((item) => {
-                const perfil = item.perfil_acesso || (item.atende_condominio ? 'prestador_condominio' : 'prestador_unidade');
-                const infoValidade = checarValidade(item);
-                const jaEstaDentro = acessosAtivos.some((a: any) => (a.prestador_id || a.id) === item.id);
-
-                return (
-                  <div
-                    key={item.id}
-                    className={`bg-slate-900 hover:bg-slate-850 p-3.5 sm:p-4 rounded-2xl border transition flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-md ${
-                      infoValidade.expirou ? 'border-amber-500/40 bg-amber-950/10' : 'border-slate-800'
-                    }`}
-                  >
-                    <div className="flex items-start sm:items-center gap-3.5 min-w-0 flex-1">
-                      <div
-                        onClick={() => (item.foto_rosto || item.foto_url) && setModalVisualizarFoto(item.foto_rosto || item.foto_url)}
-                        className="w-12 h-12 rounded-2xl bg-slate-800 border border-slate-700 overflow-hidden shrink-0 flex items-center justify-center text-slate-400 cursor-pointer"
-                      >
-                        {(item.foto_rosto || item.foto_url) ? (
-                          <img src={item.foto_rosto || item.foto_url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+            {visitasHoje.length === 0 ? (
+              <p className="text-xs text-slate-500 py-2">Nenhuma visita registrada na data de hoje.</p>
+            ) : (
+              <div className="divide-y divide-slate-800">
+                {visitasHoje.slice(0, 10).map((v) => (
+                  <div key={v.id} className="py-2.5 flex items-center justify-between text-xs text-slate-300">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-xl bg-slate-800 flex items-center justify-center text-purple-400 border border-slate-700 shrink-0">
+                        {v.foto_rosto ? (
+                          <img src={v.foto_rosto} alt="" className="w-full h-full object-cover rounded-xl" />
                         ) : (
-                          <UserCheck className="w-6 h-6" />
+                          <Users className="w-4 h-4" />
                         )}
                       </div>
-
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase border ${perfilBadge(perfil)}`}>
-                            {perfilNome(perfil)}
-                          </span>
-
-                          <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border ${infoValidade.cor}`}>
-                            {infoValidade.texto}
-                          </span>
-
-                          {jaEstaDentro && (
-                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase bg-emerald-500 text-slate-950">
-                              Dentro Agora
-                            </span>
-                          )}
-                        </div>
-
-                        <h4 className="font-bold text-sm text-white truncate">
-                          {item.nome_profissional || item.nome_completo}
-                        </h4>
-
-                        <div className="flex items-center gap-3 text-xs text-slate-400 flex-wrap">
-                          {item.documento && (
-                            <span>Doc: <strong className="text-slate-300 font-mono">{item.documento}</strong></span>
-                          )}
-                          {item.empresa && (
-                            <span>Empresa: <strong className="text-slate-300">{item.empresa}</strong></span>
-                          )}
-                          {item.parentesco_vinculo && (
-                            <span>Vínculo: <strong className="text-purple-300">{item.parentesco_vinculo}</strong></span>
-                          )}
-                          <span>
-                            Destino: <strong className="text-amber-300">
-                              {perfil === 'prestador_condominio' 
-                                ? 'Área Comum' 
-                                : formatarIdentificacaoUnidade(item.unidade, item.bloco, condoConfig?.tipo_estrutura)}
-                            </strong>
-                          </span>
-                        </div>
+                      <div className="min-w-0">
+                        <strong className="block text-white truncate">{v.nome_completo}</strong>
+                        <span className="text-[11px] text-slate-400">
+                          {formatarIdentificacaoUnidade(v.unidade, v.bloco, condoConfig?.tipo_estrutura)} • {v.empresa || v.parentesco_vinculo || 'Visita'}
+                        </span>
                       </div>
                     </div>
 
-                    {/* Ações: Entrada, Editar Cadastro, WhatsApp */}
-                    <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
-                      {/* BOTÃO EDITAR CADASTRO */}
+                    <div className="flex items-center gap-3 shrink-0 text-right">
+                      <span className="font-mono text-emerald-400 font-bold text-[11px]">
+                        Entrada: {v.data_hora_entrada ? new Date(v.data_hora_entrada).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--'}
+                      </span>
                       <button
                         type="button"
-                        onClick={() => abrirEdicaoCadastro(item)}
-                        className="bg-slate-800 hover:bg-slate-700 text-slate-200 p-2 rounded-xl border border-slate-700 transition cursor-pointer"
-                        title="Editar cadastro / Renovar validade"
+                        onClick={() => dispararWhatsAppEntrada(v)}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-400"
+                        title="Enviar WhatsApp"
                       >
-                        <Pencil className="w-4 h-4 text-purple-400" />
-                      </button>
-
-                      {jaEstaDentro ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const ativo = acessosAtivos.find(a => (a.prestador_id || a.id) === item.id);
-                            abrirModalSaidaPara(ativo || item);
-                          }}
-                          className="bg-red-600 hover:bg-red-700 text-white font-black px-3.5 py-2 rounded-xl text-xs uppercase flex items-center gap-1.5 transition shadow-md active:scale-95 cursor-pointer"
-                        >
-                          <LogOut className="w-3.5 h-3.5" />
-                          <span>Dar Saída</span>
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => abrirModalEntradaPara(item)}
-                          className={`font-black px-3.5 py-2 rounded-xl text-xs uppercase flex items-center gap-1.5 transition shadow-md active:scale-95 cursor-pointer ${
-                            infoValidade.expirou
-                              ? 'bg-amber-500 hover:bg-amber-600 text-slate-950'
-                              : 'bg-emerald-500 hover:bg-emerald-600 text-slate-950'
-                          }`}
-                        >
-                          <LogIn className="w-3.5 h-3.5" />
-                          <span>{infoValidade.expirou ? 'Entrada (Expirado)' : 'Registrar Entrada'}</span>
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => dispararWhatsAppEntrada(item)}
-                        className="bg-slate-800 hover:bg-slate-700 text-emerald-400 p-2 rounded-xl border border-slate-700 transition cursor-pointer"
-                        title="Notificar Morador / Síndico via WhatsApp"
-                      >
-                        <MessageSquare className="w-4 h-4" />
+                        <MessageSquare className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* ABA 3: HISTÓRICO DE ACESSOS */}
+      {/* ========================================================================= */}
+      {/* ABA 3: HISTÓRICO GERAL AUDITADO */}
+      {/* ========================================================================= */}
       {abaAtiva === 'historico' && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div className="flex items-center justify-between text-xs text-slate-400 bg-slate-900 p-3 rounded-2xl border border-slate-800">
-            <span>Últimos acessos auditados e concluídos na guarita</span>
-            <span className="font-bold text-white">{historicoAcessos.length} registro(s)</span>
+            <span>Histórico de entradas e acessos registrados na guarita</span>
+            <span className="font-bold text-white">{historicoAcessos.length} registros</span>
           </div>
 
           {historicoAcessos.length === 0 ? (
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-12 text-center space-y-2">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-10 text-center space-y-2">
               <Clock className="w-10 h-10 text-slate-600 mx-auto" />
               <p className="text-sm font-bold text-slate-300">Nenhum acesso concluído no histórico recente</p>
             </div>
@@ -1581,12 +1905,13 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
             <div className="space-y-2">
               {historicoAcessos.map((h: any) => {
                 const entradaFmt = h.data_hora_entrada ? new Date(h.data_hora_entrada).toLocaleString('pt-BR') : '--';
-                const saidaFmt = h.data_hora_saida ? new Date(h.data_hora_saida).toLocaleString('pt-BR') : '--';
+                const saidaFmt = h.data_hora_saida ? new Date(h.data_hora_saida).toLocaleString('pt-BR') : null;
+                const ehVisitante = h.perfil_acesso === 'autorizado';
 
                 return (
                   <div
                     key={h.id}
-                    className="bg-slate-900 p-3.5 rounded-2xl border border-slate-800 text-xs text-slate-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+                    className="bg-slate-900 p-3.5 rounded-2xl border border-slate-800 text-xs text-slate-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div 
@@ -1594,7 +1919,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                         className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 overflow-hidden shrink-0 flex items-center justify-center text-slate-400 cursor-pointer"
                       >
                         {(h.foto_rosto || h.foto_url) ? (
-                          <img src={h.foto_rosto || h.foto_url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                          <img src={h.foto_rosto || h.foto_url} alt="" className="w-full h-full object-cover" />
                         ) : (
                           <UserCheck className="w-5 h-5" />
                         )}
@@ -1605,17 +1930,23 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                             {perfilNome(h.perfil_acesso)}
                           </span>
                           <strong className="text-white text-sm truncate">{h.nome_completo}</strong>
-                          {h.cracha && <span className="font-mono text-amber-300">Crachá {h.cracha}</span>}
+                          {h.cracha && <span className="font-mono text-amber-300">Crachá #{h.cracha}</span>}
                         </div>
                         <p className="text-slate-400 text-[11px] mt-0.5 truncate">
-                          Destino: <strong className="text-slate-200">{formatarIdentificacaoUnidade(h.unidade, h.bloco, condoConfig?.tipo_estrutura)}</strong> • Empresa/Vínculo: {h.empresa || h.parentesco_vinculo || 'Geral'}
+                          Destino: <strong className="text-slate-200">{formatarIdentificacaoUnidade(h.unidade, h.bloco, condoConfig?.tipo_estrutura)}</strong> • {h.empresa || h.parentesco_vinculo || 'Visita'}
                         </p>
                       </div>
                     </div>
 
                     <div className="text-[11px] font-mono space-y-0.5 text-right self-end sm:self-center">
                       <p className="text-emerald-400">Entrada: {entradaFmt} ({h.operador_entrada_nome || 'Op'})</p>
-                      <p className="text-red-400">Saída: {saidaFmt} ({h.operador_saida_nome || 'Op'})</p>
+                      {saidaFmt ? (
+                        <p className="text-red-400">Saída: {saidaFmt} ({h.operador_saida_nome || 'Op'})</p>
+                      ) : (
+                        <p className="text-purple-400 font-bold">
+                          {ehVisitante ? 'Visita Livre (Sem necessidade de saída)' : 'Em andamento'}
+                        </p>
+                      )}
                     </div>
                   </div>
                 );
@@ -1626,11 +1957,11 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: NOVO CADASTRO OU EDIÇÃO */}
+      {/* MODAL: NOVO CADASTRO OU EDIÇÃO DE AUTORIZADO */}
       {/* ========================================================================= */}
       {(modalNovoCadastro || modalEditarCadastro) && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-5 sm:p-6 text-white space-y-5 shadow-2xl relative my-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-5 sm:p-6 text-white space-y-4 shadow-2xl relative my-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center border border-purple-500/30">
@@ -1641,7 +1972,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                     {modalEditarCadastro ? 'Editar Cadastro / Liberação' : 'Nova Liberação de Acesso'}
                   </h3>
                   <p className="text-xs text-slate-400">
-                    {modalEditarCadastro ? 'Atualize dados, validade ou fotos da pessoa' : 'Cadastre a autorização para familiares, prestadores de ap. ou condomínio'}
+                    {modalEditarCadastro ? 'Atualize dados, fotos ou validade' : 'Cadastre autorização para familiares, visitantes ou prestadores'}
                   </p>
                 </div>
               </div>
@@ -1655,7 +1986,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
               </button>
             </div>
 
-            {/* SELEÇÃO DOS 3 PERFIS */}
+            {/* SELEÇÃO DAS 3 CATEGORIAS */}
             <div className="space-y-1.5">
               <label className="block text-xs font-black uppercase text-amber-400">
                 Categoria de Acesso:
@@ -1670,9 +2001,9 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                       : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800'
                   }`}
                 >
-                  <strong className="block text-xs text-purple-300">1. Autorizados</strong>
-                  <span className="text-[11px] block mt-0.5 text-slate-300">Visitantes / Família</span>
-                  <span className="text-[10px] block text-slate-400 mt-1">Permanência livre</span>
+                  <strong className="block text-xs text-purple-300">1. Visitante / Família</strong>
+                  <span className="text-[11px] block mt-0.5 text-slate-300">Amigos & Parentes</span>
+                  <span className="text-[10px] block text-emerald-400 mt-1 font-bold">✨ Só dar entrada (sem saída)</span>
                 </button>
 
                 <button
@@ -1684,9 +2015,9 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                       : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800'
                   }`}
                 >
-                  <strong className="block text-xs text-blue-300">2. Prestador Unidade</strong>
-                  <span className="text-[11px] block mt-0.5 text-slate-300">Obras e Reformas</span>
-                  <span className="text-[10px] block text-slate-400 mt-1">Com tempo limite</span>
+                  <strong className="block text-xs text-blue-300">2. Prestador da Unidade</strong>
+                  <span className="text-[11px] block mt-0.5 text-slate-300">Obras, Reformas, Diaristas</span>
+                  <span className="text-[10px] block text-amber-300 mt-1">Tempo e saída controlados</span>
                 </button>
 
                 <button
@@ -1698,24 +2029,24 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                       : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800'
                   }`}
                 >
-                  <strong className="block text-xs text-amber-300">3. Condomínio</strong>
+                  <strong className="block text-xs text-amber-300">3. Condomínio / Obras</strong>
                   <span className="text-[11px] block mt-0.5 text-slate-300">Manutenção Predial</span>
-                  <span className="text-[10px] block text-slate-400 mt-1">Área comum</span>
+                  <span className="text-[10px] block text-amber-300 mt-1">Crachá e tempo controlado</span>
                 </button>
               </div>
             </div>
 
-            {/* REUTILIZAÇÃO (Apenas em novo cadastro) */}
+            {/* BUSCA RÁPIDA DE REUTILIZAÇÃO (Apenas em novo cadastro) */}
             {!modalEditarCadastro && (
               <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800 space-y-1.5 relative">
                 <label className="block text-[11px] font-black uppercase text-indigo-400 flex items-center gap-1.5">
-                  <Search className="w-3.5 h-3.5" /> Reutilizar Cadastro Anterior (Busca Rápida por Nome ou CPF/RG)
+                  <Search className="w-3.5 h-3.5" /> Reutilizar Cadastro de Quem já Visitou Anteriormente
                 </label>
                 <input
                   type="text"
                   value={termoReutilizacao}
                   onChange={(e) => setTermoReutilizacao(e.target.value)}
-                  placeholder="Comece a digitar para puxar dados de quem já visitou antes..."
+                  placeholder="Digite nome ou CPF/RG para autocompletar..."
                   className="w-full bg-slate-900 text-white text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500"
                 />
                 {sugestoesReutilizacao.length > 0 && (
@@ -1727,19 +2058,10 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                         className="p-2.5 hover:bg-indigo-950/60 cursor-pointer flex items-center justify-between text-xs transition"
                       >
                         <div className="flex items-center gap-2">
-                          {sug.foto_rosto ? (
-                            <img src={sug.foto_rosto} alt="" loading="lazy" decoding="async" className="w-8 h-8 rounded-lg object-cover" />
-                          ) : (
-                            <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400">
-                              <UserCheck className="w-4 h-4" />
-                            </div>
-                          )}
-                          <div>
-                            <strong className="block text-white">{sug.nome_profissional || sug.nome_completo}</strong>
-                            <span className="text-[10px] text-slate-400">Doc: {sug.documento || 'N/A'} • {sug.empresa || sug.unidade}</span>
-                          </div>
+                          <strong className="block text-white">{sug.nome_profissional || sug.nome_completo}</strong>
+                          <span className="text-[10px] text-slate-400">Doc: {sug.documento || 'N/A'} • {sug.empresa || sug.unidade}</span>
                         </div>
-                        <span className="text-[10px] font-bold text-indigo-400">Reutilizar Dados →</span>
+                        <span className="text-[10px] font-bold text-indigo-400">Reutilizar →</span>
                       </div>
                     ))}
                   </div>
@@ -1747,168 +2069,163 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
               </div>
             )}
 
-            <form onSubmit={modalEditarCadastro ? salvarEdicaoCadastro : salvarCadastro} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-black uppercase text-slate-300 mb-1">
-                    Nome Completo <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={nomeCompleto}
-                    onChange={(e) => setNomeCompleto(e.target.value)}
-                    placeholder="Nome completo do visitante ou prestador"
-                    className="w-full bg-slate-950 text-white text-xs p-3 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500 font-bold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black uppercase text-indigo-400 mb-1 flex items-center justify-between">
-                    <span>Leitor OCR</span>
-                    <span className="text-[10px] text-emerald-400 font-normal">CNH / RG</span>
+            <form onSubmit={modalEditarCadastro ? salvarEdicaoCadastro : salvarCadastro} className="space-y-3.5">
+              
+              {/* Nome Completo + Botão OCR */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-black uppercase text-slate-300">
+                    Nome Completo *
                   </label>
                   <button
                     type="button"
                     onClick={() => setModalOcrAberto(true)}
-                    className="w-full bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 font-bold text-xs p-3 rounded-xl border border-indigo-500/50 flex items-center justify-center gap-1.5 transition cursor-pointer shadow-sm active:scale-95"
+                    className="text-purple-400 hover:text-purple-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
                   >
-                    <Scan className="w-4 h-4 text-indigo-400" />
-                    <span>Ler Documento</span>
+                    <Scan className="w-3.5 h-3.5" /> Ler CNH/RG com IA (OCR)
                   </button>
                 </div>
+                <input
+                  type="text"
+                  required
+                  value={nomeCompleto}
+                  onChange={(e) => setNomeCompleto(e.target.value)}
+                  placeholder="Nome completo da pessoa..."
+                  className="w-full bg-slate-950 text-white text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500"
+                />
               </div>
 
-              {/* Documento e Empresa / Parentesco com Opções Padronizadas */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {perfilAcesso !== 'autorizado' && (
-                  <div>
-                    <label className="block text-xs font-black uppercase text-slate-300 mb-1">
-                      Documento (RG / CPF) <span className="text-red-400">*</span>
-                    </label>
+              {/* Documento e Telefone */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-black uppercase text-slate-300 mb-1">
+                    Documento ({tipoDocumento})
+                  </label>
+                  <div className="flex gap-1.5">
+                    <select
+                      value={tipoDocumento}
+                      onChange={(e) => setTipoDocumento(e.target.value)}
+                      className="bg-slate-950 text-white text-xs p-2 rounded-xl border border-slate-700 focus:outline-none"
+                    >
+                      <option value="CPF">CPF</option>
+                      <option value="RG">RG</option>
+                      <option value="CNH">CNH</option>
+                      <option value="Outro">Outro</option>
+                    </select>
                     <input
                       type="text"
-                      required
                       value={documento}
                       onChange={(e) => setDocumento(e.target.value)}
-                      placeholder="Número do documento"
-                      className="w-full bg-slate-950 text-white text-xs p-3 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500 font-mono"
+                      placeholder="Número do documento..."
+                      className="flex-1 bg-slate-950 text-white text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500 font-mono"
                     />
                   </div>
-                )}
-
-                {perfilAcesso === 'autorizado' ? (
-                  <div className="sm:col-span-2 space-y-2">
-                    <label className="block text-xs font-black uppercase text-purple-300 flex items-center justify-between">
-                      <span>Parentesco / Vínculo (Formato Lista) <span className="text-red-400">*</span></span>
-                      <span className="text-[10px] text-purple-400 font-normal">Selecione na lista</span>
-                    </label>
-                    <select
-                      value={OPCOES_PARENTESCO.includes(parentescoVinculo) ? parentescoVinculo : (parentescoVinculo ? 'Outro' : '')}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val !== 'Outro') {
-                          setParentescoVinculo(val);
-                        } else {
-                          setParentescoVinculo('Outro');
-                        }
-                      }}
-                      className="w-full bg-slate-950 text-white text-xs p-3 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500 font-semibold cursor-pointer"
-                    >
-                      <option value="">-- Selecione o Parentesco / Vínculo na Lista --</option>
-                      {OPCOES_PARENTESCO.map((opc) => (
-                        <option key={opc} value={opc}>
-                          📋 {opc}
-                        </option>
-                      ))}
-                    </select>
-
-                    {(!OPCOES_PARENTESCO.includes(parentescoVinculo) || parentescoVinculo === 'Outro') && (
-                      <div className="pt-1">
-                        <label className="block text-[10px] font-bold text-purple-300 uppercase mb-1">
-                          Especifique o Parentesco / Vínculo Personalizado:
-                        </label>
-                        <input
-                          type="text"
-                          value={parentescoVinculo === 'Outro' ? '' : parentescoVinculo}
-                          onChange={(e) => setParentescoVinculo(e.target.value)}
-                          placeholder="Digite aqui o parentesco ou vínculo..."
-                          className="w-full bg-slate-950 text-white text-xs p-2.5 rounded-xl border border-purple-500/70 focus:outline-none focus:border-purple-400"
-                        />
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block text-xs font-black uppercase text-slate-300 mb-1">
-                      Empresa / Autônomo <span className="text-red-400">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={empresa}
-                      onChange={(e) => setEmpresa(e.target.value)}
-                      placeholder="Ex: Pintor Autônomo, Elevadores Atlas"
-                      className="w-full bg-slate-950 text-white text-xs p-3 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500"
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-xs font-black uppercase text-slate-300 mb-1">
-                    Telefone WhatsApp
-                  </label>
-                  <input
-                    type="text"
-                    value={telefone}
-                    onChange={(e) => setTelefone(e.target.value)}
-                    placeholder="(11) 98888-7777"
-                    className="w-full bg-slate-950 text-white text-xs p-3 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500"
-                  />
                 </div>
 
                 <div>
                   <label className="block text-xs font-black uppercase text-slate-300 mb-1">
-                    Placa do Veículo (Opcional)
+                    Telefone / WhatsApp
                   </label>
                   <input
-                    type="text"
-                    value={placaVeiculo}
-                    onChange={(e) => setPlacaVeiculo(e.target.value)}
-                    placeholder="ABC-1234"
-                    className="w-full bg-slate-950 text-white text-xs p-3 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500 font-mono uppercase"
+                    type="tel"
+                    value={telefone}
+                    onChange={(e) => setTelefone(e.target.value)}
+                    placeholder="(11) 98765-4321"
+                    className="w-full bg-slate-950 text-white text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500"
                   />
                 </div>
               </div>
 
-              {/* Destino */}
-              {perfilAcesso !== 'prestador_condominio' && (
-                <div className={`grid gap-3 bg-slate-950 p-3 rounded-2xl border border-slate-800 ${eEstruturaCasas ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
+              {/* Campos específicos por perfil */}
+              {perfilAcesso === 'autorizado' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-black uppercase text-slate-300 mb-1">
-                      {eEstruturaCasas ? 'Número da Casa' : 'Apartamento / Unidade de Destino'} <span className="text-red-400">*</span>
+                      Parentesco ou Vínculo
+                    </label>
+                    <select
+                      value={parentescoVinculo}
+                      onChange={(e) => setParentescoVinculo(e.target.value)}
+                      className="w-full bg-slate-950 text-white text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500"
+                    >
+                      <option value="">Selecione o vínculo...</option>
+                      {OPCOES_PARENTESCO.map(op => (
+                        <option key={op} value={op}>{op}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-black uppercase text-slate-300 mb-1">
+                      Placa do Veículo (se houver)
+                    </label>
+                    <input
+                      type="text"
+                      value={placaVeiculo}
+                      onChange={(e) => setPlacaVeiculo(e.target.value)}
+                      placeholder="ABC-1234"
+                      className="w-full bg-slate-950 text-white font-mono uppercase text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-black uppercase text-slate-300 mb-1">
+                      Empresa Prestadora
+                    </label>
+                    <input
+                      type="text"
+                      value={empresa}
+                      onChange={(e) => setEmpresa(e.target.value)}
+                      placeholder="Nome da empresa ou autônomo..."
+                      className="w-full bg-slate-950 text-white text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-black uppercase text-slate-300 mb-1">
+                      Placa do Veículo
+                    </label>
+                    <input
+                      type="text"
+                      value={placaVeiculo}
+                      onChange={(e) => setPlacaVeiculo(e.target.value)}
+                      placeholder="ABC-1234"
+                      className="w-full bg-slate-950 text-white font-mono uppercase text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Unidade / Destino */}
+              {perfilAcesso !== 'prestador_condominio' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-black uppercase text-slate-300 mb-1">
+                      {eEstruturaCasas ? 'Número da Casa *' : 'Unidade / Apartamento *'}
                     </label>
                     <input
                       type="text"
                       required
                       value={unidade}
                       onChange={(e) => setUnidade(e.target.value)}
-                      placeholder={eEstruturaCasas ? "Ex: 45 ou 102" : "Ex: 102"}
-                      className="w-full bg-slate-900 text-white text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500 font-bold"
+                      placeholder={eEstruturaCasas ? "Ex: Casa 45" : "Ex: 101, 102..."}
+                      className="w-full bg-slate-950 text-white text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500"
                     />
                   </div>
 
                   {!eEstruturaCasas && (
                     <div>
                       <label className="block text-xs font-black uppercase text-slate-300 mb-1">
-                        Bloco (se houver)
+                        Bloco / Torre
                       </label>
                       <input
                         type="text"
                         value={bloco}
                         onChange={(e) => setBloco(e.target.value)}
                         placeholder="Ex: Bloco A"
-                        className="w-full bg-slate-900 text-white text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500"
+                        className="w-full bg-slate-950 text-white text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500"
                       />
                     </div>
                   )}
@@ -1916,25 +2233,25 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
               )}
 
               {/* Foto do Rosto */}
-              <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-2">
+              <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800 space-y-2">
                 <label className="block text-xs font-black uppercase text-emerald-400 flex items-center justify-between">
-                  <span>Foto do Rosto (Obrigatória para Segurança)</span>
+                  <span>Foto do Rosto (Segurança da Guarita)</span>
                   {fotoRosto && <span className="text-emerald-400 text-[10px] flex items-center gap-1 font-bold"><CheckCircle2 className="w-3 h-3" /> Foto anexada</span>}
                 </label>
 
                 <div className="flex items-center gap-3">
-                  <div className="w-16 h-16 rounded-2xl bg-slate-900 border-2 border-dashed border-slate-700 overflow-hidden shrink-0 flex items-center justify-center text-slate-500">
+                  <div className="w-14 h-14 rounded-2xl bg-slate-900 border-2 border-dashed border-slate-700 overflow-hidden shrink-0 flex items-center justify-center text-slate-500">
                     {fotoRosto ? (
-                      <img src={fotoRosto} alt="Foto Rosto" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                      <img src={fotoRosto} alt="Rosto" className="w-full h-full object-cover" />
                     ) : (
                       <Camera className="w-6 h-6" />
                     )}
                   </div>
 
-                  <div className="flex-1 space-y-1">
+                  <div className="flex-1">
                     <label className="bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs px-3 py-2 rounded-xl border border-slate-700 inline-flex items-center gap-1.5 transition cursor-pointer">
                       <Camera className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>{fotoRosto ? 'Trocar Foto do Rosto' : 'Tirar Foto com Câmera ou Carregar'}</span>
+                      <span>{fotoRosto ? 'Trocar Foto do Rosto' : 'Tirar Foto ou Carregar'}</span>
                       <input
                         type="file"
                         accept="image/*"
@@ -1947,8 +2264,8 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                 </div>
               </div>
 
-              {/* Validade */}
-              <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-2.5">
+              {/* Validade da Autorização */}
+              <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800 space-y-2">
                 <label className="block text-xs font-black uppercase text-amber-400">
                   Prazo de Validade da Liberação:
                 </label>
@@ -1957,43 +2274,40 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                   <button
                     type="button"
                     onClick={() => setTipoValidade('hoje')}
-                    className={`p-2.5 rounded-xl border text-xs font-bold transition text-center cursor-pointer ${
+                    className={`p-2 rounded-xl border text-xs font-bold transition text-center cursor-pointer ${
                       tipoValidade === 'hoje'
                         ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
                         : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
                     }`}
                   >
-                    Hoje (1 Dia)
+                    Hoje
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setTipoValidade('amanha')}
-                    className={`p-2.5 rounded-xl border text-xs font-bold transition text-center cursor-pointer ${
-                      tipoValidade === 'amanha'
-                        ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
-                        : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
-                    }`}
-                  >
-                    Amanhã
-                  </button>
-
                   <button
                     type="button"
                     onClick={() => setTipoValidade('7_dias')}
-                    className={`p-2.5 rounded-xl border text-xs font-bold transition text-center cursor-pointer ${
+                    className={`p-2 rounded-xl border text-xs font-bold transition text-center cursor-pointer ${
                       tipoValidade === '7_dias'
                         ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
                         : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
                     }`}
                   >
-                    1 Semana
+                    7 Dias
                   </button>
-
+                  <button
+                    type="button"
+                    onClick={() => setTipoValidade('30_dias')}
+                    className={`p-2 rounded-xl border text-xs font-bold transition text-center cursor-pointer ${
+                      tipoValidade === '30_dias'
+                        ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
+                        : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+                    }`}
+                  >
+                    30 Dias
+                  </button>
                   <button
                     type="button"
                     onClick={() => setTipoValidade('permanente')}
-                    className={`p-2.5 rounded-xl border text-xs font-bold transition text-center cursor-pointer ${
+                    className={`p-2 rounded-xl border text-xs font-bold transition text-center cursor-pointer ${
                       tipoValidade === 'permanente'
                         ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black'
                         : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
@@ -2002,40 +2316,10 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                     Permanente ♾️
                   </button>
                 </div>
-
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setTipoValidade('personalizado')}
-                    className={`px-3 py-1.5 rounded-lg border text-xs font-bold transition cursor-pointer ${
-                      tipoValidade === 'personalizado' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-900 text-slate-400 border-slate-800'
-                    }`}
-                  >
-                    Personalizado...
-                  </button>
-
-                  {tipoValidade === 'personalizado' && (
-                    <div className="flex items-center gap-2 flex-1">
-                      <input
-                        type="date"
-                        value={dataValidadeInicio}
-                        onChange={(e) => setDataValidadeInicio(e.target.value)}
-                        className="bg-slate-900 text-white text-xs p-1.5 rounded-lg border border-slate-700"
-                      />
-                      <span className="text-xs text-slate-400">até</span>
-                      <input
-                        type="date"
-                        value={dataValidadeFim}
-                        onChange={(e) => setDataValidadeFim(e.target.value)}
-                        className="bg-slate-900 text-white text-xs p-1.5 rounded-lg border border-slate-700"
-                      />
-                    </div>
-                  )}
-                </div>
               </div>
 
-              {/* Botões */}
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
+              {/* Botões de Ação */}
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
                 <button
                   type="button"
                   onClick={fecharModalCadastro}
@@ -2058,22 +2342,32 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: REGISTRO DE ENTRADA (Visitantes NÃO têm tempo limite) */}
+      {/* MODAL: REGISTRO DE ENTRADA INTELIGENTE */}
+      {/* - VISITANTES/FAMÍLIA: SÓ DAR ENTRADA, NÃO PEDE SAÍDA! */}
+      {/* - PRESTADORES: TEMPO MÁXIMO, CRACHÁ E SAÍDA CONTROLADA */}
       {/* ========================================================================= */}
       {modalEntrada && itemSelecionado && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-5 sm:p-6 text-white space-y-4 shadow-2xl relative my-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border ${
+                  itemSelecionado.perfil_acesso === 'autorizado'
+                    ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+                    : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                }`}>
                   <LogIn className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="font-black text-base text-white uppercase">
-                    Registrar Entrada no Condomínio
+                    {itemSelecionado.perfil_acesso === 'autorizado' 
+                      ? 'Registrar Entrada de Visitante / Família' 
+                      : 'Registrar Entrada de Prestador de Serviço'}
                   </h3>
                   <p className="text-xs text-slate-400">
-                    {itemSelecionado.perfil_acesso === 'autorizado' ? 'Visitante / Família: Permanência livre' : 'Prestador: Defina tempo máximo de permanência e crachá'}
+                    {itemSelecionado.perfil_acesso === 'autorizado' 
+                      ? 'Livre permanência (não necessita de saída)' 
+                      : 'Controle de permanência interna e devolução de crachá'}
                   </p>
                 </div>
               </div>
@@ -2087,13 +2381,15 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
               </button>
             </div>
 
-            {/* Resumo */}
+            {/* Resumo da Pessoa */}
             <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-slate-900 overflow-hidden shrink-0 flex items-center justify-center text-slate-400 border border-slate-700">
                 {itemSelecionado.foto_rosto ? (
-                  <img src={itemSelecionado.foto_rosto} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                  <img src={itemSelecionado.foto_rosto} alt="" className="w-full h-full object-cover" />
+                ) : itemSelecionado.perfil_acesso === 'autorizado' ? (
+                  <Users className="w-6 h-6 text-purple-400" />
                 ) : (
-                  <UserCheck className="w-6 h-6" />
+                  <HardHat className="w-6 h-6 text-blue-400" />
                 )}
               </div>
               <div className="min-w-0">
@@ -2101,54 +2397,26 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                   {itemSelecionado.nome_profissional || itemSelecionado.nome_completo}
                 </h4>
                 <p className="text-xs text-slate-300">
-                  {itemSelecionado.empresa || itemSelecionado.parentesco_vinculo || 'Visitante'} • Destino: <strong>{formatarIdentificacaoUnidade(itemSelecionado.unidade, itemSelecionado.bloco, condoConfig?.tipo_estrutura)}</strong>
+                  {itemSelecionado.empresa || itemSelecionado.parentesco_vinculo || 'Visitante'} • Destino: <strong className="text-amber-300">{formatarIdentificacaoUnidade(itemSelecionado.unidade, itemSelecionado.bloco, condoConfig?.tipo_estrutura)}</strong>
                 </p>
               </div>
             </div>
 
-            {/* AVISO DE EXPIRAÇÃO */}
-            {(() => {
-              const infoVal = checarValidade(itemSelecionado);
-              if (infoVal.expirou) {
-                return (
-                  <div className="bg-amber-950/70 border-2 border-amber-500 p-4 rounded-2xl space-y-2 text-xs text-amber-200 animate-in fade-in duration-150">
-                    <div className="flex items-center gap-2 font-black text-amber-300 text-sm">
-                      <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
-                      <span>{infoVal.texto}</span>
-                    </div>
-                    <p className="text-[11px] leading-relaxed">
-                      Esta autorização venceu. Ligue por interfone para o morador para confirmar se autoriza a renovação de entrada hoje.
-                    </p>
-                    <label className="flex items-center gap-2 pt-1 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={alertaExpiracaoConfirmado}
-                        onChange={(e) => setAlertaExpiracaoConfirmado(e.target.checked)}
-                        className="w-4 h-4 rounded text-amber-500"
-                      />
-                      <span className="font-bold text-white text-xs">
-                        Morador confirmou liberação por interfone (Renovar para Hoje)
-                      </span>
-                    </label>
-                  </div>
-                );
-              }
-              return null;
-            })()}
-
             <form onSubmit={confirmarEntrada} className="space-y-4">
-              {/* REGRA: VISITANTES E FAMILIARES NÃO TÊM TEMPO MÁXIMO DE PERMANÊNCIA! */}
+              
+              {/* Se for Visitante/Família: Informativo de Livre Acesso */}
               {itemSelecionado.perfil_acesso === 'autorizado' ? (
-                <div className="bg-purple-950/40 border border-purple-500/40 p-3.5 rounded-2xl text-xs space-y-1">
-                  <span className="font-black text-purple-300 block flex items-center gap-1.5 uppercase text-[11px]">
-                    <CheckCircle2 className="w-4 h-4 text-purple-400" /> Permanência Livre (Visitante / Família)
+                <div className="bg-purple-950/40 border border-purple-500/40 p-4 rounded-2xl text-xs space-y-1.5">
+                  <span className="font-black text-purple-300 block flex items-center gap-1.5 uppercase text-xs">
+                    <CheckCircle2 className="w-4 h-4 text-purple-400 shrink-0" />
+                    Livre Circulação • Sem Necessidade de Saída
                   </span>
-                  <p className="text-slate-300 text-[11px] leading-relaxed">
-                    Familiares e visitantes não possuem tempo limite fixado e não geram alarmes de permanência estourada.
+                  <p className="text-slate-300 text-xs leading-relaxed">
+                    A entrada deste visitante/familiar será auditada no sistema. Ele não possui limite de horas e a portaria não precisará dar saída quando ele for embora.
                   </p>
                 </div>
               ) : (
-                /* TEMPO MÁXIMO APENAS PARA PRESTADORES */
+                /* Se for Prestador: Tempo Máximo de Permanência */
                 <div className="space-y-2">
                   <label className="block text-xs font-black uppercase text-amber-400 flex items-center justify-between">
                     <span>Tempo Máximo de Permanência do Prestador:</span>
@@ -2169,7 +2437,6 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                     >
                       1 Hora
                     </button>
-
                     <button
                       type="button"
                       onClick={() => { setTempoMaximoMinutos(120); setTempoMaximoCustomizado(''); }}
@@ -2181,7 +2448,6 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                     >
                       2 Horas
                     </button>
-
                     <button
                       type="button"
                       onClick={() => { setTempoMaximoMinutos(240); setTempoMaximoCustomizado(''); }}
@@ -2193,7 +2459,6 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                     >
                       4 Horas
                     </button>
-
                     <button
                       type="button"
                       onClick={() => { setTempoMaximoMinutos(480); setTempoMaximoCustomizado(''); }}
@@ -2207,40 +2472,38 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                     </button>
                   </div>
 
-                  {/* Informativo Claro de Limite de Permanência no Cadastro/Entrada */}
-                  <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-amber-400 shrink-0" />
-                      <div>
-                        <span className="text-amber-300 font-bold block">Horário Limite Autorizado:</span>
-                        <span className="text-[10px] text-slate-400">Prestador tem permissão para permanecer no condomínio:</span>
-                      </div>
-                    </div>
-                    <span className="font-mono text-amber-200 font-black text-xs sm:text-sm px-3 py-1.5 bg-amber-500/20 rounded-xl border border-amber-500/40 text-center">
+                  {/* Horário limite calculado */}
+                  <div className="bg-amber-500/10 border border-amber-500/30 p-2.5 rounded-xl flex items-center justify-between text-xs">
+                    <span className="text-amber-300 font-bold flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-amber-400" /> Horário Limite de Permanência:
+                    </span>
+                    <span className="font-mono text-amber-200 font-black">
                       Até às {new Date(Date.now() + (tempoMaximoCustomizado ? parseInt(tempoMaximoCustomizado, 10) || 240 : tempoMaximoMinutos) * 60000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
                 </div>
               )}
 
-              {/* Crachá e Placa */}
-              <div className="grid grid-cols-2 gap-3 bg-slate-950 p-3 rounded-2xl border border-slate-800">
-                <div>
-                  <label className="block text-[11px] font-black uppercase text-slate-300 mb-1 flex items-center gap-1">
-                    <Tag className="w-3.5 h-3.5 text-amber-400" /> Número do Crachá Entregue
-                  </label>
-                  <input
-                    type="text"
-                    value={crachaEntrada}
-                    onChange={(e) => setCrachaEntrada(e.target.value)}
-                    placeholder="Ex: #12"
-                    className="w-full bg-slate-900 text-white font-mono font-bold text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-amber-400"
-                  />
-                </div>
+              {/* Crachá (apenas para prestadores) e Placa */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950 p-3 rounded-2xl border border-slate-800">
+                {itemSelecionado.perfil_acesso !== 'autorizado' && (
+                  <div>
+                    <label className="block text-[11px] font-black uppercase text-slate-300 mb-1 flex items-center gap-1">
+                      <Tag className="w-3.5 h-3.5 text-amber-400" /> Crachá Físico Entregue
+                    </label>
+                    <input
+                      type="text"
+                      value={crachaEntrada}
+                      onChange={(e) => setCrachaEntrada(e.target.value)}
+                      placeholder="Ex: #12"
+                      className="w-full bg-slate-900 text-white font-mono font-bold text-xs p-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                )}
 
-                <div>
+                <div className={itemSelecionado.perfil_acesso === 'autorizado' ? 'sm:col-span-2' : ''}>
                   <label className="block text-[11px] font-black uppercase text-slate-300 mb-1 flex items-center gap-1">
-                    <Car className="w-3.5 h-3.5 text-emerald-400" /> Placa do Veículo
+                    <Car className="w-3.5 h-3.5 text-emerald-400" /> Placa do Veículo (Opcional)
                   </label>
                   <input
                     type="text"
@@ -2260,7 +2523,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                   className="bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 font-bold text-xs px-3.5 py-2.5 rounded-xl border border-emerald-500/40 flex items-center gap-1.5 transition cursor-pointer"
                 >
                   <MessageSquare className="w-4 h-4 text-emerald-400" />
-                  <span>Notificar WhatsApp</span>
+                  <span>Avisar WhatsApp</span>
                 </button>
 
                 <div className="flex items-center gap-2">
@@ -2275,7 +2538,11 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                   <button
                     type="submit"
                     disabled={loading}
-                    className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black px-5 py-2.5 rounded-xl text-xs uppercase transition shadow-lg active:scale-95 cursor-pointer disabled:bg-slate-800 disabled:text-slate-500"
+                    className={`font-black px-5 py-2.5 rounded-xl text-xs uppercase transition shadow-lg active:scale-95 cursor-pointer disabled:bg-slate-800 disabled:text-slate-500 ${
+                      itemSelecionado.perfil_acesso === 'autorizado'
+                        ? 'bg-purple-600 hover:bg-purple-500 text-white'
+                        : 'bg-emerald-500 hover:bg-emerald-600 text-slate-950'
+                    }`}
                   >
                     {loading ? 'Registrando...' : 'Confirmar Entrada'}
                   </button>
@@ -2286,16 +2553,18 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
         </div>
       )}
 
-      {/* MODAL: SAÍDA E DEVOLUÇÃO DE CRACHÁ */}
+      {/* ========================================================================= */}
+      {/* MODAL: SAÍDA DE PRESTADOR & DEVOLUÇÃO DE CRACHÁ */}
+      {/* ========================================================================= */}
       {modalSaida && itemSelecionado && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 text-white space-y-4 shadow-2xl relative my-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="font-black text-base uppercase text-white flex items-center gap-2">
                 <LogOut className="w-5 h-5 text-red-500" />
-                Registrar Saída do Condomínio
+                Registrar Saída do Prestador
               </h3>
-              <button onClick={() => setModalSaida(false)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setModalSaida(false)} className="text-slate-400 hover:text-white cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -2309,7 +2578,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
               </p>
               {itemSelecionado.cracha && (
                 <p className="text-xs text-amber-300 font-mono font-bold pt-1">
-                  Crachá entregue na entrada: #{itemSelecionado.cracha}
+                  Crachá entregue na portaria: #{itemSelecionado.cracha}
                 </p>
               )}
             </div>
@@ -2328,14 +2597,13 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
               </label>
             )}
 
-            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
               <button
                 type="button"
-                onClick={() => dispararWhatsAppSaida(itemSelecionado)}
-                className="bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 font-bold text-xs px-3 py-2.5 rounded-xl border border-emerald-500/40 flex items-center gap-1.5 transition cursor-pointer"
+                onClick={() => setModalSaida(false)}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer"
               >
-                <MessageSquare className="w-4 h-4" />
-                <span>WhatsApp Saída</span>
+                Cancelar
               </button>
 
               <button
@@ -2351,41 +2619,25 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
         </div>
       )}
 
-      {/* MODAL: PRORROGAR TEMPO */}
+      {/* ========================================================================= */}
+      {/* MODAL: PRORROGAR TEMPO DE PRESTADOR */}
+      {/* ========================================================================= */}
       {modalProrrogar && itemSelecionado && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 text-white space-y-4 shadow-2xl relative my-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="font-black text-sm uppercase text-white flex items-center gap-2">
-                <Clock className="w-4 h-4 text-amber-400" /> Prorrogação de Tempo de Permanência
+                <Clock className="w-4 h-4 text-amber-400" /> Prorrogação de Tempo de Prestador
               </h3>
               <button onClick={() => setModalProrrogar(false)} className="text-slate-400 hover:text-white cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-1">
-              <strong className="block text-white text-sm">
-                {itemSelecionado.nome_completo || itemSelecionado.nome_profissional}
-              </strong>
-              <p className="text-xs text-slate-300">
-                Destino: <strong>{formatarIdentificacaoUnidade(itemSelecionado.unidade, itemSelecionado.bloco, condoConfig?.tipo_estrutura)}</strong>
-              </p>
-              {itemSelecionado.limite_permanencia_ate && (
-                <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-850 mt-1">
-                  <span className="text-slate-400">Horário limite atual:</span>
-                  <span className="font-mono text-amber-400 font-bold">
-                    Até às {new Date(itemSelecionado.limite_permanencia_ate).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
-              )}
-            </div>
-
             <div className="space-y-2">
               <label className="block text-xs font-bold text-slate-300 uppercase">
-                Selecione o tempo a adicionar:
+                Adicionar mais tempo de permanência:
               </label>
-
               <div className="grid grid-cols-4 gap-2">
                 {[
                   { m: 30, lbl: '+30m' },
@@ -2407,41 +2659,9 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                   </button>
                 ))}
               </div>
-
-              <div className="pt-1">
-                <input
-                  type="number"
-                  min="1"
-                  max="1440"
-                  value={prorrogarCustomizado}
-                  onChange={(e) => setProrrogarCustomizado(e.target.value)}
-                  placeholder="Ou digite outros minutos (ex: 45, 90)..."
-                  className="w-full bg-slate-950 text-white text-xs p-2.5 rounded-xl border border-slate-800 focus:outline-none focus:border-amber-400 font-mono"
-                />
-              </div>
             </div>
 
-            {/* Prévia do Novo Horário Limite */}
-            {(() => {
-              const minAdd = prorrogarCustomizado ? (parseInt(prorrogarCustomizado, 10) || 60) : minutosProrrogacao;
-              const tRef = itemSelecionado.limite_permanencia_ate ? new Date(itemSelecionado.limite_permanencia_ate).getTime() : Date.now();
-              const novoTs = Math.max(Date.now(), tRef) + minAdd * 60000;
-              const novoFmt = new Date(novoTs).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-
-              return (
-                <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-2xl flex items-center justify-between text-xs">
-                  <div>
-                    <span className="text-amber-300 font-bold block">Novo Limite Autorizado:</span>
-                    <span className="text-[10px] text-slate-400">Prestador poderá permanecer até:</span>
-                  </div>
-                  <span className="font-mono text-amber-200 font-black text-sm px-3 py-1 bg-amber-500/20 rounded-xl border border-amber-500/40">
-                    Até às {novoFmt}
-                  </span>
-                </div>
-              );
-            })()}
-
-            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
               <button
                 type="button"
                 onClick={() => setModalProrrogar(false)}
@@ -2450,33 +2670,111 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                 Cancelar
               </button>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const minAdd = prorrogarCustomizado ? (parseInt(prorrogarCustomizado, 10) || 60) : minutosProrrogacao;
-                    const tRef = itemSelecionado.limite_permanencia_ate ? new Date(itemSelecionado.limite_permanencia_ate).getTime() : Date.now();
-                    const novoIso = new Date(Math.max(Date.now(), tRef) + minAdd * 60000).toISOString();
-                    await handleProrrogarTempo();
-                    dispararWhatsAppProrrogacao({ ...itemSelecionado, limite_permanencia_ate: novoIso }, novoIso, minAdd);
-                  }}
-                  disabled={loading}
-                  className="bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/40 font-bold px-3 py-2.5 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer"
-                  title="Prorrogar e abrir WhatsApp para notificar"
-                >
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  <span>Salvar + WhatsApp</span>
-                </button>
+              <button
+                type="button"
+                onClick={handleProrrogarTempo}
+                disabled={loading}
+                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-4 py-2.5 rounded-xl text-xs uppercase cursor-pointer"
+              >
+                {loading ? 'Salvando...' : 'Confirmar Prorrogação'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-                <button
-                  type="button"
-                  onClick={handleProrrogarTempo}
-                  disabled={loading}
-                  className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-4 py-2.5 rounded-xl text-xs uppercase cursor-pointer"
-                >
-                  {loading ? 'Salvando...' : 'Confirmar'}
-                </button>
+      {/* ========================================================================= */}
+      {/* MODAL: GESTÃO DE PERMISSÕES & REGRAS DO MÓDULO */}
+      {/* ========================================================================= */}
+      {modalPermissoes && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 text-white space-y-4 shadow-2xl relative my-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center border border-purple-500/30">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base uppercase text-white">
+                    Gestão de Acessos & Permissões
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Regras operacionais configuradas para a portaria
+                  </p>
+                </div>
               </div>
+
+              <button onClick={() => setModalPermissoes(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Status do Operador Conectado */}
+            <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400">Operador Atual:</span>
+                <strong className="text-white">{operadorNome}</strong>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400">Perfil de Acesso:</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/40 uppercase">
+                  {permissoesOperador.perfil}
+                </span>
+              </div>
+            </div>
+
+            {/* Matriz de Permissões do Operador */}
+            <div className="space-y-1.5 text-xs">
+              <span className="block font-black uppercase text-slate-400 text-[10px]">
+                Suas Permissões neste Módulo:
+              </span>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                  <span className="text-slate-300">Visualizar</span>
+                  <Check className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                  <span className="text-slate-300">Dar Entrada</span>
+                  {permissoesOperador.darEntrada ? <Check className="w-4 h-4 text-emerald-400" /> : <X className="w-4 h-4 text-red-400" />}
+                </div>
+                <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                  <span className="text-slate-300">Dar Saída</span>
+                  {permissoesOperador.darSaida ? <Check className="w-4 h-4 text-emerald-400" /> : <X className="w-4 h-4 text-red-400" />}
+                </div>
+                <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                  <span className="text-slate-300">Cadastrar</span>
+                  {permissoesOperador.cadastrar ? <Check className="w-4 h-4 text-emerald-400" /> : <X className="w-4 h-4 text-red-400" />}
+                </div>
+                <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                  <span className="text-slate-300">Editar</span>
+                  {permissoesOperador.editar ? <Check className="w-4 h-4 text-emerald-400" /> : <X className="w-4 h-4 text-red-400" />}
+                </div>
+                <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                  <span className="text-slate-300">Excluir</span>
+                  {permissoesOperador.excluir ? <Check className="w-4 h-4 text-emerald-400" /> : <X className="w-4 h-4 text-red-400" />}
+                </div>
+              </div>
+            </div>
+
+            {/* Regras Operacionais Claras */}
+            <div className="bg-purple-950/25 border border-purple-500/30 p-3.5 rounded-2xl text-xs space-y-2">
+              <span className="font-bold text-purple-300 block flex items-center gap-1.5 uppercase text-[11px]">
+                <Info className="w-4 h-4 text-purple-400" /> Política de Acessos:
+              </span>
+              <ul className="text-slate-300 text-[11px] space-y-1 list-disc pl-4">
+                <li><strong>Visitantes & Família:</strong> Só precisa dar entrada. Sem controle de permanência ou exigência de saída.</li>
+                <li><strong>Prestadores da Unidade & Condomínio:</strong> Permanência com limite de horário, alarme de estouro e devolução obrigatória de crachá na saída.</li>
+              </ul>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setModalPermissoes(false)}
+                className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 py-2 rounded-xl text-xs cursor-pointer"
+              >
+                Fechar
+              </button>
             </div>
           </div>
         </div>
@@ -2498,11 +2796,12 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
           className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 cursor-pointer animate-in fade-in"
         >
           <div className="max-w-md w-full max-h-[85vh] rounded-3xl overflow-hidden shadow-2xl border border-slate-800 bg-slate-900 p-2">
-            <img src={modalVisualizarFoto} alt="Foto Expandida" loading="lazy" decoding="async" className="w-full h-auto max-h-[80vh] object-contain rounded-2xl mx-auto" />
+            <img src={modalVisualizarFoto} alt="Foto Expandida" className="w-full h-auto max-h-[80vh] object-contain rounded-2xl mx-auto" />
             <p className="text-center text-xs text-slate-400 pt-2">Clique em qualquer lugar para fechar</p>
           </div>
         </div>
       )}
+
     </div>
   );
 }
