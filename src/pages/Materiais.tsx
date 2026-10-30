@@ -37,7 +37,6 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
   const [mensagem, setMensagem] = useState({ tipo: '', texto: '' });
 
   const [materiais, setMateriais] = useState<any[]>([]);
-  const [filtroCategoria, setFiltroCategoria] = useState('Todos');
   const [buscaTermo, setBuscaTermo] = useState('');
 
   const [modalAberto, setModalAberto] = useState(false);
@@ -75,7 +74,7 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
     return () => {
       window.removeEventListener(EVENTO_SINCRONIZAR_DADOS, handleSincronizar);
     };
-  }, [filtroCategoria, condId]);
+  }, [condId]);
 
   const carregarMateriais = async () => {
     if (!condId || condId === 'global' || condId === 'todos') {
@@ -86,17 +85,11 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
     setLoading(true);
 
     try {
-      let query = supabase
+      const { data, error } = await supabase
         .from('materiais_posto')
         .select('id, condominio_id, nome, categoria, codigo_patrimonio, estado, observacao_avaria, foto_avaria_url, created_at, updated_at')
         .eq('condominio_id', condId)
         .order('nome');
-
-      if (filtroCategoria !== 'Todos') {
-        query = query.eq('categoria', filtroCategoria);
-      }
-
-      const { data, error } = await query;
       if (error) throw error;
 
       setMateriais(data || []);
@@ -323,33 +316,16 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row gap-2 justify-between items-center">
-        <div className="relative w-full sm:w-80">
-          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-          <input
-            type="text"
-            value={buscaTermo}
-            onChange={(e) => setBuscaTermo(e.target.value)}
-            placeholder="Buscar por nome ou patrimônio..."
-            className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs shadow-2xs font-medium focus:outline-hidden focus:border-emerald-500 transition"
-          />
-        </div>
-
-        <div className="flex gap-1 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
-          {['Todos', 'Rádio HT', 'Lanterna', 'Celular', 'Chave Mestra', 'Outros'].map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setFiltroCategoria(cat)}
-              className={`px-2 py-1 rounded-md text-xs font-bold transition whitespace-nowrap cursor-pointer ${
-                filtroCategoria === cat
-                  ? 'bg-slate-900 text-white shadow-2xs'
-                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
+      {/* Barra de Busca de Equipamentos */}
+      <div className="relative w-full">
+        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+        <input
+          type="text"
+          value={buscaTermo}
+          onChange={(e) => setBuscaTermo(e.target.value)}
+          placeholder="Buscar por nome ou patrimônio..."
+          className="w-full pl-8 pr-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs shadow-2xs font-medium focus:outline-hidden focus:border-emerald-500 transition text-slate-900 dark:text-white"
+        />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
