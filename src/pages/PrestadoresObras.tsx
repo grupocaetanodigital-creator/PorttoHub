@@ -153,6 +153,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
   const [modalNovoCadastro, setModalNovoCadastro] = useState(false);
   const [modalEditarCadastro, setModalEditarCadastro] = useState(false);
   const [idEdicao, setIdEdicao] = useState<string | null>(null);
+  const [fabLiberacaoAberto, setFabLiberacaoAberto] = useState(false);
 
   const [modalEntrada, setModalEntrada] = useState(false);
   const [modalSaida, setModalSaida] = useState(false);
@@ -456,6 +457,20 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
     setTipoValidade('hoje');
     setTermoReutilizacao('');
     setSugestoesReutilizacao([]);
+  };
+
+  const abrirNovaLiberacao = (tipo: PerfilAcesso) => {
+    fecharModalCadastro();
+    setPerfilAcesso(tipo);
+    if (tipo === 'prestador_condominio') {
+      setUnidade('Condomínio');
+      setBloco('Área Comum');
+    } else {
+      setUnidade('');
+      setBloco('');
+    }
+    setModalNovoCadastro(true);
+    setFabLiberacaoAberto(false);
   };
 
   // OCR de Documentos
@@ -1241,21 +1256,6 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
           >
             <Settings className="w-4 h-4" />
           </button>
-
-          {/* Liberação de Acesso */}
-          {permissoesOperador.cadastrar && (
-            <button
-              type="button"
-              onClick={() => {
-                fecharModalCadastro();
-                setModalNovoCadastro(true);
-              }}
-              className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 p-2 rounded-xl transition shadow-sm active:scale-95 cursor-pointer"
-              title="Nova Liberação de Acesso"
-            >
-              <UserPlus className="w-4 h-4" />
-            </button>
-          )}
         </div>
       </div>
 
@@ -1577,6 +1577,10 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
             <div className="space-y-2.5">
               {cadastrosFiltrados.map((item) => {
                 const perfil = item.perfil_acesso || 'autorizado';
+                const destinoFormatado = perfil === 'prestador_condominio' 
+                  ? 'Área Comum / Condomínio' 
+                  : formatarIdentificacaoUnidade(item.unidade, item.bloco, condoConfig?.tipo_estrutura);
+                const vinculoOuEmpresa = item.empresa || item.parentesco_vinculo;
                 const ehVisitante = perfil === 'autorizado';
                 const infoValidade = checarValidade(item);
                 const prestadorNoLocal = prestadoresAtivos.find((a: any) => (a.prestador_id || a.id) === item.id);
@@ -1585,21 +1589,22 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                 return (
                   <div
                     key={item.id}
-                    className={`bg-slate-900 hover:bg-slate-850 p-3.5 sm:p-4 rounded-2xl border transition duration-150 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-sm ${
+                    className={`group bg-slate-900/90 hover:bg-slate-850 p-3 sm:p-4 rounded-2xl border transition-all duration-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-xs hover:shadow-md ${
                       infoValidade.expirou 
-                        ? 'border-amber-500/40 bg-amber-950/10' 
+                        ? 'border-amber-500/30 bg-amber-950/10' 
                         : jaEstaDentro 
-                        ? 'border-blue-500/40 bg-blue-950/10' 
-                        : 'border-slate-800'
+                        ? 'border-blue-500/40 bg-blue-950/15' 
+                        : 'border-slate-800 hover:border-slate-700'
                     }`}
                   >
                     {/* Foto e Informações Principais */}
-                    <div className="flex items-start sm:items-center gap-3.5 min-w-0 flex-1">
+                    <div className="flex items-center gap-3.5 min-w-0 flex-1">
                       
-                      {/* Avatar com Foto Otimizada */}
+                      {/* Avatar Moderno */}
                       <div
                         onClick={() => (item.foto_rosto || item.foto_url) && setModalVisualizarFoto(item.foto_rosto || item.foto_url)}
-                        className="w-12 h-12 rounded-2xl bg-slate-800 border border-slate-700 overflow-hidden shrink-0 flex items-center justify-center text-slate-400 cursor-pointer hover:border-purple-400 transition"
+                        className="relative w-12 h-12 rounded-2xl bg-slate-800 border border-slate-700/80 overflow-hidden shrink-0 flex items-center justify-center text-slate-400 cursor-pointer group-hover:border-purple-500/50 transition-colors"
+                        title={item.foto_rosto || item.foto_url ? 'Clique para ampliar a foto' : ''}
                       >
                         {(item.foto_rosto || item.foto_url) ? (
                           <ImagemOtimizada 
@@ -1609,66 +1614,75 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                             className="w-full h-full object-cover" 
                           />
                         ) : ehVisitante ? (
-                          <Users className="w-6 h-6 text-purple-400" />
+                          <Users className="w-5 h-5 text-purple-400" />
+                        ) : perfil === 'prestador_condominio' ? (
+                          <Building2 className="w-5 h-5 text-amber-400" />
                         ) : (
-                          <HardHat className="w-6 h-6 text-blue-400" />
+                          <HardHat className="w-5 h-5 text-blue-400" />
+                        )}
+
+                        {/* Indicador de presença se estiver dentro */}
+                        {jaEstaDentro && (
+                          <span 
+                            className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-blue-500 rounded-full border-2 border-slate-900 shadow-sm animate-pulse"
+                            title="Presente no local"
+                          />
                         )}
                       </div>
 
                       {/* Dados e Badges */}
                       <div className="min-w-0 space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           {/* Badge de Categoria */}
-                          <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase border ${perfilBadge(perfil)}`}>
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide border ${perfilBadge(perfil)}`}>
                             {perfilNome(perfil)}
                           </span>
 
                           {/* Validade */}
-                          <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border ${infoValidade.cor}`}>
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${infoValidade.cor}`}>
                             {infoValidade.texto}
                           </span>
 
-                          {/* Se for visitante: Badge de livre permanência */}
-                          {ehVisitante && (
-                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30">
-                              Livre Circulação (Sem Saída)
-                            </span>
-                          )}
-
-                          {/* Se for prestador e estiver no local */}
-                          {!ehVisitante && jaEstaDentro && (
-                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase bg-blue-500 text-slate-950 flex items-center gap-1">
-                              <Timer className="w-3 h-3" /> No Local (Saída Pendente)
+                          {/* Indicador No Local (Apenas se estiver dentro) */}
+                          {jaEstaDentro && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-blue-500/20 text-blue-300 border border-blue-500/40 flex items-center gap-1">
+                              <Timer className="w-3 h-3 text-blue-400" /> No Local
                             </span>
                           )}
                         </div>
 
                         {/* Nome Completo */}
-                        <h4 className="font-extrabold text-sm text-white truncate">
+                        <h4 className="font-extrabold text-sm sm:text-base text-white tracking-tight truncate">
                           {item.nome_profissional || item.nome_completo}
                         </h4>
 
-                        {/* Detalhes de Destino, Empresa ou Vínculo */}
-                        <div className="flex items-center gap-2.5 text-xs text-slate-400 flex-wrap">
-                          {item.documento && (
-                            <span>Doc: <strong className="text-slate-300 font-mono">{item.documento}</strong></span>
-                          )}
-                          {item.empresa && (
-                            <span>Empresa: <strong className="text-slate-300">{item.empresa}</strong></span>
-                          )}
-                          {item.parentesco_vinculo && (
-                            <span>Vínculo: <strong className="text-purple-300">{item.parentesco_vinculo}</strong></span>
-                          )}
-                          <span>
-                            Destino: <strong className="text-amber-300 font-bold">
-                              {perfil === 'prestador_condominio' 
-                                ? 'Área Comum / Condomínio' 
-                                : formatarIdentificacaoUnidade(item.unidade, item.bloco, condoConfig?.tipo_estrutura)}
-                            </strong>
+                        {/* Metadados Essenciais (Destino em destaque + Vínculo/Empresa + Documento) */}
+                        <div className="flex items-center gap-2 text-xs text-slate-300 flex-wrap">
+                          {/* Destino destacado */}
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-800 text-amber-300 border border-slate-700/80 font-bold text-[11px]">
+                            {perfil === 'prestador_condominio' ? <Building2 className="w-3 h-3 text-amber-400" /> : <Home className="w-3 h-3 text-amber-400" />}
+                            <span>{destinoFormatado}</span>
                           </span>
+
+                          {/* Vínculo ou Empresa */}
+                          {vinculoOuEmpresa && (
+                            <span className="text-slate-300 text-xs font-medium">
+                              • {vinculoOuEmpresa}
+                            </span>
+                          )}
+
+                          {/* Documento */}
+                          {item.documento && (
+                            <span className="text-slate-400 font-mono text-[11px]">
+                              • {item.documento}
+                            </span>
+                          )}
+
+                          {/* Placa do Veículo */}
                           {item.placa_veiculo && (
-                            <span className="flex items-center gap-1 font-mono text-slate-300">
-                              <Car className="w-3 h-3 text-slate-400" /> {item.placa_veiculo}
+                            <span className="inline-flex items-center gap-1 text-[11px] font-mono text-slate-300 bg-slate-800/60 px-1.5 py-0.5 rounded border border-slate-700/60">
+                              <Car className="w-3 h-3 text-slate-400" />
+                              {item.placa_veiculo}
                             </span>
                           )}
                         </div>
@@ -1683,8 +1697,9 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                         <button
                           type="button"
                           onClick={() => abrirEdicaoCadastro(item)}
-                          className="bg-slate-800 hover:bg-slate-700 text-slate-200 p-2 rounded-xl border border-slate-700 transition cursor-pointer"
+                          className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer"
                           title="Editar cadastro ou renovar validade"
+                          aria-label="Editar cadastro"
                         >
                           <Pencil className="w-4 h-4 text-purple-400" />
                         </button>
@@ -1694,21 +1709,22 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                       <button
                         type="button"
                         onClick={() => dispararWhatsAppEntrada(item)}
-                        className="bg-slate-800 hover:bg-slate-700 text-emerald-400 p-2 rounded-xl border border-slate-700 transition cursor-pointer"
+                        className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 transition cursor-pointer"
                         title="Enviar mensagem WhatsApp ao morador"
+                        aria-label="Notificar WhatsApp"
                       >
                         <MessageSquare className="w-4 h-4" />
                       </button>
 
                       {/* BOTÃO DE ENTRADA / SAÍDA ESPECÍFICO POR CATEGORIA */}
                       {ehVisitante ? (
-                        /* VISITANTES: SÓ DAR ENTRADA! NUNCA PEDE SAÍDA! */
+                        /* VISITANTES: SÓ DAR ENTRADA */
                         <button
                           type="button"
                           onClick={() => abrirModalEntradaPara(item)}
                           disabled={!permissoesOperador.darEntrada}
                           className="bg-purple-600 hover:bg-purple-500 text-white font-black px-3.5 py-2 rounded-xl text-xs uppercase flex items-center gap-1.5 transition shadow-sm active:scale-95 cursor-pointer disabled:bg-slate-800 disabled:text-slate-500"
-                          title="Registrar entrada do visitante (sem necessidade de saída)"
+                          title="Registrar entrada do visitante"
                         >
                           <LogIn className="w-3.5 h-3.5" />
                           <span>Dar Entrada</span>
@@ -1719,7 +1735,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                           type="button"
                           onClick={() => abrirModalSaidaPara(prestadorNoLocal || item)}
                           disabled={!permissoesOperador.darSaida}
-                          className="bg-red-600 hover:bg-red-700 text-white font-black px-3.5 py-2 rounded-xl text-xs uppercase flex items-center gap-1.5 transition shadow-md active:scale-95 cursor-pointer disabled:bg-slate-800 disabled:text-slate-500"
+                          className="bg-red-600 hover:bg-red-500 text-white font-black px-3.5 py-2 rounded-xl text-xs uppercase flex items-center gap-1.5 transition shadow-sm active:scale-95 cursor-pointer disabled:bg-slate-800 disabled:text-slate-500"
                         >
                           <LogOut className="w-3.5 h-3.5" />
                           <span>Dar Saída</span>
@@ -1732,8 +1748,8 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                           disabled={!permissoesOperador.darEntrada}
                           className={`font-black px-3.5 py-2 rounded-xl text-xs uppercase flex items-center gap-1.5 transition shadow-sm active:scale-95 cursor-pointer disabled:bg-slate-800 disabled:text-slate-500 ${
                             infoValidade.expirou
-                              ? 'bg-amber-500 hover:bg-amber-600 text-slate-950'
-                              : 'bg-emerald-500 hover:bg-emerald-600 text-slate-950'
+                              ? 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+                              : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
                           }`}
                         >
                           <LogIn className="w-3.5 h-3.5" />
@@ -2056,15 +2072,54 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
           <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-5 sm:p-6 text-white space-y-4 shadow-2xl relative my-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center border border-purple-500/30">
-                  {modalEditarCadastro ? <Pencil className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border ${
+                  modalEditarCadastro 
+                    ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+                    : perfilAcesso === 'autorizado'
+                      ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+                      : perfilAcesso === 'prestador_unidade'
+                        ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                        : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                }`}>
+                  {modalEditarCadastro ? (
+                    <Pencil className="w-5 h-5" />
+                  ) : perfilAcesso === 'autorizado' ? (
+                    <Users className="w-5 h-5" />
+                  ) : perfilAcesso === 'prestador_unidade' ? (
+                    <HardHat className="w-5 h-5" />
+                  ) : (
+                    <Building2 className="w-5 h-5" />
+                  )}
                 </div>
                 <div>
-                  <h3 className="font-black text-base sm:text-lg text-white uppercase">
-                    {modalEditarCadastro ? 'Editar Cadastro / Liberação' : 'Nova Liberação de Acesso'}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-black text-base sm:text-lg text-white uppercase">
+                      {modalEditarCadastro 
+                        ? 'Editar Cadastro / Liberação' 
+                        : perfilAcesso === 'autorizado'
+                          ? 'Nova Liberação: Visitante'
+                          : perfilAcesso === 'prestador_unidade'
+                            ? 'Nova Liberação: Prestador Un'
+                            : 'Nova Liberação: Prestador Cond'}
+                    </h3>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border uppercase tracking-wider hidden sm:inline-block ${
+                      perfilAcesso === 'autorizado'
+                        ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                        : perfilAcesso === 'prestador_unidade'
+                          ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                          : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                    }`}>
+                      {perfilAcesso === 'autorizado' ? 'Visitante' : perfilAcesso === 'prestador_unidade' ? 'Prestador Un' : 'Prestador Cond'}
+                    </span>
+                  </div>
                   <p className="text-xs text-slate-400">
-                    {modalEditarCadastro ? 'Atualize dados, fotos ou validade' : 'Cadastre autorização para familiares, visitantes ou prestadores'}
+                    {modalEditarCadastro 
+                      ? 'Atualize dados, fotos ou validade' 
+                      : perfilAcesso === 'autorizado'
+                        ? 'Formulário de liberação para amigos, convidados e familiares da unidade'
+                        : perfilAcesso === 'prestador_unidade'
+                          ? 'Formulário de liberação para obras, diaristas e reformas particulares da unidade'
+                          : 'Formulário de liberação para manutenção predial e obras em áreas comuns'}
                   </p>
                 </div>
               </div>
@@ -2076,56 +2131,6 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
               >
                 <X className="w-5 h-5" />
               </button>
-            </div>
-
-            {/* SELEÇÃO DAS 3 CATEGORIAS */}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-black uppercase text-amber-400">
-                Categoria de Acesso:
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPerfilAcesso('autorizado')}
-                  className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
-                    perfilAcesso === 'autorizado'
-                      ? 'bg-purple-600/30 border-purple-500 text-white shadow-lg shadow-purple-600/20'
-                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800'
-                  }`}
-                >
-                  <strong className="block text-xs text-purple-300">1. Visitante / Família</strong>
-                  <span className="text-[11px] block mt-0.5 text-slate-300">Amigos & Parentes</span>
-                  <span className="text-[10px] block text-emerald-400 mt-1 font-bold">✨ Só dar entrada (sem saída)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPerfilAcesso('prestador_unidade')}
-                  className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
-                    perfilAcesso === 'prestador_unidade'
-                      ? 'bg-blue-600/30 border-blue-500 text-white shadow-lg shadow-blue-600/20'
-                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800'
-                  }`}
-                >
-                  <strong className="block text-xs text-blue-300">2. Prestador da Unidade</strong>
-                  <span className="text-[11px] block mt-0.5 text-slate-300">Obras, Reformas, Diaristas</span>
-                  <span className="text-[10px] block text-amber-300 mt-1">Tempo e saída controlados</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPerfilAcesso('prestador_condominio')}
-                  className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
-                    perfilAcesso === 'prestador_condominio'
-                      ? 'bg-amber-600/30 border-amber-500 text-white shadow-lg shadow-amber-600/20'
-                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800'
-                  }`}
-                >
-                  <strong className="block text-xs text-amber-300">3. Condomínio / Obras</strong>
-                  <span className="text-[11px] block mt-0.5 text-slate-300">Manutenção Predial</span>
-                  <span className="text-[10px] block text-amber-300 mt-1">Crachá e tempo controlado</span>
-                </button>
-              </div>
             </div>
 
             {/* BUSCA RÁPIDA DE REUTILIZAÇÃO (Apenas em novo cadastro) */}
@@ -2903,6 +2908,147 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
           condominioNome={condoConfig?.nome}
           operadorNome={operadorNome}
         />
+      )}
+
+      {/* ========================================================================= */}
+      {/* BOTÃO FLUTUANTE DE NOVA LIBERAÇÃO NO CANTO INFERIOR DIREITO (ACIMA DO MENU) */}
+      {/* ========================================================================= */}
+      {permissoesOperador.cadastrar && !modalNovoCadastro && !modalEditarCadastro && (
+        <div className="fixed bottom-20 md:bottom-8 right-4 sm:right-6 z-40 flex flex-col items-end">
+          {/* Menu Suspenso Speed-Dial com os 3 Tipos de Liberação */}
+          {fabLiberacaoAberto && (
+            <>
+              {/* Backdrop para fechar ao clicar fora */}
+              <div
+                className="fixed inset-0 z-30 bg-black/50 backdrop-blur-[2px] transition-opacity animate-in fade-in duration-150"
+                onClick={() => setFabLiberacaoAberto(false)}
+              />
+
+              <div className="relative z-40 mb-3 space-y-2 w-72 sm:w-84 animate-in slide-in-from-bottom-3 zoom-in-95 duration-150">
+                <div className="bg-slate-900/98 backdrop-blur-xl p-3.5 rounded-3xl shadow-2xl border border-slate-700/80 space-y-2.5 text-white">
+                  <div className="px-1 pb-2 border-b border-slate-800 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Nova Liberação de Acesso
+                      </span>
+                      <p className="text-[10px] text-slate-400">Escolha o formulário de liberação:</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFabLiberacaoAberto(false)}
+                      className="text-slate-400 hover:text-white p-1 rounded-xl hover:bg-slate-800 transition cursor-pointer"
+                      title="Fechar"
+                      aria-label="Fechar opções"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Opção 1: Visitante */}
+                  <button
+                    type="button"
+                    onClick={() => abrirNovaLiberacao('autorizado')}
+                    className="w-full p-2.5 rounded-2xl border border-slate-800 hover:border-purple-500/80 bg-slate-950/70 hover:bg-purple-950/40 transition-all text-left flex items-center justify-between group cursor-pointer shadow-xs"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 text-purple-400 flex items-center justify-center font-bold shrink-0 group-hover:scale-105 transition-transform">
+                        <Users className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-black text-white text-xs group-hover:text-purple-300">
+                            Visitante
+                          </span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                            Família / Amigos
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                          Amigos e familiares • Sem pendência de saída
+                        </div>
+                      </div>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-purple-400 shrink-0 group-hover:translate-x-1 transition" />
+                  </button>
+
+                  {/* Opção 2: Prestador Un */}
+                  <button
+                    type="button"
+                    onClick={() => abrirNovaLiberacao('prestador_unidade')}
+                    className="w-full p-2.5 rounded-2xl border border-slate-800 hover:border-blue-500/80 bg-slate-950/70 hover:bg-blue-950/40 transition-all text-left flex items-center justify-between group cursor-pointer shadow-xs"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/30 text-blue-400 flex items-center justify-center font-bold shrink-0 group-hover:scale-105 transition-transform">
+                        <HardHat className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-black text-white text-xs group-hover:text-blue-300">
+                            Prestador Un
+                          </span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                            Unidade
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                          Reformas particulares, obras e diaristas
+                        </div>
+                      </div>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-blue-400 shrink-0 group-hover:translate-x-1 transition" />
+                  </button>
+
+                  {/* Opção 3: Prestador Cond */}
+                  <button
+                    type="button"
+                    onClick={() => abrirNovaLiberacao('prestador_condominio')}
+                    className="w-full p-2.5 rounded-2xl border border-slate-800 hover:border-amber-500/80 bg-slate-950/70 hover:bg-amber-950/40 transition-all text-left flex items-center justify-between group cursor-pointer shadow-xs"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold shrink-0 group-hover:scale-105 transition-transform">
+                        <Building2 className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-black text-white text-xs group-hover:text-amber-300">
+                            Prestador Cond
+                          </span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            Condomínio
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                          Manutenção predial e obras em áreas comuns
+                        </div>
+                      </div>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-amber-400 shrink-0 group-hover:translate-x-1 transition" />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Botão Flutuante Principal (FAB) - Apenas Ícone */}
+          <button
+            type="button"
+            onClick={() => setFabLiberacaoAberto(prev => !prev)}
+            className={`relative z-40 group w-14 h-14 rounded-2xl shadow-2xl transition-all duration-200 border-2 cursor-pointer active:scale-95 flex items-center justify-center ${
+              fabLiberacaoAberto
+                ? 'bg-slate-900 text-white border-slate-700 shadow-slate-950/50'
+                : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-emerald-300 hover:scale-105 shadow-emerald-500/30'
+            }`}
+            title={fabLiberacaoAberto ? 'Fechar opções' : 'Nova Liberação de Acesso'}
+            aria-label="Nova Liberação de Acesso"
+          >
+            {fabLiberacaoAberto ? (
+              <X className="w-6 h-6 text-white transition-transform duration-200" />
+            ) : (
+              <UserPlus className="w-6 h-6 text-slate-950 transition-transform duration-200 group-hover:scale-110" />
+            )}
+          </button>
+        </div>
       )}
 
     </div>

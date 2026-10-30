@@ -1445,20 +1445,6 @@ export default function App() {
                               </span>
                             </div>
                           </button>
-                          {eAutorizados && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setModalConfigHorariosAberto(true);
-                              }}
-                              className="absolute top-2 right-2 p-1.5 rounded-xl text-slate-400 hover:text-purple-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition cursor-pointer z-10"
-                              title="Configurar horários de obras e mudanças"
-                              aria-label="Configurar horários"
-                            >
-                              <Settings className="w-3.5 h-3.5" />
-                            </button>
-                          )}
                         </div>
                       );
                     })}
