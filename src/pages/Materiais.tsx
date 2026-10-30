@@ -16,7 +16,10 @@ import {
   X, 
   Wrench,
   Trash2,
-  Lock
+  Lock,
+  Eye,
+  ChevronDown,
+  Check
 } from 'lucide-react';
 
 interface MateriaisProps {
@@ -31,6 +34,7 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
   const podeVisualizar = verificarPermissao(usuarioLogado, 'materiais', 'visualizar');
   const podeCriar = verificarPermissao(usuarioLogado, 'materiais', 'criar') || verificarPermissao(usuarioLogado, 'materiais', 'cadastrar_equipamentos');
   const podeEditar = verificarPermissao(usuarioLogado, 'materiais', 'editar');
+  const podeAlterarStatus = verificarPermissao(usuarioLogado, 'materiais', 'alterar_status') || podeEditar || podeCriar || nivelNum <= 3;
   const podeExcluir = verificarPermissao(usuarioLogado, 'materiais', 'excluir');
   const [loading, setLoading] = useState(false);
   const [uploadingFoto, setUploadingFoto] = useState(false);
@@ -48,6 +52,16 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
   const [estado, setEstado] = useState('Perfeito');
   const [observacaoAvaria, setObservacaoAvaria] = useState('');
   const [fotoAvariaUrl, setFotoAvariaUrl] = useState('');
+
+  // Estados para Modal de Alteração Rápida de Status com Foto
+  const [itemParaAlterarStatus, setItemParaAlterarStatus] = useState<any | null>(null);
+  const [novoEstado, setNovoEstado] = useState<'Perfeito' | 'Avariado' | 'Em Manutenção'>('Perfeito');
+  const [novaObservacaoAvaria, setNovaObservacaoAvaria] = useState('');
+  const [novaFotoAvariaUrl, setNovaFotoAvariaUrl] = useState('');
+  const [salvandoStatus, setSalvandoStatus] = useState(false);
+
+  // Modal de Foto Ampliada (Lightbox)
+  const [fotoAmpliadaModal, setFotoAmpliadaModal] = useState<{ url: string; titulo: string } | null>(null);
 
   const [condId, setCondId] = useState(() => getCondominioAtivoId(usuarioLogado));
 
@@ -145,6 +159,89 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
       setMensagem({ tipo: 'erro', texto: 'Falha ao enviar foto: ' + err.message });
     } finally {
       setUploadingFoto(false);
+    }
+  };
+
+  const abrirModalAlterarStatus = (item: any) => {
+    if (!podeAlterarStatus) {
+      setMensagem({ tipo: 'erro', texto: 'Seu perfil não possui permissão para alterar o status deste equipamento.' });
+      return;
+    }
+    setItemParaAlterarStatus(item);
+    setNovoEstado(item.estado || 'Perfeito');
+    setNovaObservacaoAvaria(item.observacao_avaria || '');
+    setNovaFotoAvariaUrl(item.foto_avaria_url || '');
+  };
+
+  const uploadFotoStatus = async (file: File | null) => {
+    if (!file) return;
+    setUploadingFoto(true);
+    setMensagem({ tipo: '', texto: '' });
+
+    try {
+      const { publicUrl, tamanhoOriginalKb, tamanhoComprimidoKb, taxaReducaoPct } = await uploadFotoComprimidaStorage({
+        file,
+        pasta: 'materiais_status',
+        maxWidth: 1000,
+        maxHeight: 1000,
+        qualidade: 0.8
+      });
+
+      setNovaFotoAvariaUrl(publicUrl);
+      const detalheEconomia = taxaReducaoPct > 0 ? ` (${tamanhoOriginalKb}KB ➔ ${tamanhoComprimidoKb}KB, -${taxaReducaoPct}%)` : '';
+      setMensagem({ tipo: 'sucesso', texto: `Foto comprobatória registrada com sucesso!${detalheEconomia}` });
+    } catch (err: any) {
+      setMensagem({ tipo: 'erro', texto: 'Falha ao enviar foto: ' + err.message });
+    } finally {
+      setUploadingFoto(false);
+    }
+  };
+
+  const salvarAlteracaoStatus = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!itemParaAlterarStatus) return;
+
+    if (novoEstado !== 'Perfeito' && !novaObservacaoAvaria.trim()) {
+      setMensagem({ tipo: 'erro', texto: 'Por favor, descreva o motivo da avaria ou manutenção.' });
+      return;
+    }
+
+    setSalvandoStatus(true);
+    try {
+      const updateData = {
+        estado: novoEstado,
+        observacao_avaria: novoEstado !== 'Perfeito' ? novaObservacaoAvaria.trim() : '',
+        foto_avaria_url: novoEstado !== 'Perfeito' ? novaFotoAvariaUrl.trim() : '',
+        operador_atualizacao: usuarioLogado?.login || usuarioLogado?.nome || 'Portaria',
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('materiais_posto')
+        .update(updateData)
+        .eq('id', itemParaAlterarStatus.id);
+
+      if (error) throw error;
+
+      registrarLogMaterial('ALTERACAO_STATUS', {
+        id: itemParaAlterarStatus.id,
+        nome: itemParaAlterarStatus.nome,
+        estadoAnterior: itemParaAlterarStatus.estado,
+        novoEstado,
+        observacao: updateData.observacao_avaria,
+        foto_avaria: updateData.foto_avaria_url
+      });
+
+      setMateriais(prev => prev.map(m => m.id === itemParaAlterarStatus.id ? { ...m, ...updateData } : m));
+      setItemParaAlterarStatus(null);
+      setMensagem({
+        tipo: 'sucesso',
+        texto: `Status de "${itemParaAlterarStatus.nome}" atualizado para ${novoEstado}!`
+      });
+    } catch (err: any) {
+      setMensagem({ tipo: 'erro', texto: 'Erro ao atualizar status: ' + err.message });
+    } finally {
+      setSalvandoStatus(false);
     }
   };
 
