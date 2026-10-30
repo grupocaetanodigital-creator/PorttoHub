@@ -204,11 +204,12 @@ export async function atualizarCacheAutonomia3Horas(condominioId: string, forcar
 
   try {
     // Projeção estrita de colunas para reduzir drasticamente o Egress (sem campos pesados)
-    const [moradoresRes, chavesRes, pontosRes, materiaisRes] = await Promise.all([
+    const [moradoresRes, chavesRes, pontosRes, materiaisRes, custodiaRes] = await Promise.all([
       supabase.from('moradores').select('id, condominio_id, nome, bloco, unidade, telefone, status_acesso, tag_rfid, veiculo_placa, veiculo_modelo').eq('condominio_id', condominioId).order('nome'),
       supabase.from('chaves').select('id, condominio_id, codigo_chave, nome_chave, status, localizacao').eq('condominio_id', condominioId).order('codigo_chave'),
       supabase.from('rondas_pontos').select('id, condominio_id, nome_ponto, ordem, qr_code, nfc_tag, ativo').eq('condominio_id', condominioId).order('nome_ponto'),
-      supabase.from('materiais_posto').select('id, condominio_id, nome, quantidade, status, categoria').eq('condominio_id', condominioId).order('nome')
+      supabase.from('materiais_posto').select('id, condominio_id, nome, quantidade, status, categoria').eq('condominio_id', condominioId).order('nome'),
+      supabase.from('custodia').select('id, condominio_id, codigo_custodia, codigo, descricao, fluxo, origem_tipo, origem_unidade, origem_bloco, origem_nome_doc, origem_whats, destino_tipo, destino_unidade, destino_bloco, destino_nome_doc, destino_whats, local_armazenamento, foto_entrada_url, foto_url, status, operador_entrada, created_at, data_hora_entrada').eq('condominio_id', condominioId).in('status', ['Aguardando Retirada', 'Retido', 'Guardado', 'Pendente']).order('created_at', { ascending: false })
     ]);
 
     const timestamp = new Date().toISOString();
@@ -241,6 +242,13 @@ export async function atualizarCacheAutonomia3Horas(condominioId: string, forcar
       }));
     }
 
+    if (custodiaRes.data) {
+      localStorage.setItem(`infport_offline_cache_custodia_ativa_${condominioId}`, JSON.stringify({
+        timestamp,
+        dados: custodiaRes.data
+      }));
+    }
+
     // Registra carimbo da autonomia
     localStorage.setItem(CHAVE_STATUS_CACHE, JSON.stringify({
       condominioId,
@@ -248,6 +256,7 @@ export async function atualizarCacheAutonomia3Horas(condominioId: string, forcar
       validadeHoras: 3,
       totalMoradores: moradoresRes.data?.length || 0,
       totalChaves: chavesRes.data?.length || 0,
+      totalCustodia: custodiaRes.data?.length || 0,
       totalPontos: pontosRes.data?.length || 0
     }));
 
