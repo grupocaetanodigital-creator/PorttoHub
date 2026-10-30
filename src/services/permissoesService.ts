@@ -148,6 +148,8 @@ export const MODULOS_DEFINICAO_RBAC: ModuloDefinicaoInfo[] = [
     acoesEspecificas: [
       { id: 'receber', label: 'Receber e Guardar' },
       { id: 'baixa', label: 'Baixa / Devolução' },
+      { id: 'editar', label: 'Editar Item Guardado' },
+      { id: 'excluir', label: 'Excluir Registro de Custódia' },
       { id: 'auditoria', label: 'Auditoria' }
     ]
   },

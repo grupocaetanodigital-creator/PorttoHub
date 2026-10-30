@@ -134,8 +134,7 @@ export async function carregarEPreaquecerEncomendas(
           .in('status', ['aguardando_triagem', 'em_triagem'])
           .eq('condominio_id', condominioId)
           .order('created_at', { ascending: false })
-          .then(res => res.data || [])
-          .catch(() => []),
+          .then(res => res.data || [], () => []),
 
         // 3. Histórico recente de lotes RE
         supabase
@@ -144,8 +143,7 @@ export async function carregarEPreaquecerEncomendas(
           .eq('condominio_id', condominioId)
           .order('created_at', { ascending: false })
           .limit(50)
-          .then(res => res.data || [])
-          .catch(() => []),
+          .then(res => res.data || [], () => []),
 
         // 4. Moradores
         cachedQuery<any[]>({
@@ -176,8 +174,7 @@ export async function carregarEPreaquecerEncomendas(
           .select('locais_armazenamento')
           .eq('condominio_id', condominioId)
           .maybeSingle()
-          .then(res => res.data?.locais_armazenamento || [])
-          .catch(() => [])
+          .then(res => res.data?.locais_armazenamento || [], () => [])
       ]);
 
       const listaEntregadores = Array.isArray(entData) ? entData : [];

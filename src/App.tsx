@@ -223,7 +223,7 @@ export default function App() {
                 : Promise.resolve({ data: null, error: null })
             ]);
 
-            let opData = opRes.data;
+            let opData: any = opRes.data;
             if (!opData && sessao.login === 'admin') {
               opData = {
                 id: 'admin_master_root',

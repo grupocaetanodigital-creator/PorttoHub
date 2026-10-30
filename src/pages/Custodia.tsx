@@ -26,7 +26,16 @@ import {
   Check,
   FileText,
   ChevronDown,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Pencil,
+  Trash2,
+  Building2,
+  Users,
+  AlertTriangle,
+  RotateCcw,
+  UserCheck,
+  Truck,
+  Home
 } from 'lucide-react';
 import { 
   carregarCondominioConfig, 
@@ -45,15 +54,19 @@ import { verificarPermissao } from '../services/permissoesService';
 import { formatarLinkWhatsApp, dispararLinkWhatsApp } from '../services/configWhatsappService';
 import { ModalWhatsAppDisparo } from '../components/ModalWhatsAppDisparo';
 import { ImagemOtimizada } from '../components/ImagemOtimizada';
+import { registrarAtividade } from '../services/auditoriaService';
 
 interface CustodiaProps {
   usuarioLogado?: any;
 }
 
 export default function Custodia({ usuarioLogado }: CustodiaProps) {
-  const podeCriar = Boolean(verificarPermissao(usuarioLogado, 'custodia', 'criar') || verificarPermissao(usuarioLogado, 'custodia', 'receber'));
-  const podeBaixa = Boolean(verificarPermissao(usuarioLogado, 'custodia', 'baixa') || verificarPermissao(usuarioLogado, 'custodia', 'editar'));
-  const podeAuditoria = Boolean(verificarPermissao(usuarioLogado, 'custodia', 'auditoria') || verificarPermissao(usuarioLogado, 'custodia', 'visualizar'));
+  const eAdmin = usuarioLogado?.cargo === 'admin' || usuarioLogado?.permissao === 'admin' || usuarioLogado?.cargo === 'sindico' || usuarioLogado?.permissao === 'sindico';
+  const podeCriar = Boolean(verificarPermissao(usuarioLogado, 'custodia', 'criar') || verificarPermissao(usuarioLogado, 'custodia', 'receber') || eAdmin);
+  const podeBaixa = Boolean(verificarPermissao(usuarioLogado, 'custodia', 'baixa') || eAdmin);
+  const podeEditar = Boolean(verificarPermissao(usuarioLogado, 'custodia', 'editar') || eAdmin);
+  const podeExcluir = Boolean(verificarPermissao(usuarioLogado, 'custodia', 'excluir') || eAdmin);
+  const podeAuditoria = Boolean(verificarPermissao(usuarioLogado, 'custodia', 'auditoria') || verificarPermissao(usuarioLogado, 'custodia', 'visualizar') || eAdmin);
 
   const [aba, setAba] = useState<'entrada' | 'saida' | 'auditoria'>('saida');
   const [modalSelecaoFluxoAberto, setModalSelecaoFluxoAberto] = useState(false);
@@ -120,11 +133,30 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
 
   const [buscaTermo, setBuscaTermo] = useState('');
   const [itemSelecionadoSaida, setItemSelecionadoSaida] = useState<any | null>(null);
+  const [tipoRetirante, setTipoRetirante] = useState<'morador' | 'depositante' | 'destinatario' | 'terceiro'>('destinatario');
+  const [baixaUnidade, setBaixaUnidade] = useState('');
+  const [baixaBloco, setBaixaBloco] = useState('');
+  const [terceiroVinculo, setTerceiroVinculo] = useState('Visitante');
   const [recebedorNome, setRecebedorNome] = useState('');
   const [recebedorDoc, setRecebedorDoc] = useState('');
   const [fotoSaidaUrl, setFotoSaidaUrl] = useState('');
   const [condId, setCondId] = useState(() => getCondominioAtivoId(usuarioLogado));
   const [whatsSaidaLink, setWhatsSaidaLink] = useState<any | null>(null);
+
+  // Estados de Edição de Custódia
+  const [itemEmEdicao, setItemEmEdicao] = useState<any | null>(null);
+  const [editDescricao, setEditDescricao] = useState('');
+  const [editLocal, setEditLocal] = useState('');
+  const [editOrigemNome, setEditOrigemNome] = useState('');
+  const [editOrigemUnidade, setEditOrigemUnidade] = useState('');
+  const [editOrigemBloco, setEditOrigemBloco] = useState('');
+  const [editDestinoNome, setEditDestinoNome] = useState('');
+  const [editDestinoUnidade, setEditDestinoUnidade] = useState('');
+  const [editDestinoBloco, setEditDestinoBloco] = useState('');
+  const [editObservacoes, setEditObservacoes] = useState('');
+
+  // Estado de Exclusão de Custódia
+  const [itemParaExcluir, setItemParaExcluir] = useState<any | null>(null);
 
   useEffect(() => {
     const handleCondoChange = (e: any) => {
@@ -171,7 +203,7 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
 
       const custodiaQuery = supabase
         .from('custodia')
-        .select('id, condominio_id, codigo_custodia, fluxo, descricao, foto_url, observacoes, created_at, status, data_hora_entrada, data_hora_saida, operador_entrada, operador_saida, recebedor_nome, recebedor_doc, origem_tipo, origem_nome_doc, destino_tipo, destino_nome_doc, local_armazenamento')
+        .select('*')
         .eq('condominio_id', condId)
         .order('created_at', { ascending: false })
         .range(0, 99);
@@ -246,6 +278,68 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
   const moradoresDestinoFiltrados = moradores.filter(
     (m) => destinoUnidade && m.unidade && saoUnidadesEquivalentes(m.unidade, destinoUnidade) && (eEstruturaCasas || !destinoBloco || (m.bloco || '').toLowerCase() === destinoBloco.toLowerCase())
   );
+  const moradoresBaixaFiltrados = moradores.filter(
+    (m) => baixaUnidade && m.unidade && saoUnidadesEquivalentes(m.unidade, baixaUnidade) && (eEstruturaCasas || !baixaBloco || (m.bloco || '').toLowerCase() === baixaBloco.toLowerCase())
+  );
+
+  const selecionarItemParaBaixa = (item: any) => {
+    if (!podeBaixa) {
+      setMensagem({ tipo: 'erro', texto: 'Acesso restrito: seu perfil não tem permissão para realizar Baixa ou Entrega de itens de Custódia.' });
+      return;
+    }
+    setItemSelecionadoSaida(item);
+    setFotoSaidaUrl('');
+
+    // Ajusta o tipo padrão conforme o destino
+    if (item.destino_tipo === 'Morador' && item.destino_unidade) {
+      setTipoRetirante('morador');
+      setBaixaUnidade(item.destino_unidade || '');
+      setBaixaBloco(item.destino_bloco || '');
+      setRecebedorNome(item.destino_nome_doc || '');
+      setRecebedorDoc('');
+    } else if (item.destino_tipo === 'Terceiro') {
+      setTipoRetirante('terceiro');
+      setRecebedorNome(item.destino_nome_doc || '');
+      setRecebedorDoc('');
+      setTerceiroVinculo('Prestador de Serviço');
+    } else {
+      setTipoRetirante('destinatario');
+      setRecebedorNome(item.destino_nome_doc || '');
+      setRecebedorDoc('');
+    }
+  };
+
+  const mudarTipoRetirante = (tipo: 'morador' | 'depositante' | 'destinatario' | 'terceiro') => {
+    setTipoRetirante(tipo);
+    if (!itemSelecionadoSaida) return;
+
+    if (tipo === 'depositante') {
+      // Quem deixou voltou para buscar (devolução ao depositante)
+      setRecebedorNome(itemSelecionadoSaida.origem_nome_doc || '');
+      setRecebedorDoc('');
+      setBaixaUnidade(itemSelecionadoSaida.origem_unidade || '');
+      setBaixaBloco(itemSelecionadoSaida.origem_bloco || '');
+    } else if (tipo === 'destinatario') {
+      // Destinatário original cadastrado
+      setRecebedorNome(itemSelecionadoSaida.destino_nome_doc || '');
+      setRecebedorDoc('');
+      setBaixaUnidade(itemSelecionadoSaida.destino_unidade || '');
+      setBaixaBloco(itemSelecionadoSaida.destino_bloco || '');
+    } else if (tipo === 'morador') {
+      // Morador da unidade: pré-carrega unidade do destino (ou da origem)
+      const u = itemSelecionadoSaida.destino_unidade || itemSelecionadoSaida.origem_unidade || '';
+      const b = itemSelecionadoSaida.destino_bloco || itemSelecionadoSaida.origem_bloco || '';
+      setBaixaUnidade(u);
+      setBaixaBloco(b);
+      setRecebedorNome('');
+      setRecebedorDoc('');
+    } else if (tipo === 'terceiro') {
+      // Terceiro / visitante
+      setRecebedorNome('');
+      setRecebedorDoc('');
+      setTerceiroVinculo('Visitante / Convidado');
+    }
+  };
 
   const salvarEntradaCustodia = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -291,6 +385,15 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
 
       if (error) throw error;
 
+      await registrarAtividade({
+        condominio_id: targetCondo,
+        modulo: 'custodia',
+        acao: 'receber',
+        descricao: `Custódia guardada (${codigoCustodia}): ${descricaoItem.trim()} de ${origemNome.trim()} para ${destinoNome.trim()}`,
+        detalhes: { codigo: codigoCustodia, fluxo },
+        operador_nome: usuarioLogado?.nome || usuarioLogado?.login || 'Portaria'
+      });
+
       const telDestino = (fluxo.endsWith('M') ? '' : destinoWhats).replace(/\D/g, '');
       const rotuloOrigem = origemUnidade ? `${origemNome} (${origemBloco ? origemBloco + ' ' : ''}${origemUnidade})` : `${origemNome} (Terceiro)`;
       const rotuloDestino = destinoUnidade ? `${destinoNome} (${destinoBloco ? destinoBloco + ' ' : ''}${destinoUnidade})` : `${destinoNome} (Terceiro)`;
@@ -305,7 +408,6 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
         link: linkWhatsDestino
       });
 
-      // Dispara imediatamente de forma compatível e silenciosa
       dispararLinkWhatsApp(linkWhatsDestino);
 
       setOrigemUnidade(''); setOrigemBloco(''); setOrigemNome(''); setOrigemWhats('');
@@ -321,10 +423,30 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
     }
   };
 
-  const efetivarSaidaCustodia = async (e: React.FormEvent) => {
+  // Funções de Edição de Custódia (com RBAC)
+  const abrirEdicaoCustodia = (item: any, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!podeEditar) {
+      setMensagem({ tipo: 'erro', texto: 'Acesso restrito: seu perfil não tem permissão para editar itens de Custódia.' });
+      return;
+    }
+    setItemEmEdicao(item);
+    setEditDescricao(item.descricao || '');
+    setEditLocal(item.local_armazenamento || '');
+    setEditOrigemNome(item.origem_nome_doc || '');
+    setEditOrigemUnidade(item.origem_unidade || '');
+    setEditOrigemBloco(item.origem_bloco || '');
+    setEditDestinoNome(item.destino_nome_doc || '');
+    setEditDestinoUnidade(item.destino_unidade || '');
+    setEditDestinoBloco(item.destino_bloco || '');
+    setEditObservacoes(item.observacoes || '');
+  };
+
+  const salvarEdicaoCustodia = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!itemSelecionadoSaida || !recebedorNome.trim() || !fotoSaidaUrl.trim()) {
-      setMensagem({ tipo: 'erro', texto: 'Informe o nome do retirante e tire a foto do comprovante.' });
+    if (!itemEmEdicao) return;
+    if (!editDescricao.trim() || !editOrigemNome.trim() || !editDestinoNome.trim()) {
+      setMensagem({ tipo: 'erro', texto: 'Descrição, nome de origem e nome de destino são obrigatórios.' });
       return;
     }
     setLoading(true);
@@ -333,10 +455,124 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
       const { error } = await supabase
         .from('custodia')
         .update({
+          descricao: editDescricao.trim(),
+          local_armazenamento: editLocal.trim(),
+          origem_nome_doc: editOrigemNome.trim(),
+          origem_unidade: editOrigemUnidade.trim(),
+          origem_bloco: editOrigemBloco.trim(),
+          destino_nome_doc: editDestinoNome.trim(),
+          destino_unidade: editDestinoUnidade.trim(),
+          destino_bloco: editDestinoBloco.trim(),
+          observacoes: editObservacoes.trim()
+        })
+        .eq('id', itemEmEdicao.id);
+
+      if (error) throw error;
+
+      await registrarAtividade({
+        condominio_id: itemEmEdicao.condominio_id || condId,
+        modulo: 'custodia',
+        acao: 'editar',
+        descricao: `Item de custódia editado (${itemEmEdicao.codigo_custodia}): "${editDescricao.trim()}"`,
+        detalhes: { codigo: itemEmEdicao.codigo_custodia, id: itemEmEdicao.id },
+        operador_nome: usuarioLogado?.nome || usuarioLogado?.login || 'Portaria'
+      });
+
+      setItemEmEdicao(null);
+      await carregarDados();
+      setMensagem({ tipo: 'sucesso', texto: `Custódia ${itemEmEdicao.codigo_custodia} atualizada com sucesso!` });
+    } catch (err: any) {
+      setMensagem({ tipo: 'erro', texto: 'Erro ao editar custódia: ' + err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Funções de Exclusão de Custódia (com RBAC)
+  const abrirExclusaoCustodia = (item: any, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!podeExcluir) {
+      setMensagem({ tipo: 'erro', texto: 'Acesso restrito: seu perfil não tem permissão para excluir registros de Custódia.' });
+      return;
+    }
+    setItemParaExcluir(item);
+  };
+
+  const confirmarExclusaoCustodia = async () => {
+    if (!itemParaExcluir) return;
+    setLoading(true);
+
+    try {
+      const { error } = await supabase
+        .from('custodia')
+        .delete()
+        .eq('id', itemParaExcluir.id);
+
+      if (error) throw error;
+
+      await registrarAtividade({
+        condominio_id: itemParaExcluir.condominio_id || condId,
+        modulo: 'custodia',
+        acao: 'excluir',
+        descricao: `Item de custódia excluído (${itemParaExcluir.codigo_custodia}): "${itemParaExcluir.descricao}"`,
+        detalhes: { codigo: itemParaExcluir.codigo_custodia, id: itemParaExcluir.id },
+        operador_nome: usuarioLogado?.nome || usuarioLogado?.login || 'Portaria'
+      });
+
+      if (itemSelecionadoSaida?.id === itemParaExcluir.id) {
+        setItemSelecionadoSaida(null);
+      }
+      setItemParaExcluir(null);
+      await carregarDados();
+      setMensagem({ tipo: 'sucesso', texto: `Item de custódia ${itemParaExcluir.codigo_custodia} excluído com sucesso.` });
+    } catch (err: any) {
+      setMensagem({ tipo: 'erro', texto: 'Erro ao excluir custódia: ' + err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const efetivarSaidaCustodia = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!itemSelecionadoSaida) return;
+    if (!recebedorNome.trim()) {
+      setMensagem({ tipo: 'erro', texto: 'Informe o nome de quem está retirando o item.' });
+      return;
+    }
+    if (!fotoSaidaUrl.trim()) {
+      setMensagem({ tipo: 'erro', texto: 'Tire ou anexe a foto do comprovante / retirante para efetivar a baixa.' });
+      return;
+    }
+    setLoading(true);
+
+    try {
+      let docFormatado = recebedorDoc.trim();
+      let modalidadeTexto = '';
+      if (tipoRetirante === 'depositante') {
+        modalidadeTexto = 'Devolvido ao Depositante';
+        if (!docFormatado) docFormatado = 'Depositante';
+      } else if (tipoRetirante === 'morador') {
+        const rotUnid = eEstruturaCasas ? 'Casa' : 'Unid';
+        modalidadeTexto = `Entregue a Morador (${rotUnid} ${baixaUnidade}${baixaBloco ? ' - Bloco ' + baixaBloco : ''})`;
+        if (!docFormatado && baixaUnidade) {
+          docFormatado = `${rotUnid} ${baixaUnidade}${baixaBloco ? ' / ' + baixaBloco : ''}`;
+        }
+      } else if (tipoRetirante === 'terceiro') {
+        modalidadeTexto = `Entregue a Terceiro (${terceiroVinculo})`;
+        if (terceiroVinculo && !docFormatado) {
+          docFormatado = `Vínculo: ${terceiroVinculo}`;
+        }
+      } else {
+        modalidadeTexto = 'Entregue ao Destinatário Original';
+      }
+
+      const { error } = await supabase
+        .from('custodia')
+        .update({
           status: 'Retirado',
           data_hora_saida: new Date().toISOString(),
           recebedor_nome: recebedorNome.trim(),
-          recebedor_doc: recebedorDoc.trim(),
+          recebedor_doc: docFormatado,
           foto_saida_url: fotoSaidaUrl.trim(),
           operador_saida: usuarioLogado?.login || usuarioLogado?.nome || 'Portaria'
         })
@@ -344,12 +580,26 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
 
       if (error) throw error;
 
+      await registrarAtividade({
+        condominio_id: itemSelecionadoSaida.condominio_id || condId,
+        modulo: 'custodia',
+        acao: 'baixa',
+        descricao: `Baixa em custódia ${itemSelecionadoSaida.codigo_custodia}: ${recebedorNome.trim()} (${modalidadeTexto})`,
+        detalhes: {
+          codigo: itemSelecionadoSaida.codigo_custodia,
+          tipo_retirante: tipoRetirante,
+          recebedor: recebedorNome.trim(),
+          doc: docFormatado
+        },
+        operador_nome: usuarioLogado?.nome || usuarioLogado?.login || 'Portaria'
+      });
+
       const telOrigem = itemSelecionadoSaida.origem_whats?.replace(/\D/g, '') || itemSelecionadoSaida.destino_whats?.replace(/\D/g, '') || '';
       const rotuloOrig = itemSelecionadoSaida.origem_nome_doc || 'Depositante';
       const rotuloDest = itemSelecionadoSaida.destino_nome_doc || 'Destinatário';
       const fotoWhatsComprovante = fotoSaidaUrl.trim() ? `• Comprovante da Devolução: ${fotoSaidaUrl.trim()}\n` : '';
 
-      const textoConfirmacao = `✅ *ITEM EM CUSTÓDIA RETIRADO / DEVOLVIDO*\nCódigo: ${itemSelecionadoSaida.codigo_custodia}\n• Objeto: ${itemSelecionadoSaida.descricao}\n• Deixado Por: ${rotuloOrig}\n• Destinado A: ${rotuloDest}\n• Quem Retirou: ${recebedorNome} ${recebedorDoc ? '(Doc: ' + recebedorDoc + ')' : ''}\n${fotoWhatsComprovante}• Operador Responsável: ${usuarioLogado?.login || usuarioLogado?.nome || 'Portaria'}\n• Data/Hora: ${new Date().toLocaleString('pt-BR')}`;
+      const textoConfirmacao = `✅ *ITEM EM CUSTÓDIA RETIRADO / DEVOLVIDO*\nCódigo: ${itemSelecionadoSaida.codigo_custodia}\n• Objeto: ${itemSelecionadoSaida.descricao}\n• Deixado Por: ${rotuloOrig}\n• Destinado A: ${rotuloDest}\n• Modalidade: ${modalidadeTexto}\n• Quem Retirou: ${recebedorNome} ${docFormatado ? '(Doc/Ref: ' + docFormatado + ')' : ''}\n${fotoWhatsComprovante}• Operador Responsável: ${usuarioLogado?.login || usuarioLogado?.nome || 'Portaria'}\n• Data/Hora: ${new Date().toLocaleString('pt-BR')}`;
 
       const linkSaidaWhats = formatarLinkWhatsApp(telOrigem, textoConfirmacao);
 
@@ -1093,128 +1343,578 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            {itensFiltradosSaida.map((item: any) => (
-              <div
-                key={item.id}
-                onClick={() => {
-                  if (!podeBaixa) {
-                    setMensagem({ tipo: 'erro', texto: 'Acesso restrito: seu perfil não tem permissão para realizar Baixa ou Entrega de itens de Custódia.' });
-                    return;
-                  }
-                  setItemSelecionadoSaida(item);
-                }}
-                className={`p-2.5 rounded-lg border cursor-pointer transition space-y-2 ${
-                  itemSelecionadoSaida?.id === item.id 
-                    ? 'border-blue-600 bg-blue-50/50 ring-1 ring-blue-600' 
-                    : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
-                }`}
-              >
-                <div className="flex justify-between items-start gap-2">
-                  <div>
-                    <span className="text-[10px] font-bold font-mono bg-slate-900 text-white px-1.5 py-0.2 rounded">
-                      {item.codigo_custodia}
-                    </span>
-                    <h4 className="font-bold text-xs text-slate-900 mt-0.5">{item.descricao}</h4>
-                  </div>
-                  {item.foto_entrada_url && (
-                    <div className="w-10 h-10 rounded-md overflow-hidden border border-slate-200 shrink-0">
-                      <ImagemOtimizada src={item.foto_entrada_url} alt="Objeto" permitirAmpliar={false} className="w-full h-full object-cover" />
-                    </div>
-                  )}
-                </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {itensFiltradosSaida.map((item: any) => {
+              const estaSelecionado = itemSelecionadoSaida?.id === item.id;
+              const permanencia = calcularPermanencia(item.data_hora_entrada || item.created_at);
 
-                <div className="text-[11px] text-slate-600 space-y-0.5 bg-white p-2 rounded-md border border-slate-200">
-                  <p className="truncate">
-                    <span className="font-bold text-slate-800">De:</span> {item.origem_nome_doc} {item.origem_unidade ? `(Ap. ${item.origem_unidade})` : ''}
-                  </p>
-                  <p className="truncate">
-                    <span className="font-bold text-slate-800">Para:</span> {item.destino_nome_doc} {item.destino_unidade ? `(Ap. ${item.destino_unidade})` : ''}
-                  </p>
-                  <p className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1 font-mono">
-                    <Clock className="w-2.5 h-2.5" /> {new Date(item.data_hora_entrada || item.created_at).toLocaleString('pt-BR')}
-                  </p>
+              return (
+                <div
+                  key={item.id}
+                  onClick={() => selecionarItemParaBaixa(item)}
+                  className={`relative p-3.5 rounded-xl border transition-all duration-150 cursor-pointer flex flex-col justify-between gap-3 shadow-2xs ${
+                    estaSelecionado
+                      ? 'border-blue-600 bg-blue-50/70 ring-2 ring-blue-600/30 shadow-xs'
+                      : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-slate-50/80 hover:shadow-xs'
+                  }`}
+                >
+                  {/* Topo do Card */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-black font-mono bg-slate-900 text-white px-2 py-0.5 rounded-md tracking-wider shadow-2xs">
+                          {item.codigo_custodia}
+                        </span>
+                        <span className="text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                          <Clock className="w-2.5 h-2.5" /> {permanencia}
+                        </span>
+                        {item.local_armazenamento && (
+                          <span className="text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 px-1.5 py-0.5 rounded-md truncate max-w-[130px]">
+                            📍 {item.local_armazenamento}
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="font-extrabold text-xs sm:text-sm text-slate-900 mt-1 line-clamp-2 leading-tight">
+                        {item.descricao}
+                      </h4>
+                    </div>
+
+                    {/* Ações no Card: Editar / Excluir / Foto miniatura */}
+                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      {podeEditar && (
+                        <button
+                          type="button"
+                          onClick={(e) => abrirEdicaoCustodia(item, e)}
+                          title="Editar Item em Custódia"
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-200 transition active:scale-95 cursor-pointer"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {podeExcluir && (
+                        <button
+                          type="button"
+                          onClick={(e) => abrirExclusaoCustodia(item, e)}
+                          title="Excluir Registro de Custódia"
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition active:scale-95 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {(item.foto_entrada_url || item.foto_url) && (
+                        <div 
+                          className="w-10 h-10 rounded-lg overflow-hidden border border-slate-200 shrink-0 bg-slate-100 cursor-zoom-in ml-1"
+                          onClick={() => setFotoAmpliadaModal({ url: item.foto_entrada_url || item.foto_url, titulo: `Foto do Item: ${item.codigo_custodia}` })}
+                          title="Clique para ampliar a foto"
+                        >
+                          <ImagemOtimizada
+                            src={item.foto_entrada_url || item.foto_url}
+                            alt="Foto do objeto"
+                            permitirAmpliar={false}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Informações de Origem e Destino */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] bg-slate-50/90 p-2.5 rounded-lg border border-slate-200/80">
+                    <div className="min-w-0 space-y-0.5">
+                      <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span> Deixado por:
+                      </div>
+                      <p className="font-bold text-slate-900 truncate">
+                        {item.origem_nome_doc || 'Depositante não informado'}
+                      </p>
+                      {item.origem_unidade && (
+                        <p className="text-[10px] font-semibold text-slate-600">
+                          {eEstruturaCasas ? 'Casa' : 'Unid.'} {item.origem_unidade} {item.origem_bloco && !eEstruturaCasas ? `(${item.origem_bloco})` : ''}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="min-w-0 space-y-0.5 border-t sm:border-t-0 sm:border-l border-slate-200 sm:pl-2.5 pt-1.5 sm:pt-0">
+                      <div className="text-[10px] font-black uppercase tracking-wider text-blue-600 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span> Destinado a:
+                      </div>
+                      <p className="font-bold text-slate-900 truncate">
+                        {item.destino_nome_doc || 'Destinatário não informado'}
+                      </p>
+                      {item.destino_unidade && (
+                        <p className="text-[10px] font-semibold text-slate-600">
+                          {eEstruturaCasas ? 'Casa' : 'Unid.'} {item.destino_unidade} {item.destino_bloco && !eEstruturaCasas ? `(${item.destino_bloco})` : ''}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Rodapé do Card com Status e Botão de Ação */}
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-[10px]">
+                    <span className="text-slate-400 flex items-center gap-1 font-mono">
+                      <Calendar className="w-3 h-3 text-slate-400" />
+                      {new Date(item.data_hora_entrada || item.created_at).toLocaleDateString('pt-BR')} às {new Date(item.data_hora_entrada || item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={!podeBaixa}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        selecionarItemParaBaixa(item);
+                      }}
+                      className={`px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-2xs ${
+                        estaSelecionado
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white border border-emerald-200'
+                      }`}
+                    >
+                      <PackageCheck className="w-3.5 h-3.5" />
+                      <span>{estaSelecionado ? 'Em Baixa' : 'Dar Baixa'}</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {itensFiltradosSaida.length === 0 && (
-              <div className="col-span-full text-center py-6 text-slate-500 text-xs italic">
+              <div className="col-span-full text-center py-8 text-slate-500 text-xs italic bg-slate-50 rounded-xl border border-dashed border-slate-200">
                 Nenhum objeto aguardando retirada no momento.
               </div>
             )}
           </div>
 
+          {/* MENU DINÂMICO DE BAIXA DE CUSTÓDIA */}
           {itemSelecionadoSaida && (
-            <form onSubmit={efetivarSaidaCustodia} className="p-3 sm:p-3.5 bg-slate-900 text-white rounded-xl space-y-2.5 max-w-2xl shadow-2xs animate-in fade-in border border-slate-800">
-              <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
-                <h4 className="font-bold text-xs sm:text-sm text-emerald-400 flex items-center gap-1.5">
-                  <PackageCheck className="w-4 h-4 text-emerald-400" />
-                  Retirada: {itemSelecionadoSaida.codigo_custodia} ({itemSelecionadoSaida.descricao})
-                </h4>
+            <div className="bg-slate-900 text-white rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl border border-slate-800 animate-in fade-in">
+              {/* Header da Baixa */}
+              <div className="flex justify-between items-start border-b border-slate-800 pb-3 gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-black font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-md">
+                      {itemSelecionadoSaida.codigo_custodia}
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-400">
+                      Entrada: {new Date(itemSelecionadoSaida.data_hora_entrada || itemSelecionadoSaida.created_at).toLocaleString('pt-BR')}
+                    </span>
+                  </div>
+                  <h4 className="font-extrabold text-base text-white mt-1">
+                    Baixa de Custódia: <span className="text-emerald-400">{itemSelecionadoSaida.descricao}</span>
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Origem: <strong className="text-slate-200">{itemSelecionadoSaida.origem_nome_doc}</strong> {itemSelecionadoSaida.origem_unidade ? `(${eEstruturaCasas ? 'Casa' : 'Ap'} ${itemSelecionadoSaida.origem_unidade})` : ''} ➔ Destino: <strong className="text-slate-200">{itemSelecionadoSaida.destino_nome_doc}</strong> {itemSelecionadoSaida.destino_unidade ? `(${eEstruturaCasas ? 'Casa' : 'Ap'} ${itemSelecionadoSaida.destino_unidade})` : ''}
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={() => setItemSelecionadoSaida(null)}
-                  className="text-slate-400 hover:text-white p-1 text-xs cursor-pointer"
+                  className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+                  title="Fechar Baixa"
                 >
-                  Cancelar
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[10px] font-bold uppercase mb-0.5 text-slate-300">Nome de Quem Retirou *</label>
-                  <input
-                    type="text"
-                    required
-                    value={recebedorNome}
-                    onChange={(e) => setRecebedorNome(e.target.value)}
-                    placeholder="Ex: Maria (Própria Moradora)"
-                    className="w-full p-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs font-medium focus:border-emerald-500 transition"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold uppercase mb-0.5 text-slate-300">Documento / RG (Opcional)</label>
-                  <input
-                    type="text"
-                    value={recebedorDoc}
-                    onChange={(e) => setRecebedorDoc(e.target.value)}
-                    placeholder="Ex: 12.345.678-9"
-                    className="w-full p-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs font-mono focus:border-emerald-500 transition"
-                  />
+              {/* Seletor do Tipo de Movimentação / Retirante */}
+              <div className="space-y-2">
+                <label className="block text-[11px] font-black uppercase tracking-wider text-slate-400">
+                  Quem está retirando o objeto? (Tipo de Movimentação)
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {/* Opção 1: Morador da Unidade */}
+                  <button
+                    type="button"
+                    onClick={() => mudarTipoRetirante('morador')}
+                    className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between gap-1 cursor-pointer ${
+                      tipoRetirante === 'morador'
+                        ? 'bg-blue-600/20 border-blue-500 text-white ring-1 ring-blue-500'
+                        : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <Building2 className={`w-4 h-4 ${tipoRetirante === 'morador' ? 'text-blue-400' : 'text-slate-400'}`} />
+                      {tipoRetirante === 'morador' && <Check className="w-3.5 h-3.5 text-blue-400" />}
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold leading-tight">Morador</div>
+                      <div className="text-[10px] text-slate-400 leading-tight">Lista por unidade</div>
+                    </div>
+                  </button>
+
+                  {/* Opção 2: Quem Deixou (Devolução ao Depositante) */}
+                  <button
+                    type="button"
+                    onClick={() => mudarTipoRetirante('depositante')}
+                    className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between gap-1 cursor-pointer ${
+                      tipoRetirante === 'depositante'
+                        ? 'bg-amber-600/20 border-amber-500 text-white ring-1 ring-amber-500'
+                        : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <RotateCcw className={`w-4 h-4 ${tipoRetirante === 'depositante' ? 'text-amber-400' : 'text-slate-400'}`} />
+                      {tipoRetirante === 'depositante' && <Check className="w-3.5 h-3.5 text-amber-400" />}
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold leading-tight">Quem Deixou</div>
+                      <div className="text-[10px] text-slate-400 leading-tight">Devolução original</div>
+                    </div>
+                  </button>
+
+                  {/* Opção 3: Destinatário Original */}
+                  <button
+                    type="button"
+                    onClick={() => mudarTipoRetirante('destinatario')}
+                    className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between gap-1 cursor-pointer ${
+                      tipoRetirante === 'destinatario'
+                        ? 'bg-emerald-600/20 border-emerald-500 text-white ring-1 ring-emerald-500'
+                        : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <UserCheck className={`w-4 h-4 ${tipoRetirante === 'destinatario' ? 'text-emerald-400' : 'text-slate-400'}`} />
+                      {tipoRetirante === 'destinatario' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold leading-tight">Destinatário</div>
+                      <div className="text-[10px] text-slate-400 leading-tight">{itemSelecionadoSaida.destino_nome_doc || 'Original'}</div>
+                    </div>
+                  </button>
+
+                  {/* Opção 4: Terceiro / Prestador */}
+                  <button
+                    type="button"
+                    onClick={() => mudarTipoRetirante('terceiro')}
+                    className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between gap-1 cursor-pointer ${
+                      tipoRetirante === 'terceiro'
+                        ? 'bg-purple-600/20 border-purple-500 text-white ring-1 ring-purple-500'
+                        : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <Users className={`w-4 h-4 ${tipoRetirante === 'terceiro' ? 'text-purple-400' : 'text-slate-400'}`} />
+                      {tipoRetirante === 'terceiro' && <Check className="w-3.5 h-3.5 text-purple-400" />}
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold leading-tight">Terceiro</div>
+                      <div className="text-[10px] text-slate-400 leading-tight">Visitante / Prestador</div>
+                    </div>
+                  </button>
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold uppercase text-slate-300">Foto do Retirante com o Objeto *</label>
-                <label className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-2 px-3 rounded-lg cursor-pointer flex items-center justify-center gap-1.5 transition text-xs border border-slate-700 shadow-2xs">
-                  <Camera className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>{uploadingFoto ? 'Salvando comprovante...' : '📷 Tirar Foto da Devolução / Retirante'}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={(e) => uploadFotoStorage(e.target.files ? e.target.files[0] : null, 'custodia_saida', setFotoSaidaUrl)}
-                    className="hidden"
-                    disabled={uploadingFoto}
-                  />
-                </label>
+              {/* Formulário Dinâmico baseado no tipo */}
+              <form onSubmit={efetivarSaidaCustodia} className="space-y-4">
+                {/* CASO 1: MORADOR DA UNIDADE */}
+                {tipoRetirante === 'morador' && (
+                  <div className="bg-slate-800/50 p-3.5 rounded-xl border border-slate-700 space-y-3">
+                    <div className="flex items-center gap-1.5 text-blue-400 font-bold text-xs border-b border-slate-700 pb-2">
+                      <Building2 className="w-4 h-4" />
+                      <span>Identificação da Unidade e Seleção do Morador</span>
+                    </div>
 
-                {fotoSaidaUrl && (
-                  <div className="mt-1 relative w-16 h-16 rounded-lg overflow-hidden border border-emerald-400 shadow-2xs">
-                    <img src={fotoSaidaUrl} alt="Foto Retirada" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase mb-1">
+                          Número da {rotuloUnidade} *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={baixaUnidade}
+                          onChange={(e) => setBaixaUnidade(e.target.value)}
+                          placeholder={`Ex: 101, 204...`}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 placeholder:text-slate-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase mb-1">
+                          {rotuloBloco}
+                        </label>
+                        {eEstruturaCasas ? (
+                          <div className="w-full px-3 py-2 bg-slate-900/60 border border-slate-700 rounded-lg text-slate-400 text-xs font-semibold">
+                            Casas
+                          </div>
+                        ) : (
+                          <select
+                            value={baixaBloco}
+                            onChange={(e) => setBaixaBloco(e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                          >
+                            <option value="">{eEstruturaTorres ? 'Todas as Torres' : 'Todos os Blocos'}</option>
+                            {listaBlocos.map((b) => (
+                              <option key={b} value={b}>{b}</option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Lista de Moradores da Unidade para clique rápido */}
+                    {baixaUnidade && (
+                      <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-700/80 space-y-2">
+                        <span className="block text-[10px] font-black text-blue-400 uppercase tracking-wider">
+                          Moradores cadastrados na {rotuloUnidade} {baixaUnidade}:
+                        </span>
+
+                        {moradoresBaixaFiltrados.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {moradoresBaixaFiltrados.map((m) => {
+                              const selecionado = recebedorNome === m.nome;
+                              return (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setRecebedorNome(m.nome);
+                                    if (m.telefone) setRecebedorDoc(`Tel: ${m.telefone}`);
+                                  }}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-2xs ${
+                                    selecionado
+                                      ? 'bg-blue-600 text-white border border-blue-500 ring-2 ring-blue-500/50'
+                                      : 'bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white border border-slate-700'
+                                  }`}
+                                >
+                                  <User className="w-3 h-3 text-blue-400" />
+                                  <span>{m.nome}</span>
+                                  {selecionado && <Check className="w-3 h-3 text-white" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-400 italic">
+                            Nenhum morador cadastrado com este número. Digite o nome do morador abaixo:
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase mb-1">
+                          Nome do Morador Retirante *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={recebedorNome}
+                          onChange={(e) => setRecebedorNome(e.target.value)}
+                          placeholder="Clique em um morador acima ou digite o nome"
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-semibold text-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 placeholder:text-slate-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase mb-1 flex items-center justify-between">
+                          <span>Documento / RG / Tel</span>
+                          <span className="text-[9px] text-slate-400 lowercase font-normal">(opcional)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={recebedorDoc}
+                          onChange={(e) => setRecebedorDoc(e.target.value)}
+                          placeholder="Ex: RG, CPF ou Telefone"
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-medium text-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 placeholder:text-slate-500"
+                        />
+                      </div>
+                    </div>
                   </div>
                 )}
-              </div>
 
-              <button
-                type="submit"
-                disabled={loading || uploadingFoto}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg transition shadow-2xs uppercase text-xs cursor-pointer"
-              >
-                Efetivar Baixa de Devolução
-              </button>
-            </form>
+                {/* CASO 2: QUEM DEIXOU (DEVOLUÇÃO) */}
+                {tipoRetirante === 'depositante' && (
+                  <div className="bg-amber-950/20 p-3.5 rounded-xl border border-amber-800/40 space-y-3">
+                    <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs border-b border-amber-800/30 pb-2">
+                      <RotateCcw className="w-4 h-4" />
+                      <span>Devolução para Quem Guardou o Objeto</span>
+                    </div>
+
+                    <div className="p-2.5 bg-amber-900/30 rounded-lg border border-amber-700/40 text-amber-200 text-xs">
+                      <p>
+                        A pessoa que depositou o item (<strong>{itemSelecionadoSaida.origem_nome_doc}</strong>) está pegando o objeto de volta.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase mb-1">
+                          Nome de Quem Deixou (Retirante) *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={recebedorNome}
+                          onChange={(e) => setRecebedorNome(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-semibold text-white focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase mb-1 flex items-center justify-between">
+                          <span>Documento / RG / CPF</span>
+                          <span className="text-[9px] text-slate-400 lowercase font-normal">(opcional)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={recebedorDoc}
+                          onChange={(e) => setRecebedorDoc(e.target.value)}
+                          placeholder="Ex: RG ou CPF do retirante"
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-medium text-white focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 placeholder:text-slate-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* CASO 3: DESTINATÁRIO ORIGINAL */}
+                {tipoRetirante === 'destinatario' && (
+                  <div className="bg-emerald-950/20 p-3.5 rounded-xl border border-emerald-800/40 space-y-3">
+                    <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-xs border-b border-emerald-800/30 pb-2">
+                      <UserCheck className="w-4 h-4" />
+                      <span>Entrega para o Destinatário Cadastrado</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase mb-1">
+                          Nome do Destinatário *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={recebedorNome}
+                          onChange={(e) => setRecebedorNome(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-semibold text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase mb-1 flex items-center justify-between">
+                          <span>Documento / RG / CPF</span>
+                          <span className="text-[9px] text-slate-400 lowercase font-normal">(opcional)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={recebedorDoc}
+                          onChange={(e) => setRecebedorDoc(e.target.value)}
+                          placeholder="Ex: RG ou CPF do recebedor"
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-medium text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 placeholder:text-slate-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* CASO 4: TERCEIRO / VISITANTE / PRESTADOR */}
+                {tipoRetirante === 'terceiro' && (
+                  <div className="bg-purple-950/20 p-3.5 rounded-xl border border-purple-800/40 space-y-3">
+                    <div className="flex items-center gap-1.5 text-purple-400 font-bold text-xs border-b border-purple-800/30 pb-2">
+                      <Users className="w-4 h-4" />
+                      <span>Identificação do Terceiro / Prestador / Visitante</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div className="sm:col-span-2">
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase mb-1">
+                          Nome Completo do Terceiro *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={recebedorNome}
+                          onChange={(e) => setRecebedorNome(e.target.value)}
+                          placeholder="Ex: Carlos Eduardo (Prestador de Pintura)"
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-semibold text-white focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500 placeholder:text-slate-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase mb-1">
+                          Tipo de Vínculo
+                        </label>
+                        <select
+                          value={terceiroVinculo}
+                          onChange={(e) => setTerceiroVinculo(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
+                        >
+                          <option value="Prestador de Serviço">Prestador de Serviço</option>
+                          <option value="Visitante / Convidado">Visitante / Convidado</option>
+                          <option value="Familiar / Parente">Familiar / Parente</option>
+                          <option value="Motorista / Uber / 99">Motorista de Aplicativo</option>
+                          <option value="Entregador / Courier">Entregador</option>
+                          <option value="Outro Terceiro">Outro</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-300 uppercase mb-1 flex items-center justify-between">
+                        <span>Documento / RG / CPF do Terceiro</span>
+                        <span className="text-[9px] text-purple-300 lowercase font-medium bg-purple-900/50 px-2 py-0.5 rounded border border-purple-700/50">opcional</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={recebedorDoc}
+                        onChange={(e) => setRecebedorDoc(e.target.value)}
+                        placeholder="Ex: 12.345.678-9 (RG ou CPF se fornecido)"
+                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500 placeholder:text-slate-500"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Comprovante Fotográfico Obrigatório */}
+                <div className="space-y-1.5 pt-1">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-300">
+                    Foto do Retirante com o Objeto / Comprovante *
+                  </label>
+                  <label className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-2.5 px-3 rounded-xl cursor-pointer flex items-center justify-center gap-2 transition text-xs border border-slate-700 shadow-2xs">
+                    <Camera className="w-4 h-4 text-emerald-400" />
+                    <span>{uploadingFoto ? 'Processando e salvando comprovante...' : '📷 Tirar Foto da Devolução / Retirante'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => uploadFotoStorage(e.target.files ? e.target.files[0] : null, 'custodia_saida', setFotoSaidaUrl)}
+                      className="hidden"
+                      disabled={uploadingFoto}
+                    />
+                  </label>
+
+                  {fotoSaidaUrl && (
+                    <div className="mt-2 flex items-center gap-3 p-2.5 bg-slate-800/90 rounded-xl border border-emerald-500/50">
+                      <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-emerald-400 shrink-0">
+                        <img src={fotoSaidaUrl} alt="Foto Retirada" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                      </div>
+                      <div className="text-xs">
+                        <p className="font-bold text-emerald-400 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Foto capturada com sucesso!
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          Pronto para registrar a baixa de saída no sistema.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Botões de Ação */}
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setItemSelecionadoSaida(null)}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading || uploadingFoto}
+                    className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 text-white font-black rounded-xl transition shadow-lg text-xs flex items-center gap-2 cursor-pointer active:scale-95"
+                  >
+                    <PackageCheck className="w-4 h-4" />
+                    <span>Efetivar Baixa de Devolução</span>
+                  </button>
+                </div>
+              </form>
+            </div>
           )}
 
           {whatsSaidaLink && (
@@ -2171,6 +2871,216 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
               >
                 Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE EDIÇÃO DE ITEM DE CUSTÓDIA (RBAC) */}
+      {itemEmEdicao && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
+            <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-2xl">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
+                  <Pencil className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Editar Registro de Custódia</h3>
+                  <p className="text-[10px] font-mono text-slate-500">{itemEmEdicao.codigo_custodia}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setItemEmEdicao(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={salvarEdicaoCustodia} className="p-4 space-y-3.5">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Descrição do Item *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editDescricao}
+                  onChange={(e) => setEditDescricao(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Local de Armazenamento / Posição
+                </label>
+                <input
+                  type="text"
+                  value={editLocal}
+                  onChange={(e) => setEditLocal(e.target.value)}
+                  placeholder="Ex: Armário 2, Gaveta A..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Origem */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                <span className="block text-[10px] font-black text-slate-700 uppercase">
+                  Origem (Quem Deixou)
+                </span>
+                <div>
+                  <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">Nome / Terceiro *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editOrigemNome}
+                    onChange={(e) => setEditOrigemNome(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-900 focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">Unidade</label>
+                    <input
+                      type="text"
+                      value={editOrigemUnidade}
+                      onChange={(e) => setEditOrigemUnidade(e.target.value)}
+                      placeholder="Ex: 101"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-900 focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">Bloco / Torre</label>
+                    <input
+                      type="text"
+                      value={editOrigemBloco}
+                      onChange={(e) => setEditOrigemBloco(e.target.value)}
+                      placeholder="Ex: Bloco A"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-900 focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Destino */}
+              <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-200 space-y-2">
+                <span className="block text-[10px] font-black text-blue-900 uppercase">
+                  Destino (Para Quem)
+                </span>
+                <div>
+                  <label className="block text-[9px] font-bold text-blue-700 uppercase mb-0.5">Nome / Destinatário *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editDestinoNome}
+                    onChange={(e) => setEditDestinoNome(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-white border border-blue-300 rounded-lg text-xs font-medium text-slate-900 focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[9px] font-bold text-blue-700 uppercase mb-0.5">Unidade</label>
+                    <input
+                      type="text"
+                      value={editDestinoUnidade}
+                      onChange={(e) => setEditDestinoUnidade(e.target.value)}
+                      placeholder="Ex: 204"
+                      className="w-full px-2.5 py-1.5 bg-white border border-blue-300 rounded-lg text-xs font-medium text-slate-900 focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-bold text-blue-700 uppercase mb-0.5">Bloco / Torre</label>
+                    <input
+                      type="text"
+                      value={editDestinoBloco}
+                      onChange={(e) => setEditDestinoBloco(e.target.value)}
+                      placeholder="Ex: Bloco B"
+                      className="w-full px-2.5 py-1.5 bg-white border border-blue-300 rounded-lg text-xs font-medium text-slate-900 focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Observações Internas
+                </label>
+                <textarea
+                  rows={2}
+                  value={editObservacoes}
+                  onChange={(e) => setEditObservacoes(e.target.value)}
+                  placeholder="Anotações de portaria..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setItemEmEdicao(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs shadow-xs cursor-pointer"
+                >
+                  Salvar Alterações
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO DE CUSTÓDIA (RBAC) */}
+      {itemParaExcluir && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-rose-200 p-5 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-sm">Excluir Registro de Custódia?</h3>
+                <p className="text-xs text-slate-500">Esta ação não pode ser desfeita.</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs space-y-1 text-slate-800">
+              <p>
+                Código: <strong className="font-mono text-rose-900">{itemParaExcluir.codigo_custodia}</strong>
+              </p>
+              <p>
+                Item: <strong>{itemParaExcluir.descricao}</strong>
+              </p>
+              <p className="text-slate-500 text-[11px]">
+                De: {itemParaExcluir.origem_nome_doc} ➔ Para: {itemParaExcluir.destino_nome_doc}
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setItemParaExcluir(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={confirmarExclusaoCustodia}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Confirmar Exclusão</span>
               </button>
             </div>
           </div>
