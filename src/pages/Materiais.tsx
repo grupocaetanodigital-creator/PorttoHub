@@ -43,8 +43,8 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
   const [itemParaExcluir, setItemParaExcluir] = useState<{ id: string; nome: string } | null>(null);
   const [idEdicao, setIdEdicao] = useState<string | null>(null);
   const [nomeMaterial, setNomeMaterial] = useState('');
-  const [categoria, setCategoria] = useState('Rádio HT');
   const [codigoPatrimonio, setCodigoPatrimonio] = useState('');
+  const [fotoUrl, setFotoUrl] = useState('');
   const [estado, setEstado] = useState('Perfeito');
   const [observacaoAvaria, setObservacaoAvaria] = useState('');
   const [fotoAvariaUrl, setFotoAvariaUrl] = useState('');
@@ -87,7 +87,7 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
     try {
       const { data, error } = await supabase
         .from('materiais_posto')
-        .select('id, condominio_id, nome, categoria, codigo_patrimonio, estado, observacao_avaria, foto_avaria_url, created_at, updated_at')
+        .select('id, condominio_id, nome, categoria, codigo_patrimonio, estado, observacao_avaria, foto_url, foto_avaria_url, created_at, updated_at')
         .eq('condominio_id', condId)
         .order('nome');
       if (error) throw error;
@@ -97,6 +97,30 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
       setMensagem({ tipo: 'erro', texto: err.message });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const uploadFotoEquipamento = async (file: File | null) => {
+    if (!file) return;
+    setUploadingFoto(true);
+    setMensagem({ tipo: '', texto: '' });
+
+    try {
+      const { publicUrl, tamanhoOriginalKb, tamanhoComprimidoKb, taxaReducaoPct } = await uploadFotoComprimidaStorage({
+        file,
+        pasta: 'materiais_equipamentos',
+        maxWidth: 1000,
+        maxHeight: 1000,
+        qualidade: 0.8
+      });
+
+      setFotoUrl(publicUrl);
+      const detalheEconomia = taxaReducaoPct > 0 ? ` (${tamanhoOriginalKb}KB ➔ ${tamanhoComprimidoKb}KB, -${taxaReducaoPct}%)` : '';
+      setMensagem({ tipo: 'sucesso', texto: `Foto do equipamento anexada com sucesso!${detalheEconomia}` });
+    } catch (err: any) {
+      setMensagem({ tipo: 'erro', texto: 'Falha ao enviar foto: ' + err.message });
+    } finally {
+      setUploadingFoto(false);
     }
   };
 
@@ -127,8 +151,8 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
   const limparFormulario = () => {
     setIdEdicao(null);
     setNomeMaterial('');
-    setCategoria('Rádio HT');
     setCodigoPatrimonio('');
+    setFotoUrl('');
     setEstado('Perfeito');
     setObservacaoAvaria('');
     setFotoAvariaUrl('');
@@ -180,8 +204,9 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
       const payload = {
         condominio_id: targetCondo,
         nome: nomeMaterial.trim(),
-        categoria,
+        categoria: 'Geral',
         codigo_patrimonio: codigoPatrimonio.trim(),
+        foto_url: fotoUrl.trim(),
         estado,
         observacao_avaria: estado !== 'Perfeito' ? observacaoAvaria.trim() : '',
         foto_avaria_url: estado !== 'Perfeito' ? fotoAvariaUrl.trim() : '',
@@ -197,7 +222,6 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
         if (error) throw error;
         registrarLogMaterial('ALTERACAO_STATUS', {
           nome: payload.nome,
-          categoria: payload.categoria,
           estado: payload.estado,
           observacao: payload.observacao_avaria
         });
@@ -209,7 +233,6 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
         if (error) throw error;
         registrarLogMaterial('ADICAO', {
           nome: payload.nome,
-          categoria: payload.categoria,
           estado: payload.estado
         });
         setMensagem({ tipo: 'sucesso', texto: 'Equipamento cadastrado com sucesso!' });
@@ -261,8 +284,8 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
   const prepararEdicao = (m: any) => {
     setIdEdicao(m.id);
     setNomeMaterial(m.nome);
-    setCategoria(m.categoria);
     setCodigoPatrimonio(m.codigo_patrimonio || '');
+    setFotoUrl(m.foto_url || '');
     setEstado(m.estado);
     setObservacaoAvaria(m.observacao_avaria || '');
     setFotoAvariaUrl(m.foto_avaria_url || '');
@@ -341,16 +364,24 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
             }`}
           >
             <div>
-              <div className="flex justify-between items-start gap-1.5">
-                <div>
-                  <span className="text-[9px] font-bold uppercase text-slate-400 block">{m.categoria}</span>
-                  <h4 className="font-bold text-slate-900 text-xs sm:text-sm">{m.nome}</h4>
-                  {m.codigo_patrimonio && (
-                    <p className="text-[10px] text-slate-500 font-mono">Patrimônio: {m.codigo_patrimonio}</p>
+              <div className="flex justify-between items-start gap-2">
+                <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                  {m.foto_url && (
+                    <img
+                      src={m.foto_url}
+                      alt={m.nome}
+                      className="w-12 h-12 rounded-lg object-cover border border-slate-200 shrink-0 shadow-2xs"
+                    />
                   )}
+                  <div className="min-w-0 flex-1">
+                    <h4 className="font-bold text-slate-900 text-xs sm:text-sm truncate">{m.nome}</h4>
+                    {m.codigo_patrimonio && (
+                      <p className="text-[10px] text-slate-500 font-mono">Patrimônio: {m.codigo_patrimonio}</p>
+                    )}
+                  </div>
                 </div>
 
-                <span className={`text-[10px] font-bold px-2 py-0.2 rounded-md uppercase ${
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase shrink-0 ${
                   m.estado === 'Perfeito' 
                     ? 'bg-emerald-100 text-emerald-800' 
                     : m.estado === 'Avariado' 
@@ -412,7 +443,7 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
 
         {materiaisFiltrados.length === 0 && (
           <div className="col-span-full bg-white p-8 rounded-xl border border-slate-200 text-center text-xs text-slate-500 italic">
-            Nenhum equipamento cadastrado nesta categoria.
+            Nenhum equipamento cadastrado.
           </div>
         )}
       </div>
@@ -445,22 +476,7 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-0.5">Categoria *</label>
-                  <select
-                    value={categoria}
-                    onChange={(e) => setCategoria(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-xs"
-                  >
-                    <option value="Rádio HT">Rádio HT</option>
-                    <option value="Lanterna">Lanterna</option>
-                    <option value="Celular">Celular Guarita</option>
-                    <option value="Chave Mestra">Chave Mestra</option>
-                    <option value="Outros">Outros</option>
-                  </select>
-                </div>
-
+              <div className="grid grid-cols-2 gap-2 items-end">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 uppercase mb-0.5">Cód. Patrimônio</label>
                   <input
@@ -471,7 +487,46 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
                     className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-xs"
                   />
                 </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-0.5">Foto do Equipamento</label>
+                  <label className="w-full bg-slate-900 hover:bg-slate-800 active:scale-95 text-white font-bold py-2 px-2.5 rounded-lg cursor-pointer flex items-center justify-center gap-1.5 text-xs transition shadow-2xs">
+                    <Camera className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>{uploadingFoto ? 'Enviando...' : fotoUrl ? 'Trocar Foto' : '📷 Tirar Foto'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => uploadFotoEquipamento(e.target.files ? e.target.files[0] : null)}
+                      className="hidden"
+                      disabled={uploadingFoto}
+                    />
+                  </label>
+                </div>
               </div>
+
+              {fotoUrl && (
+                <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <img
+                      src={fotoUrl}
+                      alt="Equipamento"
+                      className="w-12 h-12 rounded-lg object-cover border border-slate-300 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <span className="text-xs font-bold text-slate-800 block truncate">Foto anexada</span>
+                      <span className="text-[10px] text-emerald-600 font-semibold block">Pronta para salvar</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFotoUrl('')}
+                    className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md transition cursor-pointer text-xs font-bold"
+                  >
+                    Remover
+                  </button>
+                </div>
+              )}
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 uppercase mb-0.5">Estado de Conservação *</label>
