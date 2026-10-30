@@ -49,8 +49,11 @@ import {
   Check,
   ShieldCheck,
   Sparkles,
-  Home
+  Home,
+  Settings
 } from 'lucide-react';
+import ModalConfigHorariosObrasMudancas from '../components/ModalConfigHorariosObrasMudancas';
+
 
 export type PerfilAcesso = 'autorizado' | 'prestador_unidade' | 'prestador_condominio';
 export type TipoValidade = 'hoje' | 'amanha' | '3_dias' | '7_dias' | '30_dias' | 'personalizado' | 'permanente';
@@ -157,7 +160,15 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
   const [modalOcrAberto, setModalOcrAberto] = useState(false);
   const [modalVisualizarFoto, setModalVisualizarFoto] = useState<string | null>(null);
   const [modalPermissoes, setModalPermissoes] = useState(false);
+  const [modalConfigHorarios, setModalConfigHorarios] = useState(false);
   const [itemSelecionado, setItemSelecionado] = useState<any | null>(null);
+
+  useEffect(() => {
+    const handleAbrir = () => setModalConfigHorarios(true);
+    window.addEventListener('porttohub:abrir_config_horarios', handleAbrir);
+    return () => window.removeEventListener('porttohub:abrir_config_horarios', handleAbrir);
+  }, []);
+
 
   // Formulário de Cadastro / Liberação / Edição
   const [perfilAcesso, setPerfilAcesso] = useState<PerfilAcesso>('autorizado');
@@ -1218,6 +1229,17 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
             title="Atualizar"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-purple-400' : ''}`} />
+          </button>
+
+          {/* Configuração de Horários de Obras e Mudanças (Engrenagem sem descrição) */}
+          <button
+            type="button"
+            onClick={() => setModalConfigHorarios(true)}
+            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-purple-300 border border-slate-700 hover:border-purple-500/50 transition cursor-pointer"
+            title="Configurar horários de obras e mudanças"
+            aria-label="Configurar horários"
+          >
+            <Settings className="w-4 h-4" />
           </button>
 
           {/* Liberação de Acesso */}
@@ -2870,6 +2892,17 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
             <p className="text-center text-xs text-slate-400 pt-2">Clique em qualquer lugar para fechar</p>
           </div>
         </div>
+      )}
+
+      {/* MODAL CONFIGURAÇÃO DE HORÁRIOS DE OBRAS E MUDANÇAS */}
+      {modalConfigHorarios && (
+        <ModalConfigHorariosObrasMudancas
+          aberto={modalConfigHorarios}
+          onFechar={() => setModalConfigHorarios(false)}
+          condominioId={idCondominio}
+          condominioNome={condoConfig?.nome}
+          operadorNome={operadorNome}
+        />
       )}
 
     </div>
