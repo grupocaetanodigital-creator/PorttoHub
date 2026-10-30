@@ -3233,13 +3233,13 @@ export default function PassagemPosto({
                     )}
 
                     {/* CAMPOS DE CREDENCIAIS DO OPERADOR ENTRANTE */}
-                    <div className="space-y-2 pt-1">
+                    <div className="space-y-3 pt-1">
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                        <label className="block text-xs font-black text-slate-900 uppercase mb-1.5 tracking-wide">
                           Login do Operador Entrante:
                         </label>
                         <div className="relative">
-                          <User className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+                          <User className="w-4 h-4 text-slate-600 absolute left-3 top-3.5 z-10" />
                           <input
                             type="text"
                             required
@@ -3250,29 +3250,31 @@ export default function PassagemPosto({
                               setOperadorSelecionadoEntrante(match || null);
                             }}
                             placeholder="Ex: hugo"
-                            className="w-full pl-9 pr-3 py-3 bg-white border border-slate-300 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            style={{ color: '#000000', backgroundColor: '#ffffff', WebkitTextFillColor: '#000000' }}
+                            className="w-full pl-9 pr-3 py-3 bg-white text-black text-slate-950 font-bold text-sm placeholder:text-slate-400 placeholder:font-normal border-2 border-slate-300 focus:border-emerald-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm"
                           />
                         </div>
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                        <label className="block text-xs font-black text-slate-900 uppercase mb-1.5 tracking-wide">
                           Senha Pessoal do Operador Entrante:
                         </label>
                         <div className="relative">
-                          <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+                          <Lock className="w-4 h-4 text-slate-600 absolute left-3 top-3.5 z-10" />
                           <input
                             type={mostrarSenhaEntrante ? "text" : "password"}
                             required
                             value={senhaEntrante}
                             onChange={(e) => setSenhaEntrante(e.target.value)}
                             placeholder="Digite sua senha de acesso ao Infport"
-                            className="w-full pl-9 pr-10 py-3 bg-white border border-slate-300 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            style={{ color: '#000000', backgroundColor: '#ffffff', WebkitTextFillColor: '#000000' }}
+                            className="w-full pl-9 pr-10 py-3 bg-white text-black text-slate-950 font-bold text-sm placeholder:text-slate-400 placeholder:font-normal border-2 border-slate-300 focus:border-emerald-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm"
                           />
                           <button
                             type="button"
                             onClick={() => setMostrarSenhaEntrante(!mostrarSenhaEntrante)}
-                            className="absolute right-3 top-3.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            className="absolute right-3 top-3.5 text-slate-600 hover:text-black cursor-pointer p-0.5 z-10"
                             title={mostrarSenhaEntrante ? "Ocultar senha" : "Ver senha"}
                           >
                             {mostrarSenhaEntrante ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}

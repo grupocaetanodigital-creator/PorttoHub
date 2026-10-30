@@ -1950,13 +1950,14 @@ export default function Rondas({ usuarioLogado }: RondasProps) {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Senha do Operador Entrante</label>
+                <label className="block text-xs font-bold text-slate-800 mb-1">Senha do Operador Entrante</label>
                 <input
                   type="password"
                   placeholder="Digite a senha de confirmação"
                   value={senhaLoginEntrante}
                   onChange={(e) => setSenhaLoginEntrante(e.target.value)}
-                  className="w-full border rounded-xl p-2.5 text-xs text-slate-800"
+                  style={{ color: '#000000', backgroundColor: '#ffffff', WebkitTextFillColor: '#000000' }}
+                  className="w-full border-2 border-slate-300 rounded-xl p-2.5 text-xs font-semibold text-black bg-white placeholder:text-slate-400 placeholder:font-normal"
                   required
                 />
               </div>

@@ -20,6 +20,16 @@
     font-family: 'JetBrains Mono', monospace;
     font-variant-numeric: tabular-nums;
   }
+
+  /* Garante legibilidade e alto contraste para campos de formulário com fundo branco */
+  input.bg-white, select.bg-white, textarea.bg-white {
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
+  }
+  input.bg-white::placeholder, textarea.bg-white::placeholder {
+    color: #64748b !important;
+    -webkit-text-fill-color: #64748b !important;
+  }
 }
 
 /* Custom subtle scrollbar */

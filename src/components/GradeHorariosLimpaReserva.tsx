@@ -346,35 +346,7 @@ export const GradeHorariosLimpaReserva: React.FC<GradeHorariosLimpaReservaProps>
         </div>
       </div>
 
-      {/* 3. RESUMO DA ÁREA ATIVA */}
-      {areaAtiva && (
-        <div className="p-3.5 bg-slate-50 dark:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 flex items-center justify-center font-bold">
-              <Clock className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-sm font-black text-slate-900 dark:text-white leading-tight">
-                {areaAtiva.nome}
-              </h3>
-              <div className="flex items-center gap-2 text-slate-500 mt-0.5 font-mono">
-                <span>Horário: {areaAtiva.horario_inicio || '07:00'} às {areaAtiva.horario_fim || '22:00'}</span>
-                <span>•</span>
-                <span>Slots de {areaAtiva.duracao_slot_minutos || 60} min</span>
-                <span>•</span>
-                <span>Capacidade até {areaAtiva.capacidade_maxima} pessoas</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="text-right">
-            <span className="text-[10px] text-slate-400 font-bold block uppercase">Taxa</span>
-            <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 font-mono">
-              {areaAtiva.taxa_reserva > 0 ? `R$ ${areaAtiva.taxa_reserva.toFixed(2)}` : 'Gratuito'}
-            </span>
-          </div>
-        </div>
-      )}
+      {/* GRADE DE HORAS DISPONÍVEIS */}
 
       {/* 4. GRADE DE HORAS DISPONÍVEIS (Requisito Chave!) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs">
