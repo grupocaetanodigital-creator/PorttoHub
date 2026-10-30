@@ -49,7 +49,11 @@ export default function CampoAssinaturaDigital({
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.lineWidth = 2.5;
-    ctx.strokeStyle = '#0f172a'; // Slate-900
+    const isDark = typeof document !== 'undefined' && (
+      document.documentElement.classList.contains('dark') ||
+      document.documentElement.getAttribute('data-theme') === 'dark'
+    );
+    ctx.strokeStyle = isDark ? '#38bdf8' : '#0f172a';
 
     // Se já havia um valor salvo (ex: dataUrl), redesenha no canvas
     if (valor) {
@@ -110,7 +114,11 @@ export default function CampoAssinaturaDigital({
 
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, 1.25, 0, Math.PI * 2);
-    ctx.fillStyle = '#0f172a';
+    const isDark = typeof document !== 'undefined' && (
+      document.documentElement.classList.contains('dark') ||
+      document.documentElement.getAttribute('data-theme') === 'dark'
+    );
+    ctx.fillStyle = isDark ? '#38bdf8' : '#0f172a';
     ctx.fill();
     setTemTracos(true);
   };
@@ -168,17 +176,17 @@ export default function CampoAssinaturaDigital({
   return (
     <div className="space-y-1.5 w-full">
       <div className="flex items-center justify-between">
-        <label className="text-[10px] sm:text-[11px] font-bold text-slate-700 uppercase flex items-center gap-1.5">
-          <PenTool className="w-3.5 h-3.5 text-emerald-600" />
+        <label className="text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-1.5">
+          <PenTool className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
           <span>Assinatura Digital do Retirante {obrigatorio && <span className="text-red-500">*</span>}</span>
         </label>
         <div className="flex items-center gap-1.5">
           {temTracos ? (
-            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md animate-in fade-in duration-150">
-              <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Coletada
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md animate-in fade-in duration-150">
+              <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> Coletada
             </span>
           ) : (
-            <span className="text-[10px] font-medium text-slate-400">
+            <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">
               {obrigatorio ? 'Obrigatória' : 'Toque na tela para assinar'}
             </span>
           )}
@@ -186,7 +194,7 @@ export default function CampoAssinaturaDigital({
             <button
               type="button"
               onClick={limparAssinatura}
-              className="text-[10px] font-bold text-slate-600 hover:text-red-600 bg-white hover:bg-red-50 border border-slate-200 px-2 py-0.5 rounded flex items-center gap-1 transition cursor-pointer"
+              className="text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 bg-white dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-red-950/40 border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded flex items-center gap-1 transition cursor-pointer"
               title="Limpar e assinar novamente"
             >
               <Eraser className="w-3 h-3 text-slate-400 hover:text-red-500" /> Limpar
@@ -200,8 +208,8 @@ export default function CampoAssinaturaDigital({
         ref={containerRef}
         className={`relative w-full rounded-xl border-2 transition-all overflow-hidden ${
           temTracos 
-            ? 'border-emerald-500 bg-white shadow-xs' 
-            : 'border-dashed border-slate-300 hover:border-emerald-400 bg-slate-50/70'
+            ? 'border-emerald-500 bg-white dark:bg-slate-900 shadow-xs' 
+            : 'border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-400 bg-slate-50/70 dark:bg-slate-800/60'
         }`}
       >
         <canvas
@@ -221,14 +229,14 @@ export default function CampoAssinaturaDigital({
         {/* Linha guia de assinatura e placeholder visual */}
         {!temTracos && (
           <div className="absolute inset-0 pointer-events-none flex flex-col justify-end p-3 pb-2 text-center">
-            <div className="w-4/5 mx-auto border-b border-dashed border-slate-400/60 mb-1" />
-            <div className="text-[11px] font-medium text-slate-500 flex items-center justify-center gap-1.5">
+            <div className="w-4/5 mx-auto border-b border-dashed border-slate-400/60 dark:border-slate-600 mb-1" />
+            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center justify-center gap-1.5">
               <PenTool className="w-3.5 h-3.5 text-slate-400" />
               <span>Assine aqui com o dedo ou caneta touch</span>
             </div>
             {nomeRetirante && (
               <span className="text-[10px] text-slate-400 truncate max-w-xs mx-auto">
-                Retirante: <strong className="text-slate-600">{nomeRetirante}</strong>
+                Retirante: <strong className="text-slate-600 dark:text-slate-200">{nomeRetirante}</strong>
               </span>
             )}
           </div>
@@ -236,7 +244,7 @@ export default function CampoAssinaturaDigital({
 
         {/* Linha de base sutil mesmo quando assinado */}
         {temTracos && (
-          <div className="absolute bottom-2 left-4 right-4 pointer-events-none flex items-center justify-between text-[9px] text-slate-400 border-t border-slate-200 pt-0.5">
+          <div className="absolute bottom-2 left-4 right-4 pointer-events-none flex items-center justify-between text-[9px] text-slate-400 dark:text-slate-500 border-t border-slate-200 dark:border-slate-750 pt-0.5">
             <span className="font-mono">✕ Assinatura Digital</span>
             <span>{nomeRetirante ? `Por: ${nomeRetirante}` : 'Confirmada na Portaria'}</span>
           </div>
