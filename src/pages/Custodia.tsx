@@ -22,6 +22,7 @@ import {
   efetivarBaixaCustodia,
   atualizarRegistroCustodia,
   excluirRegistroCustodia,
+  excluirMultiplosRegistrosCustodia,
   ItemCustodia
 } from '../services/custodiaService';
 import { 
@@ -111,6 +112,10 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
   const [itensAtivos, setItensAtivos] = useState<ItemCustodia[]>([]);
   const [itensHistorico, setItensHistorico] = useState<ItemCustodia[]>([]);
   const [totalHistorico, setTotalHistorico] = useState(0);
+
+  // Seleção Múltipla para Exclusão em Lote
+  const [itensSelecionadosIds, setItensSelecionadosIds] = useState<string[]>([]);
+  const [modalExcluirSelecionados, setModalExcluirSelecionados] = useState(false);
 
   // Filtros da Aba de Ativos
   const [buscaAtivos, setBuscaAtivos] = useState('');
@@ -716,6 +721,52 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
     }
   };
 
+  // Funções de Seleção Múltipla e Exclusão em Lote
+  const toggleSelecionarItem = (id: string) => {
+    setItensSelecionadosIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelecionarTodosAtivos = () => {
+    const todosIds = itensAtivosFiltrados.map(i => i.id);
+    const todosMarcados = todosIds.length > 0 && todosIds.every(id => itensSelecionadosIds.includes(id));
+    if (todosMarcados) {
+      setItensSelecionadosIds(prev => prev.filter(id => !todosIds.includes(id)));
+    } else {
+      setItensSelecionadosIds(prev => Array.from(new Set([...prev, ...todosIds])));
+    }
+  };
+
+  const confirmarExclusaoSelecionados = async () => {
+    if (itensSelecionadosIds.length === 0) return;
+    setLoading(true);
+    const qtd = itensSelecionadosIds.length;
+    const operador = usuarioLogado?.nome || usuarioLogado?.login || 'Portaria';
+
+    try {
+      await excluirMultiplosRegistrosCustodia(
+        itensSelecionadosIds,
+        condId,
+        operador
+      );
+
+      const idsRemover = new Set(itensSelecionadosIds);
+      setItensAtivos(prev => prev.filter(i => !idsRemover.has(i.id)));
+      setItensHistorico(prev => prev.filter(i => !idsRemover.has(i.id)));
+      setItensSelecionadosIds([]);
+      setModalExcluirSelecionados(false);
+      setMensagem({
+        tipo: 'sucesso',
+        texto: `${qtd} item(ns) selecionado(s) excluído(s) da custódia com sucesso.`
+      });
+    } catch (err: any) {
+      setMensagem({ tipo: 'erro', texto: 'Erro ao excluir itens selecionados: ' + (err.message || 'Falha de comunicação') });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // =========================================================================
   // FILTRAGEM DE ITENS ATIVOS
   // =========================================================================
@@ -1014,25 +1065,93 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
                 <span className="hidden sm:inline">CSV</span>
               </button>
+
+              {/* Selecionar Todos para Exclusão em Lote */}
+              {podeExcluir && itensAtivosFiltrados.length > 0 && (
+                <button
+                  type="button"
+                  onClick={toggleSelecionarTodosAtivos}
+                  title={
+                    itensAtivosFiltrados.every(i => itensSelecionadosIds.includes(i.id))
+                      ? "Desmarcar todos"
+                      : "Selecionar todos os itens para exclusão"
+                  }
+                  className={`h-8 px-2.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer border ${
+                    itensAtivosFiltrados.every(i => itensSelecionadosIds.includes(i.id))
+                      ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800'
+                      : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                  }`}
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">
+                    {itensAtivosFiltrados.every(i => itensSelecionadosIds.includes(i.id)) ? 'Desmarcar' : 'Selecionar Tudo'}
+                  </span>
+                </button>
+              )}
             </div>
           </div>
+
+          {/* Banner de Ação em Lote quando há itens selecionados */}
+          {itensSelecionadosIds.length > 0 && (
+            <div className="bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 rounded-2xl p-3 sm:px-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-sm animate-in fade-in slide-in-from-top-1">
+              <div className="flex items-center gap-2 text-rose-900 dark:text-rose-200 text-xs font-black">
+                <div className="w-6 h-6 rounded-lg bg-rose-200 dark:bg-rose-900/60 flex items-center justify-center text-rose-700 dark:text-rose-300">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </div>
+                <span>{itensSelecionadosIds.length} {itensSelecionadosIds.length === 1 ? 'item selecionado' : 'itens selecionados'} para exclusão</span>
+              </div>
+
+              <div className="flex items-center gap-2 self-end sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setItensSelecionadosIds([])}
+                  className="px-3 py-1.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-white/60 dark:hover:bg-slate-800/60 transition cursor-pointer"
+                >
+                  Desmarcar Todos
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setModalExcluirSelecionados(true)}
+                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 active:scale-98 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Excluir Itens Selecionados</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Grid de Cards de Custódia */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {itensAtivosFiltrados.map((item) => {
               const permanencia = calcularTempoPermanencia(item.data_hora_entrada || item.created_at);
               const fotoPreview = item.foto_entrada_url || item.foto_url;
+              const isSelecionado = itensSelecionadosIds.includes(item.id);
 
               return (
                 <div
                   key={item.id}
-                  className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 shadow-2xs hover:shadow-md transition-all duration-150 p-4 flex flex-col justify-between gap-3 group relative"
+                  className={`bg-white dark:bg-slate-900 rounded-2xl border transition-all duration-150 p-4 flex flex-col justify-between gap-3 group relative ${
+                    isSelecionado
+                      ? 'border-rose-500 dark:border-rose-500 ring-2 ring-rose-500/30 bg-rose-50/20 dark:bg-rose-950/20 shadow-md'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 shadow-2xs hover:shadow-md'
+                  }`}
                 >
                   {/* Topo do Card */}
                   <div>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
+                          {podeExcluir && (
+                            <input
+                              type="checkbox"
+                              checked={isSelecionado}
+                              onChange={() => toggleSelecionarItem(item.id)}
+                              className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 border-slate-300 dark:border-slate-700 cursor-pointer mr-0.5"
+                              title={isSelecionado ? "Desmarcar item" : "Selecionar para exclusão"}
+                            />
+                          )}
                           <span className="font-mono text-[10px] font-black bg-slate-900 text-white dark:bg-slate-800 dark:text-emerald-400 px-2 py-0.5 rounded-md tracking-wider">
                             {item.codigo_custodia}
                           </span>
@@ -2370,6 +2489,57 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Excluir</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO EM LOTE (ITENS SELECIONADOS)             */}
+      {/* ========================================================================= */}
+      {modalExcluirSelecionados && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full shadow-2xl border border-rose-300 dark:border-rose-900 p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 dark:text-white text-base">
+                  Excluir Itens Selecionados?
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Esta ação removerá permanentemente os registros da custódia.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-2xl text-xs space-y-1.5 text-slate-800 dark:text-slate-200">
+              <p>
+                Total selecionado: <strong className="text-rose-600 dark:text-rose-400 font-bold">{itensSelecionadosIds.length}</strong> {itensSelecionadosIds.length === 1 ? 'item' : 'itens'}.
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Os registros selecionados serão apagados definitivamente do banco de dados e da bancada da portaria.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setModalExcluirSelecionados(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={confirmarExclusaoSelecionados}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 active:scale-98 text-white font-black rounded-xl text-xs shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{loading ? 'Excluindo...' : `Sim, Excluir ${itensSelecionadosIds.length} Itens`}</span>
               </button>
             </div>
           </div>

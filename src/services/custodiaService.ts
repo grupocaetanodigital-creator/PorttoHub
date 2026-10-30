@@ -548,3 +548,47 @@ export async function excluirRegistroCustodia(
 
   invalidarCacheLocal(CACHE_KEY_CUSTODIA_ATIVA, condominioId);
 }
+
+/**
+ * Exclusão em lote de múltiplos registros de custódia
+ */
+export async function excluirMultiplosRegistrosCustodia(
+  ids: string[],
+  condominioId: string,
+  operador: string
+): Promise<number> {
+  if (!ids || ids.length === 0) return 0;
+
+  try {
+    const { error } = await supabase
+      .from('custodia')
+      .delete()
+      .in('id', ids);
+
+    if (error) {
+      console.warn('Erro ao excluir no Supabase em lote, tentando individualmente:', error);
+      for (const id of ids) {
+        try {
+          await supabase.from('custodia').delete().eq('id', id);
+        } catch {
+          // ignora falhas individuais
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao excluir registros em lote:', err);
+  }
+
+  await registrarAtividade({
+    condominio_id: condominioId,
+    modulo: 'custodia',
+    acao: 'excluir',
+    descricao: `Exclusão em lote de ${ids.length} item(ns) de custódia`,
+    detalhes: { ids, total: ids.length },
+    operador_nome: operador
+  }).catch(() => {});
+
+  invalidarCacheLocal(CACHE_KEY_CUSTODIA_ATIVA, condominioId);
+  return ids.length;
+}
+

@@ -1,10 +1,10 @@
 {
   "name": "porttohub",
   "private": true,
-  "version": "29.10.26-2325",
+  "version": "30.10.26-0035",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",

@@ -1,65 +1,21 @@
 <!doctype html>
 <html lang="pt-BR">
   <head>
-    <script>
-      // Blindagem global no navegador contra ReferenceError de escopos legados
-      window.idCondominioAtivo = window.idCondominioAtivo || '';
-      // Diretriz do AI Studio: HMR desativado no ambiente embutido em iframe. Ignora erros inofensivos de WebSocket.
-      (function() {
-        var _err = console.error;
-        var _warn = console.warn;
-        console.error = function() {
-          var str = Array.prototype.slice.call(arguments).map(function(a) {
-            return (a && a.message) ? a.message : String(a);
-          }).join(' ');
-          if (str.indexOf('[vite]') !== -1 && (str.indexOf('websocket') !== -1 || str.indexOf('WebSocket') !== -1 || str.indexOf('ws://') !== -1 || str.indexOf('wss://') !== -1)) {
-            return;
-          }
-          return _err.apply(console, arguments);
-        };
-        console.warn = function() {
-          var str = Array.prototype.slice.call(arguments).map(function(a) {
-            return (a && a.message) ? a.message : String(a);
-          }).join(' ');
-          if (str.indexOf('[vite]') !== -1 && (str.indexOf('websocket') !== -1 || str.indexOf('WebSocket') !== -1 || str.indexOf('ws://') !== -1 || str.indexOf('wss://') !== -1)) {
-            return;
-          }
-          return _warn.apply(console, arguments);
-        };
-      })();
-      // Inicialização imediata do tema para prevenir flicker visual
-      try {
-        var temaSalvo = localStorage.getItem('infport_tema_visual_v2') || 'escuro';
-        if (temaSalvo === 'escuro') {
-          document.documentElement.classList.add('dark');
-          document.documentElement.classList.remove('light');
-        } else {
-          document.documentElement.classList.add('light');
-          document.documentElement.classList.remove('dark');
-        }
-      } catch (e) {}
-    </script>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>PorttoHub - Sistema Integrado de Portaria</title>
-    <meta name="description" content="PorttoHub - Sistema integrado de portaria, controle de acesso, rondas patrimoniais, encomendas, chaves, custódia e gestão condominial integrado ao Supabase PostgreSQL." />
-    <meta property="og:title" content="PorttoHub - Sistema Integrado de Portaria" />
-    <meta property="og:description" content="PorttoHub - Sistema integrado de portaria, controle de acesso, rondas patrimoniais, encomendas, chaves, custódia e gestão condominial integrado ao Supabase PostgreSQL." />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PorttoHub - Gestão de Reservas de Condomínio</title>
+    <meta name="description" content="Sistema multi-condomínio para reserva limpa e ágil de áreas comuns, quadras, academia e salão de jogos com busca por unidade e moradores." />
+    <meta property="og:title" content="PorttoHub - Gestão de Reservas de Condomínio" />
+    <meta property="og:description" content="Sistema multi-condomínio para reserva limpa e ágil de áreas comuns, quadras, academia e salão de jogos com busca por unidade e moradores." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="theme-color" content="#0f172a" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="PorttoHub" />
-    <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   </head>
-  <body class="antialiased select-none bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen">
+  <body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 antialiased selection:bg-indigo-500 selection:text-white transition-colors duration-150">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
 

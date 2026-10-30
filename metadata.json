@@ -1,12 +1,6 @@
 {
-  "name": "PorttoHub - Sistema Integrado de Portaria",
-  "description": "PorttoHub - Sistema integrado de portaria, controle de acesso, rondas patrimoniais, encomendas, chaves, custódia e gestão condominial integrado ao Supabase PostgreSQL.",
-  "requestFramePermissions": [
-    "camera",
-    "microphone"
-  ],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "name": "PorttoHub - Gestão de Reservas de Condomínio",
+  "description": "Sistema multi-condomínio para reserva limpa e ágil de áreas comuns, quadras, academia e salão de jogos com busca por unidade e moradores.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
-

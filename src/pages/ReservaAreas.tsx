@@ -70,6 +70,7 @@ import {
 import { formatarLinkWhatsApp } from '../services/configWhatsappService';
 import { verificarPermissao } from '../services/permissoesService';
 import { supabase } from '../services/supabase';
+import { GradeHorariosLimpaReserva } from '../components/GradeHorariosLimpaReserva';
 
 interface ReservaAreasProps {
   usuarioLogado?: any;
@@ -110,7 +111,7 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
   const [moradoresCadastrados, setMoradoresCadastrados] = useState<any[]>([]);
 
   // Abas principais
-  const [abaAtiva, setAbaAtiva] = useState<'agenda' | 'nova' | 'convidados' | 'vistorias' | 'espacos'>('agenda');
+  const [abaAtiva, setAbaAtiva] = useState<'grade_horarios' | 'agenda' | 'nova' | 'convidados' | 'vistorias' | 'espacos'>('grade_horarios');
 
   // Modo de visualização na agenda (Cards vs Linha do Tempo / Disponibilidade)
   const [modoVisualizacaoAgenda, setModoVisualizacaoAgenda] = useState<'cards' | 'disponibilidade'>('cards');
@@ -832,6 +833,18 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
       {/* Navegação por Abas (Otimizada para Smartphones com Scroll Suave) */}
       <div className="flex items-center gap-1.5 p-1 bg-slate-200/80 dark:bg-slate-800 rounded-2xl overflow-x-auto text-xs font-bold scrollbar-none sticky top-1 z-30 shadow-xs backdrop-blur-md">
         <button
+          onClick={() => setAbaAtiva('grade_horarios')}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition cursor-pointer whitespace-nowrap min-h-[38px] ${
+            abaAtiva === 'grade_horarios'
+              ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Clock className="w-4 h-4 text-emerald-500 shrink-0" />
+          <span>Grade de Horários (Ágil)</span>
+        </button>
+
+        <button
           onClick={() => setAbaAtiva('agenda')}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition cursor-pointer whitespace-nowrap min-h-[38px] ${
             abaAtiva === 'agenda'
@@ -901,6 +914,31 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
           </button>
         )}
       </div>
+
+      {/* ABA 0: GRADE DE HORÁRIOS ÁGIL (Quadras, Academia, Jogos, etc.) */}
+      {abaAtiva === 'grade_horarios' && (
+        <GradeHorariosLimpaReserva
+          areas={areas}
+          reservas={reservas}
+          moradoresCadastrados={moradoresCadastrados}
+          condId={condId}
+          condoConfig={condoConfig}
+          usuarioLogado={usuarioLogado}
+          onCriarReserva={async (dados) => {
+            const res = await criarOuAtualizarReserva(condId, dados, usuarioLogado);
+            if (res.sucesso && res.reserva) {
+              setReservas(prev => [res.reserva!, ...prev]);
+              setFeedback({ tipo: 'sucesso', texto: 'Reserva agendada com sucesso!' });
+              return true;
+            } else {
+              setFeedback({ tipo: 'erro', texto: res.erro || 'Falha ao agendar reserva.' });
+              return false;
+            }
+          }}
+          onAbrirConfigEspacos={() => setAbaAtiva('espacos')}
+          onDispararWhatsApp={handleDispararWhats}
+        />
+      )}
 
       {/* ABA 1: AGENDA & RESERVAS */}
       {abaAtiva === 'agenda' && (
@@ -2474,6 +2512,55 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                     }
                     className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold"
                   />
+                </div>
+              </div>
+
+              {/* HORÁRIOS PERMITIDOS PARA AGENDAMENTO */}
+              <div className="p-3.5 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200/80 dark:border-indigo-800 rounded-2xl space-y-2.5">
+                <div className="flex items-center gap-1.5 font-black text-indigo-900 dark:text-indigo-200">
+                  <Clock className="w-4 h-4 text-indigo-600" />
+                  <span>Horários Permitidos para Agendamento</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 mb-0.5">
+                      De que horas (Início)
+                    </label>
+                    <input
+                      type="time"
+                      value={areaEmEdicao.horario_inicio || '07:00'}
+                      onChange={e => setAreaEmEdicao(prev => ({ ...prev, horario_inicio: e.target.value }))}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono font-bold text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 mb-0.5">
+                      Até que horas (Fim)
+                    </label>
+                    <input
+                      type="time"
+                      value={areaEmEdicao.horario_fim || '22:00'}
+                      onChange={e => setAreaEmEdicao(prev => ({ ...prev, horario_fim: e.target.value }))}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono font-bold text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 mb-0.5">
+                      Duração do Slot
+                    </label>
+                    <select
+                      value={areaEmEdicao.duracao_slot_minutos || 60}
+                      onChange={e => setAreaEmEdicao(prev => ({ ...prev, duracao_slot_minutos: Number(e.target.value) }))}
+                      className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-xs"
+                    >
+                      <option value={30}>30 min</option>
+                      <option value={60}>1 hora (Padrão)</option>
+                      <option value={90}>1h 30m</option>
+                      <option value={120}>2 horas</option>
+                      <option value={240}>4 horas</option>
+                      <option value={360}>6 horas</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
