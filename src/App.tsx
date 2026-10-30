@@ -28,6 +28,8 @@ const ModalMeuPerfil = lazy(() => import('./components/ModalMeuPerfil'));
 const SupabaseDoctorModal = lazy(() => import('./components/SupabaseDoctorModal'));
 const ModalLembretesPortaria = lazy(() => import('./components/ModalLembretesPortaria'));
 const LeitorNFC = lazy(() => import('./components/LeitorNFC'));
+const ModalConfigHorariosObrasMudancas = lazy(() => import('./components/ModalConfigHorariosObrasMudancas'));
+
 
 import AlertaRondaGlobal from './components/AlertaRondaGlobal';
 import { OfflineIndicator } from './components/OfflineIndicator';
@@ -128,6 +130,7 @@ export default function App() {
   const [modalMeuPerfilAberto, setModalMeuPerfilAberto] = useState(false);
   const [modalSupabaseDoctorAberto, setModalSupabaseDoctorAberto] = useState(false);
   const [modalLembretesAberto, setModalLembretesAberto] = useState(false);
+  const [modalConfigHorariosAberto, setModalConfigHorariosAberto] = useState(false);
   const [mostrarSenhaLogin, setMostrarSenhaLogin] = useState(false);
   const [lembrarAcesso, setLembrarAcesso] = useState(true);
   const [restaurandoSessao, setRestaurandoSessao] = useState(true);
@@ -428,6 +431,13 @@ export default function App() {
     window.addEventListener('navegar_modulo', handleNavegarModulo);
     return () => window.removeEventListener('navegar_modulo', handleNavegarModulo);
   }, []);
+
+  useEffect(() => {
+    const handleAbrirHorarios = () => setModalConfigHorariosAberto(true);
+    window.addEventListener('porttohub:abrir_config_horarios', handleAbrirHorarios);
+    return () => window.removeEventListener('porttohub:abrir_config_horarios', handleAbrirHorarios);
+  }, []);
+
 
   // Mantém a variável global idCondominioAtivo sempre sincronizada para prevenir ReferenceError em todo o sistema
   useEffect(() => {
@@ -1085,21 +1095,39 @@ export default function App() {
               {modulosDisponiveis.filter(m => m.flag).map((item) => {
                 const IconeComponente = item.icone;
                 const ativo = moduloAtual === item.id;
+                const eAutorizados = item.id === 'prestadores';
                 return (
-                  <button
-                    key={item.id}
-                    onClick={() => mudarModulo(item.id)}
-                    className={`w-full px-3 py-2.5 rounded-lg text-xs font-semibold flex items-center justify-between transition-all duration-150 cursor-pointer ${
-                      ativo
-                        ? 'bg-emerald-500/15 text-emerald-400 border-l-2 border-emerald-500 shadow-2xs font-bold'
-                        : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <IconeComponente className="w-4 h-4 shrink-0" />
-                      {menuAberto && <span>{item.titulo}</span>}
-                    </div>
-                  </button>
+                  <div key={item.id} className="relative flex items-center group">
+                    <button
+                      onClick={() => mudarModulo(item.id)}
+                      className={`w-full px-3 py-2.5 rounded-lg text-xs font-semibold flex items-center justify-between transition-all duration-150 cursor-pointer ${
+                        ativo
+                          ? 'bg-emerald-500/15 text-emerald-400 border-l-2 border-emerald-500 shadow-2xs font-bold'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <IconeComponente className="w-4 h-4 shrink-0" />
+                        {menuAberto && <span>{item.titulo}</span>}
+                      </div>
+                    </button>
+                    {eAutorizados && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setModalConfigHorariosAberto(true);
+                        }}
+                        className={`absolute right-2 p-1.5 rounded-lg text-slate-400 hover:text-purple-300 hover:bg-slate-700/80 transition cursor-pointer z-10 ${
+                          menuAberto ? 'opacity-80 group-hover:opacity-100' : 'hidden'
+                        }`}
+                        title="Configurar horários de obras e mudanças"
+                        aria-label="Configurar horários"
+                      >
+                        <Settings className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </nav>
@@ -1225,22 +1253,39 @@ export default function App() {
                   {modulosDisponiveis.filter(m => m.flag).map((item) => {
                     const Icone = item.icone;
                     const ativo = moduloAtual === item.id;
+                    const eAutorizados = item.id === 'prestadores';
                     return (
-                      <button
-                        key={item.id}
-                        onClick={() => {
-                          mudarModulo(item.id);
-                          setDrawerMobileAberto(false);
-                        }}
-                        className={`w-full p-2.5 rounded-xl font-bold text-xs flex items-center gap-3 transition cursor-pointer ${
-                          ativo
-                            ? 'bg-emerald-600 text-white shadow-xs'
-                            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                        }`}
-                      >
-                        <Icone className={`w-4 h-4 ${ativo ? 'text-white' : 'text-emerald-400'}`} />
-                        <span>{item.titulo}</span>
-                      </button>
+                      <div key={item.id} className="relative flex items-center">
+                        <button
+                          onClick={() => {
+                            mudarModulo(item.id);
+                            setDrawerMobileAberto(false);
+                          }}
+                          className={`w-full p-2.5 rounded-xl font-bold text-xs flex items-center gap-3 transition cursor-pointer ${
+                            ativo
+                              ? 'bg-emerald-600 text-white shadow-xs'
+                              : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                          }`}
+                        >
+                          <Icone className={`w-4 h-4 ${ativo ? 'text-white' : 'text-emerald-400'}`} />
+                          <span>{item.titulo}</span>
+                        </button>
+                        {eAutorizados && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setModalConfigHorariosAberto(true);
+                              setDrawerMobileAberto(false);
+                            }}
+                            className="absolute right-2 p-1.5 rounded-lg text-slate-400 hover:text-purple-300 hover:bg-slate-800 transition cursor-pointer z-10"
+                            title="Configurar horários de obras e mudanças"
+                            aria-label="Configurar horários"
+                          >
+                            <Settings className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
 
@@ -1384,21 +1429,37 @@ export default function App() {
                   <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3">
                     {modulosDisponiveis.filter(m => m.flag).map((item) => {
                       const Icone = item.icone;
+                      const eAutorizados = item.id === 'prestadores';
                       return (
-                        <button
-                          key={item.id}
-                          onClick={() => mudarModulo(item.id)}
-                          className="bg-white dark:bg-slate-900/95 hover:bg-slate-50 dark:hover:bg-slate-800/90 active:scale-95 p-2 sm:p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 hover:border-emerald-500/40 dark:hover:border-emerald-500/40 shadow-xs hover:shadow-md flex flex-col items-center justify-center text-center gap-2 transition-all duration-200 group cursor-pointer relative overflow-hidden min-h-[96px] sm:min-h-[108px]"
-                        >
-                          <div className={`p-2 sm:p-2.5 rounded-xl border ${item.cor} group-hover:scale-110 transition-transform duration-200 shadow-2xs flex items-center justify-center`}>
-                            <Icone className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
-                          </div>
-                          <div className="w-full flex items-center justify-center px-0.5">
-                            <span className="text-[11px] sm:text-xs font-bold text-slate-800 dark:text-slate-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors text-center leading-tight line-clamp-2">
-                              {item.titulo}
-                            </span>
-                          </div>
-                        </button>
+                        <div key={item.id} className="relative group">
+                          <button
+                            onClick={() => mudarModulo(item.id)}
+                            className="w-full bg-white dark:bg-slate-900/95 hover:bg-slate-50 dark:hover:bg-slate-800/90 active:scale-95 p-2 sm:p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 hover:border-emerald-500/40 dark:hover:border-emerald-500/40 shadow-xs hover:shadow-md flex flex-col items-center justify-center text-center gap-2 transition-all duration-200 cursor-pointer overflow-hidden min-h-[96px] sm:min-h-[108px]"
+                          >
+                            <div className={`p-2 sm:p-2.5 rounded-xl border ${item.cor} group-hover:scale-110 transition-transform duration-200 shadow-2xs flex items-center justify-center`}>
+                              <Icone className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+                            </div>
+                            <div className="w-full flex items-center justify-center px-0.5">
+                              <span className="text-[11px] sm:text-xs font-bold text-slate-800 dark:text-slate-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors text-center leading-tight line-clamp-2">
+                                {item.titulo}
+                              </span>
+                            </div>
+                          </button>
+                          {eAutorizados && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setModalConfigHorariosAberto(true);
+                              }}
+                              className="absolute top-2 right-2 p-1.5 rounded-xl text-slate-400 hover:text-purple-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition cursor-pointer z-10"
+                              title="Configurar horários de obras e mudanças"
+                              aria-label="Configurar horários"
+                            >
+                              <Settings className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -1715,6 +1776,19 @@ export default function App() {
             <ModalInfoVersaoRepositorio 
               aberto={modalVersaoInfoAberto} 
               onFechar={() => setModalVersaoInfoAberto(false)} 
+            />
+          </Suspense>
+        )}
+
+        {/* Modal de Configuração de Horários (Obras e Mudanças) */}
+        {modalConfigHorariosAberto && (
+          <Suspense fallback={null}>
+            <ModalConfigHorariosObrasMudancas
+              aberto={modalConfigHorariosAberto}
+              onFechar={() => setModalConfigHorariosAberto(false)}
+              condominioId={condominioAtivoId || operador?.condominio_id}
+              condominioNome={operadorContextoGlobal?.condominio_nome}
+              operadorNome={operadorContextoGlobal?.nome || operador?.nome}
             />
           </Suspense>
         )}
