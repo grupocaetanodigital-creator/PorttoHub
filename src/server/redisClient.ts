@@ -13,10 +13,32 @@ export interface CacheStats {
   keysSummary: Record<string, number>;
 }
 
-// Emulador In-Memory de alta performance com semântica Redis (TTL + LRU)
+// Emulador In-Memory de ultra-alta performance com semântica Redis (TTL + LRU Cache Limitado)
 class InMemoryRedisStore {
   private store = new Map<string, { value: string; expiresAt?: number; tags?: string[] }>();
   private tagIndex = new Map<string, Set<string>>();
+  private readonly maxCapacity: number;
+
+  constructor(maxCapacity: number = 3000) {
+    this.maxCapacity = maxCapacity;
+
+    // Pruning periódico em segundo plano para liberar memória de chaves expiradas (a cada 60s)
+    if (typeof setInterval !== 'undefined') {
+      const timer = setInterval(() => {
+        this.pruneExpired();
+      }, 60000);
+      if (timer.unref) timer.unref();
+    }
+  }
+
+  private pruneExpired(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.store.entries()) {
+      if (entry.expiresAt && now > entry.expiresAt) {
+        this.del(key);
+      }
+    }
+  }
 
   get(key: string): string | null {
     const entry = this.store.get(key);
@@ -25,6 +47,9 @@ class InMemoryRedisStore {
       this.del(key);
       return null;
     }
+    // LRU refresh: move para o final da ordem de iteração do Map
+    this.store.delete(key);
+    this.store.set(key, entry);
     return entry.value;
   }
 
@@ -33,6 +58,16 @@ class InMemoryRedisStore {
     if (mode === 'EX' && duration && duration > 0) {
       expiresAt = Date.now() + duration * 1000;
     }
+
+    // Se atingiu capacidade máxima, descarta a chave mais antiga (LRU eviction)
+    if (this.store.size >= this.maxCapacity && !this.store.has(key)) {
+      const oldestKey = this.store.keys().next().value;
+      if (oldestKey) {
+        this.del(oldestKey);
+      }
+    }
+
+    this.store.delete(key);
     this.store.set(key, { value, expiresAt, tags });
 
     if (tags && tags.length > 0) {

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { cachedQuery } from './redisCacheService';
 
 export const SUPABASE_PROJECT_URL = 'https://kkeizhscivyfjgetnbke.supabase.co';
 export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtrZWl6aHNjaXZ5ZmpnZXRuYmtlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2ODk5NDUsImV4cCI6MjEwODI2NTk0NX0.hQzzvICbZfNPziWrj8DlD-A8-Vm4xbr25Nr0xQe3BEA';
@@ -159,7 +160,6 @@ export const supabaseCached = {
       },
       async execute<T = any[]>(): Promise<{ data: T | null; error: any }> {
         try {
-          const { cachedQuery } = await import('./redisCacheService');
           const data = await cachedQuery<T>({
             table,
             select: selectFields,

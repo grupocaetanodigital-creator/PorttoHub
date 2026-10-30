@@ -15,7 +15,7 @@ export const NOME_APLICACAO = 'PorttoHub';
 export const FUSO_HORARIO_OFICIAL_BRASIL = 'America/Sao_Paulo';
 
 // Versão de build gravada da última modificação (Horário de Brasília)
-export const VERSAO_BUILD_ATUAL = '2910261638';
+export const VERSAO_BUILD_ATUAL = '2910262136';
 
 /**
  * Gera a string de versão DDMMAAHHMM no fuso horário oficial do Brasil (Brasília)

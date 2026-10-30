@@ -4,6 +4,7 @@ process.env.DISABLE_HMR = 'true';
 
 import express from 'express';
 import http from 'http';
+import compression from 'compression';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import dotenv from 'dotenv';
@@ -17,15 +18,32 @@ process.env.VITE_SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'eyJh
 const app = express();
 const port = 3000;
 
+// Middleware de compressão Gzip/Deflate para acelerar tráfego e reduzir latência de rede em até 80%
+app.use(compression({
+  threshold: 1024,
+  level: 6
+}));
+
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+
+// Cache em memória para os dados do repositório GitHub para NUNCA travar a thread de eventos do Node
+let cachedVersaoData: any = null;
+let cachedVersaoTimestamp = 0;
+const VERSAO_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutos
 
 /**
  * Rota para puxar dados e versão em tempo real do Repositório GitHub (PorttoHub)
  * Retorna dados formatados no Horário Oficial do Brasil (Brasília / America/Sao_Paulo)
+ * Implementada com cache em memória de 15 minutos e timeout curto para zero latência
  */
 app.get('/api/github-versao', async (_req, res) => {
   try {
+    const agora = Date.now();
+    if (cachedVersaoData && (agora - cachedVersaoTimestamp < VERSAO_CACHE_TTL_MS)) {
+      return res.json(cachedVersaoData);
+    }
+
     const { execSync } = await import('child_process');
     let localHash = '';
     let localMsg = '';
@@ -33,10 +51,10 @@ app.get('/api/github-versao', async (_req, res) => {
     let localAuthor = '';
     
     try {
-      localHash = execSync('git rev-parse --short HEAD', { timeout: 3000 }).toString().trim();
-      localMsg = execSync('git log -1 --pretty=%s', { timeout: 3000 }).toString().trim();
-      localDate = execSync('git log -1 --format=%cd --date=iso-strict', { timeout: 3000 }).toString().trim();
-      localAuthor = execSync('git log -1 --format=%an', { timeout: 3000 }).toString().trim();
+      localHash = execSync('git rev-parse --short HEAD', { timeout: 1500 }).toString().trim();
+      localMsg = execSync('git log -1 --pretty=%s', { timeout: 1500 }).toString().trim();
+      localDate = execSync('git log -1 --format=%cd --date=iso-strict', { timeout: 1500 }).toString().trim();
+      localAuthor = execSync('git log -1 --format=%an', { timeout: 1500 }).toString().trim();
     } catch {}
 
     let remoteCommit: any = null;
@@ -44,7 +62,7 @@ app.get('/api/github-versao', async (_req, res) => {
       let token = process.env.GITHUB_TOKEN;
       if (!token) {
         try {
-          const remoteUrl = execSync('git config --get remote.origin.url', { timeout: 2000 }).toString().trim();
+          const remoteUrl = execSync('git config --get remote.origin.url', { timeout: 1000 }).toString().trim();
           const match = remoteUrl.match(/https:\/\/([^@]+)@github\.com/);
           if (match) token = match[1];
         } catch {}
@@ -58,9 +76,14 @@ app.get('/api/github-versao', async (_req, res) => {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
+      const controller = new AbortController();
+      const fetchTimeout = setTimeout(() => controller.abort(), 2500);
       const ghRes = await fetch('https://api.github.com/repos/grupocaetanodigital-creator/PorttoHub/commits/main', {
-        headers
+        headers,
+        signal: controller.signal
       });
+      clearTimeout(fetchTimeout);
+
       if (ghRes.ok) {
         remoteCommit = await ghRes.json();
       }
@@ -91,7 +114,7 @@ app.get('/api/github-versao', async (_req, res) => {
     for (const p of partes) { mapa[p.type] = p.value; }
     const versaoCalculada = `${mapa.day || '01'}${mapa.month || '01'}${(mapa.year || '26').slice(-2)}${mapa.hour || '00'}${mapa.minute || '00'}`;
 
-    return res.json({
+    const resultadoPayload = {
       sucesso: true,
       repositorio: 'grupocaetanodigital-creator/PorttoHub',
       branch: 'main',
@@ -102,8 +125,16 @@ app.get('/api/github-versao', async (_req, res) => {
       dataBrasilia: `${dataBrasilia} (Horário de Brasília - BRT)`,
       versaoCalculada,
       horarioConsulta: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })
-    });
+    };
+
+    cachedVersaoData = resultadoPayload;
+    cachedVersaoTimestamp = agora;
+
+    return res.json(resultadoPayload);
   } catch (err: any) {
+    if (cachedVersaoData) {
+      return res.json(cachedVersaoData);
+    }
     return res.status(500).json({ sucesso: false, erro: err.message });
   }
 });

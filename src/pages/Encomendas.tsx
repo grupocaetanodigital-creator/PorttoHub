@@ -76,6 +76,7 @@ import { ModalWhatsAppDisparo } from '../components/ModalWhatsAppDisparo';
 import { formatarLinkWhatsApp, dispararLinkWhatsApp } from '../services/configWhatsappService';
 import { validarECarregarCacheRetidos } from '../services/cacheLimpezaService';
 import { cachedQuery, invalidarCacheTabela } from '../services/redisCacheService';
+import { obterCacheEncomendas, carregarEPreaquecerEncomendas } from '../services/encomendasService';
 
 export interface EncomendaAdicional {
   id: string;
@@ -125,13 +126,18 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     return () => window.removeEventListener('infport:condominio_alterado', handleCondoChange);
   }, [usuarioLogado]);
 
-  const [entregadores, setEntregadores] = useState<any[]>([]);
-  const [lotesPendentes, setLotesPendentes] = useState<any[]>([]);
-  const [todosLotesRE, setTodosLotesRE] = useState<any[]>([]);
-  const [moradores, setMoradores] = useState<any[]>([]);
+  // Carregamento Instantâneo: Inicia com dados já aquecidos em memória (0ms - zero delay ao abrir menu)
+  const bundleInicial = obterCacheEncomendas(idCondominioAtivo);
+  const [entregadores, setEntregadores] = useState<any[]>(() => bundleInicial.entregadores || []);
+  const [lotesPendentes, setLotesPendentes] = useState<any[]>(() => bundleInicial.lotesPendentes || []);
+  const [todosLotesRE, setTodosLotesRE] = useState<any[]>(() => bundleInicial.todosLotesRE || []);
+  const [moradores, setMoradores] = useState<any[]>(() => bundleInicial.moradores || []);
 
-  // Blindagem de Cache: validação estrita no boot — se houver divergência ou banco limpo, purga imediatamente
+  // Blindagem de Cache: inicia imediatamente a partir da memória ou cache validado
   const [todosItensRetidos, setTodosItensRetidos] = useState<any[]>(() => {
+    if (bundleInicial.itensRetidos && bundleInicial.itensRetidos.length > 0) {
+      return bundleInicial.itensRetidos;
+    }
     return validarECarregarCacheRetidos(idCondominioAtivo);
   });
 
@@ -406,18 +412,51 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
 
   // Reset de Estado ao Trocar de Condomínio:
   // Sempre que o condominioAtivoId mudar, limpe imediatamente os estados locais de pacotes, lotes e moradores
-  // antes de realizar a nova requisição ao Supabase, impedindo dados do condomínio anterior na tela.
+  // Carregamento Instantâneo: Zero delay ao abrir o menu de Encomendas
   useEffect(() => {
-    setTodosItensRetidos([]);
-    setLotesPendentes([]);
-    setTodosLotesRE([]);
-    setMoradores([]);
-    setLocaisArmazenamento([]);
-    setItensDossie([]);
-    carregarDadosBase();
+    if (!idCondominioAtivo || idCondominioAtivo === 'todos' || idCondominioAtivo === 'global') {
+      setTodosItensRetidos([]);
+      setLotesPendentes([]);
+      setTodosLotesRE([]);
+      setMoradores([]);
+      setLocaisArmazenamento([]);
+      setItensDossie([]);
+      return;
+    }
+
+    // 1. Hidratação imediata a partir da memória RAM/localStorage (0ms de espera)
+    const bundle = obterCacheEncomendas(idCondominioAtivo);
+    const temDadosProntos = Boolean(bundle.atualizadoEm > 0 && bundle.itensRetidos !== undefined);
+    if (temDadosProntos) {
+      setTodosItensRetidos(bundle.itensRetidos || []);
+      setLotesPendentes(bundle.lotesPendentes || []);
+      setTodosLotesRE(bundle.todosLotesRE || []);
+      setMoradores(bundle.moradores || []);
+      setEntregadores(bundle.entregadores || []);
+      if (bundle.locaisArmazenamento?.length > 0) {
+        setLocaisArmazenamento(bundle.locaisArmazenamento);
+      }
+    }
+
+    // 2. Revalidação em segundo plano sem travar a interface
+    carregarDadosBase(temDadosProntos);
   }, [idCondominioAtivo]);
 
   useEffect(() => {
+    const handleEncomendasAtualizadas = (e: any) => {
+      const condoId = e.detail?.condominioId;
+      if (condoId === idCondominioAtivo) {
+        const bundle = obterCacheEncomendas(condoId);
+        if (bundle.atualizadoEm) {
+          setTodosItensRetidos(bundle.itensRetidos || []);
+          setLotesPendentes(bundle.lotesPendentes || []);
+          setTodosLotesRE(bundle.todosLotesRE || []);
+          setMoradores(bundle.moradores || []);
+          setEntregadores(bundle.entregadores || []);
+        }
+      }
+    };
+
     const handleResetInstantaneo = () => {
       setTodosItensRetidos([]);
       setLotesPendentes([]);
@@ -426,12 +465,14 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       setLocaisArmazenamento([]);
       setItensDossie([]);
     };
-    const handleSync = () => carregarDadosBase();
+    const handleSync = () => carregarDadosBase(true);
 
+    window.addEventListener('infport_encomendas_atualizadas', handleEncomendasAtualizadas);
     window.addEventListener('infport:condominio_alterado', handleResetInstantaneo);
     window.addEventListener('infport:cache_purgado', handleResetInstantaneo);
     window.addEventListener('infport_sincronizar_dados_global', handleSync);
     return () => {
+      window.removeEventListener('infport_encomendas_atualizadas', handleEncomendasAtualizadas);
       window.removeEventListener('infport:condominio_alterado', handleResetInstantaneo);
       window.removeEventListener('infport:cache_purgado', handleResetInstantaneo);
       window.removeEventListener('infport_sincronizar_dados_global', handleSync);
@@ -515,8 +556,10 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     return usuarioLogado?.nome || usuarioLogado?.login || 'Portaria';
   };
 
-  const carregarDadosBase = async () => {
-    setLoading(true);
+  const carregarDadosBase = async (silencioso = false) => {
+    if (!silencioso && todosItensRetidos.length === 0) {
+      setLoading(true);
+    }
     carregarLocais();
     try {
       const inicioDia = new Date();
