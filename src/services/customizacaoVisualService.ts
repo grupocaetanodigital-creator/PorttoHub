@@ -389,7 +389,7 @@ export const MODULOS_PADRAO_DESCRICOES: Record<string, string> = {
 export const CUSTOMIZACAO_PADRAO: CustomizacaoVisual = {
   nomeAplicacao: "PorttoHub",
   tamanhoFonteNome: "xl",
-  subtituloAplicacao: "",
+  subtituloAplicacao: "Portaria Inteligente & Controle de Acesso",
   tamanhoFonteSubtitulo: "xs",
   exibirBadgeOnline: true,
   exibirBadgeEnterprise: true,
@@ -686,9 +686,11 @@ export function obterCustomizacaoVisual(condominioId?: string): CustomizacaoVisu
     if (!salvo) {
       salvo = localStorage.getItem(CHAVE_STORAGE);
     }
-    // Fallback legado v1
     if (!salvo) {
-      salvo = localStorage.getItem("porttohub_customizacao_visual_v1");
+      salvo = localStorage.getItem("porttohub_custom_visual_padrao_fixado") ||
+              localStorage.getItem("porttohub_custom_visual_global") ||
+              localStorage.getItem("infport_custom_visual_global") ||
+              localStorage.getItem("porttohub_custom_visual_v1");
     }
 
     if (!salvo) {
@@ -837,6 +839,40 @@ export function aplicarParaTodosCondominios(
     );
   } catch (e) {
     console.error("[customizacaoVisualService] Erro ao replicar para todos:", e);
+  }
+}
+
+/**
+ * Fixa as configurações visuais atuais como padrão oficial em todo o sistema,
+ * gravando-as no storage global, em todos os condomínios e no template de fallback.
+ */
+export function fixarConfiguracaoComoPadraoGlobal(
+  dados: CustomizacaoVisual,
+  listaIdsCondominios: string[] = []
+): void {
+  try {
+    const jsonStr = JSON.stringify(dados);
+    localStorage.setItem(CHAVE_STORAGE, jsonStr);
+    localStorage.setItem("porttohub_custom_visual_global", jsonStr);
+    localStorage.setItem("infport_custom_visual_global", jsonStr);
+    localStorage.setItem("porttohub_custom_visual_padrao_fixado", jsonStr);
+
+    for (const cId of listaIdsCondominios) {
+      if (cId && cId !== "global" && cId !== "todos") {
+        localStorage.setItem(`porttohub_customizacao_visual_${cId}`, jsonStr);
+        localStorage.setItem(`infport_customizacao_visual_${cId}`, jsonStr);
+      }
+    }
+
+    aplicarEstilosGlobaisNoDOM(dados);
+
+    window.dispatchEvent(
+      new CustomEvent(EVENTO_CUSTOMIZACAO, {
+        detail: { ...dados, condominio_id: "global", fixadoPadrao: true }
+      })
+    );
+  } catch (e) {
+    console.error("[customizacaoVisualService] Erro ao fixar como padrão:", e);
   }
 }
 

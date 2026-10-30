@@ -35,7 +35,9 @@ import {
   Search,
   Laptop,
   Smartphone,
-  ExternalLink
+  ExternalLink,
+  Bell,
+  Star
 } from 'lucide-react';
 import EmblemaInfport from './EmblemaInfport';
 import defaultEmblemImg from '../assets/images/infport_emblem_1790505567327.jpg';
@@ -44,6 +46,7 @@ import {
   salvarCustomizacaoVisual,
   restaurarPadroesVisual,
   aplicarParaTodosCondominios,
+  fixarConfiguracaoComoPadraoGlobal,
   carregarPresetsSalvos,
   salvarNovoPresetPersonalizado,
   excluirPresetPersonalizado,
@@ -154,6 +157,17 @@ export default function ModalCustomizacaoVisual({
       setEscopoCondominio('global');
       setSalvoFeedback('✓ Configuração replicada globalmente para todos os condomínios!');
       setTimeout(() => setSalvoFeedback(null), 3000);
+    }
+  };
+
+  // Fixar como padrão definitivo do sistema
+  const handleFixarPadrao = () => {
+    if (window.confirm('Deseja fixar estas configurações como o PADRÃO OFICIAL DEFINITIVO do sistema para todos os condomínios e novos acessos?')) {
+      const ids = listaCondominios.map(c => c.id);
+      fixarConfiguracaoComoPadraoGlobal(dados, ids);
+      setEscopoCondominio('global');
+      setSalvoFeedback('★ Configurações fixadas com sucesso como o Padrão Oficial do Sistema!');
+      setTimeout(() => setSalvoFeedback(null), 3500);
     }
   };
 
@@ -389,15 +403,16 @@ export default function ModalCustomizacaoVisual({
             </div>
           </div>
 
-          {/* Barra de Header Ao Vivo com Emblema, Título, Subtítulo e Cores */}
+          {/* Barra de Header Ao Vivo com Emblema, Título, Subtítulo e Controles Reais */}
           <div 
-            className="p-3 rounded-xl border border-slate-800 flex items-center justify-between transition-all duration-300"
+            className="p-3 sm:px-4 rounded-xl border border-slate-700/80 flex items-center justify-between transition-all duration-300 shadow-md relative overflow-hidden"
             style={{ 
               backgroundColor: dados.corFundoHeader || '#0f172a',
               borderRadius: dados.raioBorda === 'reto' ? '4px' : dados.raioBorda === 'suave' ? '8px' : dados.raioBorda === 'pill' ? '24px' : '12px'
             }}
           >
-            <div className="flex items-center gap-3">
+            {/* LADO ESQUERDO: EMBLEMA + NOME + SUBTÍTULO */}
+            <div className="flex items-center gap-3 min-w-0">
               <EmblemaInfport
                 tamanho={dados.emblemaTamanho}
                 comBrilho={dados.emblemaBrilho}
@@ -406,10 +421,10 @@ export default function ModalCustomizacaoVisual({
                 formatoCustom={dados.emblemaFormato}
                 urlCustom={dados.emblemaUrl}
               />
-              <div className="flex flex-col">
-                <div className="flex items-center gap-2">
+              <div className="flex flex-col min-w-0 leading-tight">
+                <div className="flex items-center gap-2 min-w-0">
                   <span 
-                    className={`font-black tracking-tight flex items-center gap-1.5 text-white ${obterClasseTamanhoFonte(dados.tamanhoFonteNome)}`}
+                    className={`font-black tracking-tight flex items-center gap-1.5 truncate text-white ${obterClasseTamanhoFonte(dados.tamanhoFonteNome)}`}
                     style={{ 
                       fontFamily: `var(--app-font-family, ${dados.familiaFonte})`,
                       fontWeight: dados.pesoFonte === 'negrito' ? 800 : dados.pesoFonte === 'semibold' ? 600 : 500
@@ -417,14 +432,14 @@ export default function ModalCustomizacaoVisual({
                   >
                     {dados.nomeAplicacao || 'PorttoHub'}
                     {dados.exibirBadgeOnline && (
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" title="Online" />
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0 inline-block ring-2 ring-emerald-500/30" title="Online" />
                     )}
                   </span>
                   {dados.exibirBadgeEnterprise && (
                     <span 
-                      className="text-[9px] uppercase font-mono font-bold tracking-wider px-1.5 py-0.5 rounded"
+                      className="text-[9px] uppercase font-mono font-bold tracking-wider px-1.5 py-0.5 rounded shrink-0 hidden xs:inline-block"
                       style={{ 
-                        backgroundColor: `${dados.corPrimaria}20`,
+                        backgroundColor: `${dados.corPrimaria}25`,
                         color: dados.corPrimaria,
                         borderColor: `${dados.corPrimaria}40`
                       }}
@@ -433,33 +448,42 @@ export default function ModalCustomizacaoVisual({
                     </span>
                   )}
                 </div>
-                {dados.subtituloAplicacao && (
-                  <span className="text-[11px] text-slate-400 font-medium">
-                    {dados.subtituloAplicacao}
-                  </span>
-                )}
+                {/* SUBTÍTULO OPERACIONAL COM TAMANHO DINÂMICO E CORES REAIS */}
+                <span 
+                  className={`font-medium truncate mt-0.5 block ${
+                    dados.corFundoHeader ? 'text-slate-300' : 'text-slate-400'
+                  } ${
+                    dados.tamanhoFonteSubtitulo === 'base' ? 'text-xs' : 
+                    dados.tamanhoFonteSubtitulo === 'sm' ? 'text-[11px]' : 'text-[10px]'
+                  }`}
+                  style={{
+                    fontFamily: `var(--app-font-family, ${dados.familiaFonte})`
+                  }}
+                >
+                  {dados.subtituloAplicacao || 'Portaria Inteligente & Controle de Acesso'}
+                </span>
               </div>
             </div>
 
-            {/* Amostra rápida de Botão & Tipografia */}
-            <div className="hidden sm:flex items-center gap-2">
+            {/* LADO DIREITO: ALERTA NO CONDOMÍNIO + NOTIFICAÇÕES (CININHO) + STATUS */}
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              <div className="hidden xs:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
+                <Users className="w-3.5 h-3.5" />
+                <span>1 Presente</span>
+              </div>
+              <div className="relative p-2 rounded-xl bg-slate-800/80 border border-slate-700/80 text-slate-300 flex items-center justify-center">
+                <Bell className="w-4 h-4 text-amber-400" />
+                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              </div>
               <div 
-                className="px-3 py-1.5 text-xs font-bold text-white shadow-sm flex items-center gap-1.5 cursor-default transition-all"
+                className="hidden md:flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white shadow-xs"
                 style={{ 
                   backgroundColor: dados.corPrimaria,
                   borderRadius: dados.raioBorda === 'reto' ? '4px' : dados.raioBorda === 'suave' ? '6px' : dados.raioBorda === 'pill' ? '999px' : '10px'
                 }}
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Exemplo Primário</span>
-              </div>
-              <div 
-                className="px-2.5 py-1.5 text-xs font-bold border border-slate-700 text-slate-300 flex items-center gap-1.5"
-                style={{ 
-                  borderRadius: dados.raioBorda === 'reto' ? '4px' : dados.raioBorda === 'suave' ? '6px' : dados.raioBorda === 'pill' ? '999px' : '10px'
-                }}
-              >
-                <span>{dados.familiaFonte} ({dados.escalaFonteGlobal})</span>
+                <span>Portaria 24h</span>
               </div>
             </div>
           </div>
@@ -1429,6 +1453,16 @@ export default function ModalCustomizacaoVisual({
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+            <button
+              type="button"
+              onClick={handleFixarPadrao}
+              className="px-3.5 py-2 bg-amber-600/90 hover:bg-amber-600 text-white border border-amber-500/40 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-md"
+              title="Fixa estas configurações como padrão definitivo oficial do sistema"
+            >
+              <Star className="w-3.5 h-3.5 fill-current text-amber-200" />
+              <span>Fixar como Padrão do Sistema</span>
+            </button>
+
             <button
               type="button"
               onClick={handleAplicarTodos}

@@ -1044,6 +1044,11 @@ export default function App() {
                     <h1 className="font-bold text-base leading-tight flex items-center gap-2">
                       {customVisual.nomeAplicacao || 'PorttoHub'} <span className="text-[10px] bg-slate-800 text-emerald-400 font-mono px-2 py-0.5 rounded">PWA</span>
                     </h1>
+                    {customVisual.subtituloAplicacao && (
+                      <p className="text-[10px] text-slate-400 font-medium truncate max-w-[150px] leading-tight mt-0.5">
+                        {customVisual.subtituloAplicacao}
+                      </p>
+                    )}
                     <p className="text-xs text-slate-400 truncate max-w-[150px]">
                       {operadorContextoGlobal.condominio_nome}
                     </p>
@@ -1200,6 +1205,11 @@ export default function App() {
                       <span className="font-black text-white text-sm tracking-tight block">
                         {customVisual.nomeAplicacao || 'PorttoHub'}
                       </span>
+                      {customVisual.subtituloAplicacao && (
+                        <span className="text-[10px] text-slate-400 font-medium block truncate max-w-[140px] leading-tight">
+                          {customVisual.subtituloAplicacao}
+                        </span>
+                      )}
                       <span className="text-[10px] text-emerald-400 font-mono font-bold block">
                         v{VERSAO_BUILD_ATUAL} • PWA Offline
                       </span>
