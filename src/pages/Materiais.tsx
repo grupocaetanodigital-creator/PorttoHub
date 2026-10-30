@@ -297,14 +297,7 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
           </div>
         </div>
 
-        {podeCriar ? (
-          <button
-            onClick={() => { limparFormulario(); setModalAberto(true); }}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 transition shadow-2xs cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" /> <span>Cadastrar Equipamento</span>
-          </button>
-        ) : (
+        {!podeCriar && (
           <span className="text-[10px] text-slate-400 flex items-center gap-1 bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700">
             <Lock className="w-3 h-3 text-amber-400" /> Cadastro Restrito (Nível {usuarioLogado?.nivel_acesso ?? 3})
           </span>
@@ -611,6 +604,22 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Botão Flutuante (FAB) no Canto Direito Inferior Acima da Barra de Menu */}
+      {podeCriar && !modalAberto && (
+        <button
+          type="button"
+          onClick={() => {
+            limparFormulario();
+            setModalAberto(true);
+          }}
+          className="fixed bottom-20 md:bottom-8 right-4 sm:right-6 z-40 w-13 h-13 sm:w-14 sm:h-14 rounded-full bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-xl hover:shadow-2xl hover:shadow-emerald-950/40 flex items-center justify-center transition-all duration-200 cursor-pointer border-2 border-white/90 dark:border-slate-800"
+          title="Cadastrar Equipamento"
+          aria-label="Cadastrar Equipamento"
+        >
+          <Plus className="w-6 h-6 sm:w-7 sm:h-7 stroke-[2.5]" />
+        </button>
       )}
     </div>
   );
