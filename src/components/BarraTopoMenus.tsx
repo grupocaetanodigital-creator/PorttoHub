@@ -112,6 +112,17 @@ export default function BarraTopoMenus({
               <h1 className="font-extrabold text-xs sm:text-sm md:text-base text-slate-900 dark:text-white tracking-tight truncate leading-tight">
                 {tituloModulo || 'Módulo'}
               </h1>
+              {moduloId === 'prestadores' && (
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('porttohub:abrir_config_horarios'))}
+                  className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-purple-600 dark:text-slate-400 dark:hover:text-purple-300 border border-slate-300 dark:border-slate-700 transition cursor-pointer"
+                  title="Configurar horários de obras e mudanças"
+                  aria-label="Configurar horários"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                </button>
+              )}
               <span className="hidden md:inline-flex text-[9px] uppercase font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
                 Menu Ativo
               </span>
