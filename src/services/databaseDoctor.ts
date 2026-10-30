@@ -752,11 +752,16 @@ ALTER TABLE IF EXISTS public.custodia
   ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Retido',
   ADD COLUMN IF NOT EXISTS operador_entrada TEXT,
   ADD COLUMN IF NOT EXISTS operador_saida TEXT,
+  ADD COLUMN IF NOT EXISTS tipo_baixa TEXT DEFAULT 'destinatario',
+  ADD COLUMN IF NOT EXISTS assinatura_url TEXT,
   ADD COLUMN IF NOT EXISTS data_hora_entrada TIMESTAMPTZ DEFAULT NOW(),
   ADD COLUMN IF NOT EXISTS data_hora_saida TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS observacoes TEXT,
   ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_custodia_condo_status_created ON public.custodia(condominio_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_custodia_codigo ON public.custodia(codigo_custodia);
 
 -- 10. TABELA: materiais_posto
 CREATE TABLE IF NOT EXISTS public.materiais_posto (
