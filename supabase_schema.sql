@@ -524,13 +524,77 @@ ALTER TABLE IF EXISTS public.custodia
   ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Retido',
   ADD COLUMN IF NOT EXISTS operador_entrada TEXT,
   ADD COLUMN IF NOT EXISTS operador_saida TEXT,
+  ADD COLUMN IF NOT EXISTS tipo_baixa TEXT DEFAULT 'destinatario',
+  ADD COLUMN IF NOT EXISTS assinatura_url TEXT,
   ADD COLUMN IF NOT EXISTS data_hora_entrada TIMESTAMPTZ DEFAULT NOW(),
   ADD COLUMN IF NOT EXISTS data_hora_saida TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS observacoes TEXT,
   ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
+-- Índices de Alta Performance para Custódia de Itens
 CREATE INDEX IF NOT EXISTS idx_custodia_condo_status ON public.custodia(condominio_id, status);
+CREATE INDEX IF NOT EXISTS idx_custodia_condo_status_created ON public.custodia(condominio_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_custodia_condo_created ON public.custodia(condominio_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_custodia_codigo ON public.custodia(codigo_custodia);
+CREATE INDEX IF NOT EXISTS idx_custodia_unidade ON public.custodia(condominio_id, destino_unidade);
+CREATE INDEX IF NOT EXISTS idx_custodia_saida ON public.custodia(condominio_id, data_hora_saida DESC);
+
+-- Função Transacional para Baixa Segura de Custódia com Bloqueio Concorrente
+CREATE OR REPLACE FUNCTION public.executar_baixa_custodia_transacional(
+  p_custodia_id UUID,
+  p_recebedor_nome TEXT,
+  p_recebedor_doc TEXT,
+  p_foto_saida_url TEXT DEFAULT NULL,
+  p_assinatura_url TEXT DEFAULT NULL,
+  p_operador_saida TEXT DEFAULT 'Portaria',
+  p_tipo_baixa TEXT DEFAULT 'destinatario',
+  p_observacoes TEXT DEFAULT NULL
+) RETURNS JSONB AS $$
+DECLARE
+  v_item RECORD;
+  v_agora TIMESTAMPTZ := NOW();
+BEGIN
+  -- Bloqueio pessimista para prevenir baixas concorrentes duplicadas
+  SELECT * INTO v_item FROM public.custodia 
+  WHERE id = p_custodia_id 
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('sucesso', false, 'erro', 'Registro de custódia não encontrado.');
+  END IF;
+
+  IF LOWER(v_item.status) = 'retirado' THEN
+    RETURN jsonb_build_object('sucesso', false, 'erro', 'Este item já foi retirado anteriormente em ' || COALESCE(TO_CHAR(v_item.data_hora_saida, 'DD/MM/YYYY HH24:MI'), 'data anterior'));
+  END IF;
+
+  UPDATE public.custodia
+  SET
+    status = 'Retirado',
+    data_hora_saida = v_agora,
+    recebedor_nome = p_recebedor_nome,
+    recebedor_doc = p_recebedor_doc,
+    foto_saida_url = COALESCE(p_foto_saida_url, foto_saida_url),
+    assinatura_url = COALESCE(p_assinatura_url, assinatura_url),
+    operador_saida = p_operador_saida,
+    tipo_baixa = p_tipo_baixa,
+    observacoes = CASE 
+      WHEN p_observacoes IS NOT NULL AND LENGTH(TRIM(p_observacoes)) > 0 
+      THEN COALESCE(observacoes || E'\n', '') || '[Baixa ' || TO_CHAR(v_agora, 'DD/MM/YYYY HH24:MI') || '] ' || p_observacoes
+      ELSE observacoes
+    END,
+    updated_at = v_agora
+  WHERE id = p_custodia_id;
+
+  RETURN jsonb_build_object(
+    'sucesso', true,
+    'id', p_custodia_id,
+    'codigo_custodia', v_item.codigo_custodia,
+    'data_hora_saida', v_agora,
+    'status', 'Retirado'
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ==============================================================================
 -- 10. TABELA: materiais_posto (Inventário e equipamentos da guarita)
