@@ -1,0 +1,36 @@
+name: PorttoHub Automated Versioning & Build Verification
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  version_and_build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Instalar Dependências
+        run: npm ci || npm install
+
+      - name: Executar Incremento Automático de Versão (Horário de Brasília)
+        run: node scripts/atualizar-versao.cjs
+
+      - name: Compilação de Produção (Vite Build)
+        run: npm run build
+
+      - name: Verificar Integridade de version.json
+        run: |
+          test -f public/version.json || exit 1
+          test -f dist/version.json || cp public/version.json dist/version.json
+          cat public/version.json

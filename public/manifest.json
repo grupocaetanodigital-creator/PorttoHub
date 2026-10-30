@@ -1,26 +1,44 @@
 {
+  "id": "/",
   "name": "PorttoHub - Portaria Inteligente",
   "short_name": "PorttoHub",
+  "description": "Sistema multi-condomínio para portaria, encomendas, custódia e controle de acesso.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": [
+    "standalone",
+    "window-controls-overlay",
+    "minimal-ui"
+  ],
   "background_color": "#0b1329",
   "theme_color": "#0f172a",
-  "orientation": "portrait-primary",
+  "orientation": "any",
+  "categories": ["business", "utilities", "productivity"],
   "icons": [
     {
       "src": "/pwa-192x192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/pwa-512x512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     },
     {
       "src": "/icon.svg",
       "sizes": "any",
-      "type": "image/svg+xml"
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ]
 }

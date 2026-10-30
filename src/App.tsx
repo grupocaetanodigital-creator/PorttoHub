@@ -53,6 +53,8 @@ import AlertaNoCondominioTopo from './components/AlertaNoCondominioTopo';
 import BarraTopoMenus from './components/BarraTopoMenus';
 import HeaderBarPrincipal from './components/HeaderBarPrincipal';
 import { checarEDispararAlarmeTrocaPlantao } from './services/lembretesService';
+import { navigationStack } from './services/navigationStackService';
+import { preCarregarDadosCondominio } from './services/deltaSyncService';
 import { salvarCacheLocal, obterCacheLocal } from './services/offlineStorageService';
 import { atualizarCacheAutonomia3Horas } from './services/offlineSyncEngine';
 import { carregarEPreaquecerEncomendas, inicializarRealtimeEncomendas } from './services/encomendasService';
@@ -335,21 +337,21 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!operador) return;
+    navigationStack.inicializar(voltarModulo);
+  }, []);
 
-    window.history.replaceState({ modulo: moduloAtual }, '');
+  useEffect(() => {
+    navigationStack.setModuloAtual(moduloAtual);
+  }, [moduloAtual]);
 
-    const handlePopState = () => {
-      if (moduloAtual !== 'dashboard') {
-        voltarModulo();
+  useEffect(() => {
+    if (operador) {
+      const condoId = (eAdmin || eAcessoMultiCondominio) ? (condominioAtivoId || operador.condominio_id) : operador.condominio_id;
+      if (condoId && condoId !== 'todos' && condoId !== 'global') {
+        preCarregarDadosCondominio(condoId);
       }
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-    };
-  }, [operador, moduloAtual, historicoModulos]);
+    }
+  }, [operador, condominioAtivoId]);
 
   const mudarModulo = (novoModulo: string, substituir = false) => {
     let modDestino = novoModulo;

@@ -57,3 +57,28 @@
     display: block !important;
   }
 }
+
+/* Samsung A03 & PWA Standalone Fullscreen Viewport & Safe Area Rules */
+html, body {
+  min-height: 100%;
+  min-height: -webkit-fill-available;
+  min-height: 100dvh;
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+}
+
+.standalone-safe-top {
+  padding-top: max(env(safe-area-inset-top, 0px), 8px);
+}
+
+.standalone-safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px);
+}
+

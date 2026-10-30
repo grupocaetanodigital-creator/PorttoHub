@@ -422,10 +422,24 @@ export function obterNiveisLocal(): NivelAcessoItem[] {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Garantir que todos os níveis padrão existam no merge
+        // Garantir que todos os níveis padrão existam e suas permissões sofram merge profundo
         const mapa = new Map<string, NivelAcessoItem>();
-        NIVEIS_PADRAO.forEach(n => mapa.set(n.id, n));
-        parsed.forEach((n: NivelAcessoItem) => mapa.set(n.id, n));
+        NIVEIS_PADRAO.forEach(n => mapa.set(n.id, JSON.parse(JSON.stringify(n))));
+        parsed.forEach((n: NivelAcessoItem) => {
+          const padrao = mapa.get(n.id);
+          if (padrao) {
+            mapa.set(n.id, {
+              ...padrao,
+              ...n,
+              permissoes: {
+                ...padrao.permissoes,
+                ...(n.permissoes || {})
+              }
+            });
+          } else {
+            mapa.set(n.id, n);
+          }
+        });
         const consolidados = Array.from(mapa.values());
         cacheNiveisMemoria = consolidados;
         return consolidados;
@@ -473,9 +487,23 @@ export async function carregarNiveisAcesso(condominioId?: string): Promise<Nivel
 
       if (data?.niveis_acesso && Array.isArray(data.niveis_acesso) && data.niveis_acesso.length > 0) {
         const mapa = new Map<string, NivelAcessoItem>();
-        NIVEIS_PADRAO.forEach(n => mapa.set(n.id, n));
-        locais.forEach(n => mapa.set(n.id, n));
-        data.niveis_acesso.forEach((n: NivelAcessoItem) => mapa.set(n.id, n));
+        NIVEIS_PADRAO.forEach(n => mapa.set(n.id, JSON.parse(JSON.stringify(n))));
+        locais.forEach(n => {
+          const padrao = mapa.get(n.id);
+          if (padrao) {
+            mapa.set(n.id, { ...padrao, ...n, permissoes: { ...padrao.permissoes, ...(n.permissoes || {}) } });
+          } else {
+            mapa.set(n.id, n);
+          }
+        });
+        data.niveis_acesso.forEach((n: NivelAcessoItem) => {
+          const padrao = mapa.get(n.id);
+          if (padrao) {
+            mapa.set(n.id, { ...padrao, ...n, permissoes: { ...padrao.permissoes, ...(n.permissoes || {}) } });
+          } else {
+            mapa.set(n.id, n);
+          }
+        });
         const consolidados = Array.from(mapa.values());
         salvarNiveisLocal(consolidados);
         return consolidados;
@@ -930,6 +958,19 @@ export function verificarPermissao(
       const resAcaoNivel = resolverAcaoEmPermissoesModulo(permissoesModulo, modKey, acao);
       if (resAcaoNivel !== undefined) {
         return resAcaoNivel;
+      }
+    }
+
+    // Fallback de resiliência: se o módulo Bancada não constava no registro antigo do perfil,
+    // concede visualização e operações rotineiras para operadores de posto (Nível 0, 1, 2 e 3)
+    if (!permissoesModulo && (modKey === 'bancada' || modKey === 'mod11_bancada_conferencia')) {
+      if (nivelNum <= 3 || perfilStr.includes('operador') || perfilStr.includes('porteiro') || perfilStr.includes('guarita')) {
+        if (acao === 'visualizar' || acao === 'lancar' || acao === 'baixa' || acao === 'historico') {
+          return true;
+        }
+        if (acao === 'zerar' || acao === 'excluir') {
+          return ehAdminGeral || nivelNum <= 1;
+        }
       }
     }
   }

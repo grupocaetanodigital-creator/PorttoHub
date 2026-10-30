@@ -26,19 +26,45 @@ export const BotaoAtualizarApp: React.FC<BotaoAtualizarAppProps> = ({
     setStatusTexto('Buscando...');
 
     try {
-      const res = await fetch(`/api/github-versao?_t=${Date.now()}`);
+      // 1. Tenta consultar o manifesto estático version.json gerado no build da Vercel
       let temNova = false;
-      if (res.ok) {
-        const info = await res.json();
-        if (info.sucesso && info.versaoCalculada && info.versaoCalculada !== VERSAO_BUILD_ATUAL) {
-          temNova = true;
+      try {
+        const res = await fetch(`/version.json?_t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
+        });
+        if (res.ok) {
+          const info = await res.json();
+          if (info.versao && info.versao !== VERSAO_BUILD_ATUAL) {
+            temNova = true;
+          }
         }
+      } catch (errJson) {
+        console.warn('[BotaoAtualizarApp] Falha ao ler version.json, tentando fallback:', errJson);
+      }
+
+      // 2. Se não detectou por version.json, tenta /api/github-versao
+      if (!temNova) {
+        try {
+          const resGit = await fetch(`/api/github-versao?_t=${Date.now()}`);
+          if (resGit.ok) {
+            const infoGit = await resGit.json();
+            if (infoGit.sucesso && infoGit.versaoCalculada && infoGit.versaoCalculada !== VERSAO_BUILD_ATUAL) {
+              temNova = true;
+            }
+          }
+        } catch {}
       }
 
       if (temNova || novaVersaoDisponivel) {
         setStatusTexto('Atualizando...');
         await forcarAtualizacaoPwa();
       } else {
+        // Tenta acionar o service worker update()
+        if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+          const reg = await navigator.serviceWorker.getRegistration();
+          if (reg) await reg.update();
+        }
         setStatusTexto('Atualizado!');
         setTimeout(() => {
           setStatusTexto(null);

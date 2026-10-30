@@ -1,25 +1,17 @@
 /**
  * Serviço de Versionamento do Aplicativo INFPORT / PorttoHub
- * Padrão solicitado: DDMMAAHHMM (ex: 2410261803)
+ * Padrão solicitado: DDMMAAHHMM (ex: 3010261942)
  * Fuso Horário Obrigatório: Horário Oficial do Brasil (Brasília / America/Sao_Paulo - UTC-3)
- * Onde:
- * - DD: Dia do mês (01-31)
- * - MM: Mês (01-12)
- * - AA: Ano com 2 dígitos (ex: 26 para 2026)
- * - HH: Hora no fuso de Brasília (00-23)
- * - MM: Minuto (00-59)
  */
 
 export const NOME_APLICACAO = 'PorttoHub';
 
 export const FUSO_HORARIO_OFICIAL_BRASIL = 'America/Sao_Paulo';
 
-// Versão de build gravada da última modificação (Horário de Brasília)
-export const VERSAO_BUILD_ATUAL = '3010261144';
+// Versão de build gerada automaticamente no build (Horário de Brasília)
+export const VERSAO_BUILD_ATUAL = '3010261942';
+export const COMMIT_HASH_ATUAL = '1c50282';
 
-/**
- * Gera a string de versão DDMMAAHHMM no fuso horário oficial do Brasil (Brasília)
- */
 export function gerarVersaoHorarioBrasil(data: Date = new Date()): string {
   try {
     const formatador = new Intl.DateTimeFormat('pt-BR', {
@@ -46,22 +38,14 @@ export function gerarVersaoHorarioBrasil(data: Date = new Date()): string {
 
     return `${dia}${mes}${ano}${hora}${minuto}`;
   } catch (e) {
-    console.warn('[versaoService] Erro ao formatar data no fuso Brasil:', e);
     return VERSAO_BUILD_ATUAL;
   }
 }
 
-/**
- * Retorna a string da versão formatada
- */
 export function obterVersaoApp(): string {
   return VERSAO_BUILD_ATUAL;
 }
 
-/**
- * Formata a versão DDMMAAHHMM para exibição legível com informação do fuso
- * Exemplo: "2410261803" -> "24/10/26 18:03 (Horário de Brasília)"
- */
 export function formatarVersaoParaExibicao(versao: string = VERSAO_BUILD_ATUAL): string {
   if (!versao || versao.length < 10) return versao;
   const dia = versao.slice(0, 2);

@@ -1,11 +1,11 @@
 {
   "name": "porttohub",
   "private": true,
-  "version": "30.10.26-1144",
+  "version": "3010261942",
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "vite build",
+    "build": "node scripts/atualizar-versao.cjs && vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"

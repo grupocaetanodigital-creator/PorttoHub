@@ -31,9 +31,7 @@ import {
   Archive,
   ListChecks,
   PenTool,
-  PackagePlus,
-  Scan,
-  Calendar
+  PackagePlus
 } from 'lucide-react';
 import {
   ItemBancada,
@@ -824,26 +822,6 @@ export default function Bancada({ usuarioLogado, onNavegar }: BancadaProps) {
 
           {/* BOTÕES DE AÇÃO: ENC. RETIDAS, ZERAR AO LADO, HISTÓRICO */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => onNavegar?.('controle_acesso')}
-              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition active:scale-95 cursor-pointer border border-blue-400/30"
-              title="Acessar Controle de Acesso e Liberação de Portaria"
-            >
-              <Scan className="w-3.5 h-3.5" />
-              <span>Acesso</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onNavegar?.('reservas')}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition active:scale-95 cursor-pointer border border-emerald-400/30"
-              title="Acessar Reserva de Áreas Comuns e Lista de Convidados"
-            >
-              <Calendar className="w-3.5 h-3.5" />
-              <span>Reservas</span>
-            </button>
-
             <button
               type="button"
               onClick={handleSincronizarRE}
