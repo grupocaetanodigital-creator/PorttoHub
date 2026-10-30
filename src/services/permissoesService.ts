@@ -45,6 +45,7 @@ export interface PermissoesModulo {
   };
   materiais?: PermissaoModuloPadrao & {
     cadastrar_equipamentos?: boolean;
+    alterar_status?: boolean;
     editar?: boolean;
     excluir?: boolean;
   };
@@ -185,9 +186,10 @@ export const MODULOS_DEFINICAO_RBAC: ModuloDefinicaoInfo[] = [
     id: 'materiais',
     nome: 'Materiais & Inventário do Posto',
     acoesEspecificas: [
-      { id: 'cadastrar_equipamentos', label: 'Cadastrar Equipamentos (HT, etc)' },
-      { id: 'editar', label: 'Editar' },
-      { id: 'excluir', label: 'Excluir' }
+      { id: 'cadastrar_equipamentos', label: 'Cadastrar Novos Equipamentos' },
+      { id: 'alterar_status', label: 'Alterar Status / Apontar Avaria c/ Foto' },
+      { id: 'editar', label: 'Editar Dados Cadastrais / Patrimônio' },
+      { id: 'excluir', label: 'Excluir / Baixar Equipamento' }
     ]
   },
   {
@@ -292,7 +294,7 @@ export const NIVEIS_PADRAO: NivelAcessoItem[] = [
       chaves: { visualizar: true, criar: true, editar: true, excluir: true, emprestar: true, devolver: true, cadastrar: true },
       rondas: { visualizar: true, criar: true, editar: true, excluir: true, iniciar_ronda: true, cadastrar_pontos: true, setores: true },
       autorizados: { visualizar: true, criar: true, editar: true, excluir: true, cadastrar: true, dar_entrada: true, dar_saida: true },
-      materiais: { visualizar: true, criar: true, editar: true, excluir: true, cadastrar_equipamentos: true },
+      materiais: { visualizar: true, criar: true, editar: true, excluir: true, cadastrar_equipamentos: true, alterar_status: true },
       manutencao: { visualizar: true, criar: true, editar: true, excluir: true, abrir_os: true, concluir: true },
       ocorrencias: { visualizar: true, criar: true, editar: true, excluir: true, resolver: true },
       passagem_posto: { visualizar: true, criar: true, editar: true, excluir: true, assumir_posto: true, relatorio: true },
@@ -317,7 +319,7 @@ export const NIVEIS_PADRAO: NivelAcessoItem[] = [
       chaves: { visualizar: true, criar: true, editar: true, excluir: false, emprestar: true, devolver: true, cadastrar: true },
       rondas: { visualizar: true, criar: true, editar: true, excluir: false, iniciar_ronda: true, cadastrar_pontos: true, setores: true },
       autorizados: { visualizar: true, criar: true, editar: true, excluir: false, cadastrar: true, dar_entrada: true, dar_saida: true },
-      materiais: { visualizar: true, criar: true, editar: true, excluir: false, cadastrar_equipamentos: true },
+      materiais: { visualizar: true, criar: true, editar: true, excluir: false, cadastrar_equipamentos: true, alterar_status: true },
       manutencao: { visualizar: true, criar: true, editar: true, excluir: false, abrir_os: true, concluir: true },
       ocorrencias: { visualizar: true, criar: true, editar: true, excluir: false, resolver: true },
       passagem_posto: { visualizar: true, criar: true, editar: true, excluir: false, assumir_posto: true, relatorio: true },
@@ -342,7 +344,7 @@ export const NIVEIS_PADRAO: NivelAcessoItem[] = [
       chaves: { visualizar: true, criar: true, editar: true, excluir: false, emprestar: true, devolver: true, cadastrar: true },
       rondas: { visualizar: true, criar: true, editar: true, excluir: false, iniciar_ronda: true, cadastrar_pontos: true, setores: false },
       autorizados: { visualizar: true, criar: true, editar: true, excluir: false, cadastrar: true, dar_entrada: true, dar_saida: true },
-      materiais: { visualizar: true, criar: true, editar: true, excluir: false, cadastrar_equipamentos: true },
+      materiais: { visualizar: true, criar: true, editar: true, excluir: false, cadastrar_equipamentos: true, alterar_status: true },
       manutencao: { visualizar: true, criar: true, editar: true, excluir: false, abrir_os: true, concluir: true },
       ocorrencias: { visualizar: true, criar: true, editar: true, excluir: false, resolver: true },
       passagem_posto: { visualizar: true, criar: true, editar: true, excluir: false, assumir_posto: true, relatorio: true },
@@ -367,7 +369,7 @@ export const NIVEIS_PADRAO: NivelAcessoItem[] = [
       chaves: { visualizar: true, criar: true, editar: false, excluir: false, emprestar: true, devolver: true, cadastrar: false },
       rondas: { visualizar: true, criar: true, editar: false, excluir: false, iniciar_ronda: true, cadastrar_pontos: false, setores: false },
       autorizados: { visualizar: true, criar: true, editar: false, excluir: false, cadastrar: true, dar_entrada: true, dar_saida: true },
-      materiais: { visualizar: true, criar: false, editar: false, excluir: false, cadastrar_equipamentos: false },
+      materiais: { visualizar: true, criar: false, editar: false, excluir: false, cadastrar_equipamentos: false, alterar_status: true },
       manutencao: { visualizar: true, criar: true, editar: false, excluir: false, abrir_os: true, concluir: false },
       ocorrencias: { visualizar: true, criar: true, editar: false, excluir: false, resolver: false },
       passagem_posto: { visualizar: true, criar: true, editar: true, excluir: false, assumir_posto: true, relatorio: true },
@@ -392,7 +394,7 @@ export const NIVEIS_PADRAO: NivelAcessoItem[] = [
       chaves: { visualizar: true, criar: false, editar: false, excluir: false, emprestar: false, devolver: false, cadastrar: false },
       rondas: { visualizar: true, criar: false, editar: false, excluir: false, iniciar_ronda: false, cadastrar_pontos: false, setores: false },
       autorizados: { visualizar: true, criar: false, editar: false, excluir: false, cadastrar: false, dar_entrada: false, dar_saida: false },
-      materiais: { visualizar: true, criar: false, editar: false, excluir: false, cadastrar_equipamentos: false },
+      materiais: { visualizar: true, criar: false, editar: false, excluir: false, cadastrar_equipamentos: false, alterar_status: false },
       bancada: { visualizar: true, criar: false, editar: false, excluir: false, lancar: false, baixa: false, zerar: false, historico: true },
       manutencao: { visualizar: true, criar: true, editar: false, excluir: false, abrir_os: true, concluir: false },
       ocorrencias: { visualizar: true, criar: true, editar: false, excluir: false, resolver: false },
