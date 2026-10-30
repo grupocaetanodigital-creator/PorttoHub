@@ -58,16 +58,24 @@ export default function EmblemaInfport({
   // URL base com prioridades de resiliência: custom -> salvo -> asset bundled -> public
   const urlEfetiva = urlCustom || customVisual.emblemaUrl || defaultEmblemImg || '/emblema-infport.png';
   
-  // Gerenciamento de estado de fallback de imagem
-  const [srcAtual, setSrcAtual] = useState<string>(urlEfetiva);
+  // Gerenciamento de fallback sem causar ciclos de render
+  const [comErro, setComErro] = useState<boolean>(false);
 
   useEffect(() => {
-    setSrcAtual(urlEfetiva);
+    setComErro(false);
   }, [urlEfetiva]);
 
-  // Controle estrito da luz de fundo (Glow / Brilho):
-  // Se a prop comBrilho foi passada explicitamente (true ou false), obedece a prop.
-  // Senão, obedece estritamente customVisual.emblemaBrilho (se for false, desliga completamente a luz).
+  const srcAtual = (!comErro && urlEfetiva) ? urlEfetiva : (defaultEmblemImg || EMBLEMA_SVG_PADRAO);
+
+  const lidarComErro = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    if (!comErro) {
+      setComErro(true);
+    } else if (e.currentTarget.src !== EMBLEMA_SVG_PADRAO) {
+      e.currentTarget.src = EMBLEMA_SVG_PADRAO;
+    }
+  };
+
+  // Controle estrito da luz de fundo (Glow / Brilho)
   const brilhoAtivo = comBrilho !== undefined ? comBrilho : (customVisual.emblemaBrilho === true);
   const corBrilho = corBrilhoCustom || customVisual.emblemaCorBrilho || '#f59e0b';
   const estiloBorda = estiloBordaCustom || customVisual.emblemaEstiloBorda || 'anel_dourado';
@@ -80,8 +88,7 @@ export default function EmblemaInfport({
       ? 'rounded-2xl'
       : 'rounded-lg';
 
-  // Classes de borda - quando a luz de fundo está apagada (brilhoAtivo === false),
-  // eliminamos qualquer box-shadow colorida para que a luz fique 100% apagada
+  // Classes de borda
   let borderClasses = '';
   if (comBorda !== false && estiloBorda !== 'sem_borda') {
     switch (estiloBorda) {
@@ -100,15 +107,6 @@ export default function EmblemaInfport({
         break;
     }
   }
-
-  const lidarComErro = () => {
-    // Sequência de fallbacks automáticos em caso de erro no arquivo ou 404
-    if (srcAtual !== defaultEmblemImg && defaultEmblemImg) {
-      setSrcAtual(defaultEmblemImg);
-    } else if (srcAtual !== EMBLEMA_SVG_PADRAO) {
-      setSrcAtual(EMBLEMA_SVG_PADRAO);
-    }
-  };
 
   return (
     <div 

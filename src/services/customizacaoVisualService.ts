@@ -767,11 +767,13 @@ export function salvarCustomizacaoVisual(
 
     aplicarEstilosGlobaisNoDOM(atualizado);
 
-    window.dispatchEvent(
-      new CustomEvent(EVENTO_CUSTOMIZACAO, {
-        detail: { ...atualizado, condominio_id: condominioId }
-      })
-    );
+    queueMicrotask(() => {
+      window.dispatchEvent(
+        new CustomEvent(EVENTO_CUSTOMIZACAO, {
+          detail: { ...atualizado, condominio_id: condominioId }
+        })
+      );
+    });
 
     // Se modulosOcultos foi alterado, sincroniza com o mapa de feature flags para garantir reflexo imediato no menu
     if (novosDados.modulosOcultos !== undefined) {
@@ -960,16 +962,18 @@ export function useCustomizacaoVisual(condominioId?: string): CustomizacaoVisual
 
   useEffect(() => {
     const handleAtualizacao = (evt?: any) => {
-      if (evt?.detail) {
-        if (!evt.detail.condominio_id || evt.detail.condominio_id === condominioId || evt.detail.condominio_id === 'global') {
-          setConfig(evt.detail);
-          aplicarEstilosGlobaisNoDOM(evt.detail);
+      queueMicrotask(() => {
+        if (evt?.detail) {
+          if (!evt.detail.condominio_id || evt.detail.condominio_id === condominioId || evt.detail.condominio_id === 'global') {
+            setConfig(evt.detail);
+            aplicarEstilosGlobaisNoDOM(evt.detail);
+          }
+        } else {
+          const atual = obterCustomizacaoVisual(condominioId);
+          setConfig(atual);
+          aplicarEstilosGlobaisNoDOM(atual);
         }
-      } else {
-        const atual = obterCustomizacaoVisual(condominioId);
-        setConfig(atual);
-        aplicarEstilosGlobaisNoDOM(atual);
-      }
+      });
     };
     window.addEventListener(EVENTO_CUSTOMIZACAO, handleAtualizacao);
     window.addEventListener("storage", handleAtualizacao);

@@ -119,17 +119,20 @@ export default function ModalCustomizacaoVisual({
 
   if (!aberto) return null;
 
-  // Atualizar campo com persistência e broadcast instantâneo em tempo real
+  // Atualizar campo com persistência e broadcast instantâneo seguro em tempo real
   const atualizarCampo = <K extends keyof CustomizacaoVisual>(campo: K, valor: CustomizacaoVisual[K]) => {
     setDados(prev => {
       const proximo = {
         ...prev,
         [campo]: valor
       };
-      salvarCustomizacaoVisual(proximo, escopoCondominio);
-      if (condominioAtualId && escopoCondominio === 'global') {
-        salvarCustomizacaoVisual(proximo, condominioAtualId);
-      }
+      // Deferir o salvamento e o evento global para fora do ciclo de renderização do React
+      queueMicrotask(() => {
+        salvarCustomizacaoVisual(proximo, escopoCondominio);
+        if (condominioAtualId && escopoCondominio === 'global') {
+          salvarCustomizacaoVisual(proximo, condominioAtualId);
+        }
+      });
       return proximo;
     });
   };
