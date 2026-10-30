@@ -137,6 +137,8 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
   const [baixaFotoUrl, setBaixaFotoUrl] = useState('');
   const [baixaAssinaturaUrl, setBaixaAssinaturaUrl] = useState('');
   const [modoEvidenciaBaixa, setModoEvidenciaBaixa] = useState<'foto' | 'assinatura' | 'ambos'>('foto');
+  const [modalAssinaturaFullscreen, setModalAssinaturaFullscreen] = useState(false);
+  const [alturaCanvasFullscreen, setAlturaCanvasFullscreen] = useState(380);
 
   // Estados do Formulário de Entrada / Novo Item
   const [fluxoEntrada, setFluxoEntrada] = useState<'M-M' | 'M-T' | 'T-M'>('M-M');
@@ -446,12 +448,30 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
     }
   };
 
+  const abrirAssinaturaFullscreen = () => {
+    if (!baixaFotoUrl) {
+      setMensagem({
+        tipo: 'erro',
+        texto: 'A foto é obrigatória! Tire a foto do item ou recebedor antes de coletar a assinatura.'
+      });
+      return;
+    }
+    const h = typeof window !== 'undefined' ? window.innerHeight : 600;
+    setAlturaCanvasFullscreen(Math.max(260, h - 230));
+    setModalAssinaturaFullscreen(true);
+  };
+
   const confirmarEfetivarBaixa = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!itemParaBaixa) return;
 
     if (!baixaRecebedorNome.trim()) {
       setMensagem({ tipo: 'erro', texto: 'Informe o nome completo de quem está recebendo o objeto.' });
+      return;
+    }
+
+    if (!baixaFotoUrl) {
+      setMensagem({ tipo: 'erro', texto: 'A foto do comprovante de retirada é obrigatória antes de finalizar a baixa.' });
       return;
     }
 
@@ -1620,8 +1640,8 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
                 </div>
               </div>
 
-              {/* SELETOR DE EVIDÊNCIA: FOTO OU ASSINATURA DIGITAL */}
-              <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+              {/* SELETOR DE EVIDÊNCIA: FOTO OBRIGATÓRIA E ASSINATURA NA TELA TODA */}
+              <div className="space-y-3 pt-1 border-t border-slate-100 dark:border-slate-800">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-black uppercase text-slate-700 dark:text-slate-300">
                     Comprovante da Devolução
@@ -1630,76 +1650,150 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
                     <button
                       type="button"
                       onClick={() => setModoEvidenciaBaixa('foto')}
-                      className={`px-2 py-1 rounded-md transition ${modoEvidenciaBaixa === 'foto' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs' : 'text-slate-500'}`}
+                      className={`px-2 py-1 rounded-md transition cursor-pointer ${
+                        modoEvidenciaBaixa === 'foto' 
+                          ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs' 
+                          : 'text-slate-500'
+                      }`}
                     >
-                      📷 Foto
+                      📷 Foto {baixaFotoUrl ? '✓' : '(Obrigatória)'}
                     </button>
                     <button
                       type="button"
-                      onClick={() => setModoEvidenciaBaixa('assinatura')}
-                      className={`px-2 py-1 rounded-md transition ${modoEvidenciaBaixa === 'assinatura' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs' : 'text-slate-500'}`}
+                      onClick={() => {
+                        setModoEvidenciaBaixa('assinatura');
+                        abrirAssinaturaFullscreen();
+                      }}
+                      className={`px-2 py-1 rounded-md transition ${
+                        modoEvidenciaBaixa === 'assinatura' 
+                          ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs' 
+                          : 'text-slate-500'
+                      } ${!baixaFotoUrl ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                      title={!baixaFotoUrl ? 'Tire a foto obrigatória primeiro para liberar a assinatura' : 'Abrir assinatura pegando a tela toda'}
                     >
-                      ✍️ Assinatura
+                      ✍️ Assinatura {baixaAssinaturaUrl ? '✓' : '(Tela Toda)'}
                     </button>
                   </div>
                 </div>
 
-                {/* Bloco de Foto */}
-                {modoEvidenciaBaixa === 'foto' && (
-                  <div>
+                {/* Bloco 1: Foto Obrigatória */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <Camera className="w-3.5 h-3.5 text-emerald-500" />
+                      Foto do Comprovante / Retirante <span className="text-red-500 font-bold">*</span>
+                    </span>
                     {baixaFotoUrl ? (
-                      <div className="flex items-center gap-3 p-2.5 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl border border-emerald-300 dark:border-emerald-800">
-                        <img
-                          src={baixaFotoUrl}
-                          alt="Comprovante"
-                          className="w-14 h-14 rounded-xl object-cover border border-emerald-400 shrink-0"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <span className="text-xs font-bold text-emerald-800 dark:text-emerald-200 block">
-                            Foto capturada com sucesso!
-                          </span>
-                          <label className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer inline-block mt-0.5">
-                            Tirar outra foto
-                            <input
-                              type="file"
-                              accept="image/*"
-                              capture="environment"
-                              onChange={(e) => uploadFoto(e.target.files ? e.target.files[0] : null, 'custodia_saida', setBaixaFotoUrl)}
-                              className="hidden"
-                              disabled={uploadingFoto}
-                            />
-                          </label>
-                        </div>
-                      </div>
+                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md flex items-center gap-1 border border-emerald-300 dark:border-emerald-800">
+                        <CheckCircle2 className="w-3 h-3" /> Foto Capturada
+                      </span>
                     ) : (
-                      <label className="w-full py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 cursor-pointer flex items-center justify-center gap-2 transition text-xs font-bold">
-                        <Camera className="w-4 h-4 text-emerald-600" />
-                        <span>{uploadingFoto ? 'Processando imagem...' : 'Capturar Foto do Retirante ou Objeto'}</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          onChange={(e) => uploadFoto(e.target.files ? e.target.files[0] : null, 'custodia_saida', setBaixaFotoUrl)}
-                          className="hidden"
-                          disabled={uploadingFoto}
-                        />
-                      </label>
+                      <span className="text-[10px] font-black uppercase text-amber-500 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-300 dark:border-amber-800">
+                        Obrigatória
+                      </span>
                     )}
                   </div>
-                )}
 
-                {/* Bloco de Assinatura Digital Touch */}
-                {modoEvidenciaBaixa === 'assinatura' && (
-                  <div className="bg-slate-50 dark:bg-slate-800 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-700">
-                    <CampoAssinaturaDigital
-                      valor={baixaAssinaturaUrl}
-                      onChange={setBaixaAssinaturaUrl}
-                      onLimpar={() => setBaixaAssinaturaUrl('')}
-                      nomeRetirante={baixaRecebedorNome}
-                      altura={130}
-                    />
+                  {baixaFotoUrl ? (
+                    <div className="flex items-center gap-3 p-2.5 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl border border-emerald-300 dark:border-emerald-800">
+                      <img
+                        src={baixaFotoUrl}
+                        alt="Comprovante"
+                        className="w-14 h-14 rounded-xl object-cover border border-emerald-400 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-xs font-bold text-emerald-800 dark:text-emerald-200 block">
+                          Foto capturada com sucesso!
+                        </span>
+                        <label className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer inline-block mt-0.5">
+                          Tirar outra foto
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            onChange={(e) => uploadFoto(e.target.files ? e.target.files[0] : null, 'custodia_saida', setBaixaFotoUrl)}
+                            className="hidden"
+                            disabled={uploadingFoto}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="w-full py-3.5 px-4 bg-emerald-50/70 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50 text-emerald-900 dark:text-emerald-200 rounded-2xl border-2 border-dashed border-emerald-400/80 dark:border-emerald-600/80 cursor-pointer flex items-center justify-center gap-2 transition text-xs font-black shadow-xs active:scale-98">
+                      <Camera className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      <span>{uploadingFoto ? 'Processando imagem...' : '📷 Tirar Foto Obrigatória'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={(e) => uploadFoto(e.target.files ? e.target.files[0] : null, 'custodia_saida', setBaixaFotoUrl)}
+                        className="hidden"
+                        disabled={uploadingFoto}
+                      />
+                    </label>
+                  )}
+                </div>
+
+                {/* Bloco 2: Assinatura na Tela Toda (Condicionada à Foto Obrigatória) */}
+                <div className="space-y-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800/80">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <PenTool className="w-3.5 h-3.5 text-purple-500" />
+                      Assinatura Digital (Tela Toda)
+                    </span>
+                    {baixaAssinaturaUrl ? (
+                      <span className="text-[10px] font-bold text-purple-600 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/60 px-2 py-0.5 rounded-md flex items-center gap-1 border border-purple-300 dark:border-purple-800">
+                        <CheckCircle2 className="w-3 h-3" /> Assinada
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-slate-400">
+                        {baixaFotoUrl ? 'Pronta para assinar' : 'Liberada após foto'}
+                      </span>
+                    )}
                   </div>
-                )}
+
+                  {!baixaFotoUrl ? (
+                    <div className="p-2.5 bg-slate-100/80 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/80 text-center">
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                        🔒 A assinatura na tela toda só é liberada após tirar a foto obrigatória acima.
+                      </p>
+                    </div>
+                  ) : baixaAssinaturaUrl ? (
+                    <div className="p-2.5 bg-purple-50/70 dark:bg-purple-950/30 rounded-2xl border border-purple-200 dark:border-purple-800 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <img
+                          src={baixaAssinaturaUrl}
+                          alt="Assinatura"
+                          className="h-10 max-w-[130px] object-contain bg-white dark:bg-slate-900 rounded-lg p-1 border border-purple-300 dark:border-purple-700"
+                        />
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold text-purple-950 dark:text-purple-200 block truncate">
+                            {baixaRecebedorNome || 'Recebedor'}
+                          </span>
+                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold block">
+                            ✓ Assinatura coletada
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={abrirAssinaturaFullscreen}
+                        className="px-2.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-bold transition cursor-pointer shrink-0 shadow-xs"
+                      >
+                        Assinar Novamente
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={abrirAssinaturaFullscreen}
+                      className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-500 text-white rounded-2xl border border-purple-500 cursor-pointer flex items-center justify-center gap-2 transition text-xs font-black shadow-sm active:scale-95"
+                    >
+                      <PenTool className="w-4 h-4" />
+                      <span>✍️ Abrir Campo de Assinatura na Tela Toda</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Botões Finais de Ação */}
@@ -1721,6 +1815,96 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL DE ASSINATURA DIGITAL EM TELA TODA (FULLSCREEN)                     */}
+      {/* ========================================================================= */}
+      {modalAssinaturaFullscreen && (
+        <div className="fixed inset-0 z-[70] bg-slate-950 flex flex-col p-3 sm:p-6 text-white animate-in fade-in duration-150 select-none">
+          {/* Header Superior Fullscreen */}
+          <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-800">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-2xl bg-purple-600/20 border border-purple-500/40 flex items-center justify-center text-purple-400 shrink-0">
+                <PenTool className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
+                  <span>Assinatura Digital em Tela Toda</span>
+                  {itemParaBaixa && (
+                    <span className="text-xs font-mono font-bold text-purple-400 bg-purple-950/60 px-2 py-0.5 rounded-md border border-purple-800/80">
+                      {itemParaBaixa.codigo_custodia}
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs text-slate-400 truncate">
+                  Retirante: <strong className="text-slate-200">{baixaRecebedorNome || itemParaBaixa?.destino_nome_doc || 'Recebedor'}</strong>
+                  {itemParaBaixa?.descricao ? ` • Objeto: ${itemParaBaixa.descricao}` : ''}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setModalAssinaturaFullscreen(false)}
+              className="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer border border-slate-800"
+              title="Fechar tela cheia"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Dica de Uso */}
+          <div className="py-2 flex items-center justify-between text-xs text-slate-400">
+            <span className="flex items-center gap-1.5 font-medium">
+              ✍️ Use o dedo ou caneta stylus para assinar no campo abaixo.
+            </span>
+            <span className="text-[11px] text-purple-400 font-bold hidden sm:inline">
+              Ocupação máxima de tela para precisão
+            </span>
+          </div>
+
+          {/* Área Central Expandida de Assinatura */}
+          <div className="flex-1 w-full bg-slate-900/90 rounded-2xl sm:rounded-3xl border-2 border-dashed border-slate-700/80 p-3 sm:p-5 flex flex-col justify-center overflow-hidden shadow-2xl">
+            <CampoAssinaturaDigital
+              valor={baixaAssinaturaUrl}
+              onChange={setBaixaAssinaturaUrl}
+              onLimpar={() => setBaixaAssinaturaUrl('')}
+              nomeRetirante={baixaRecebedorNome || itemParaBaixa?.destino_nome_doc || 'Recebedor'}
+              altura={alturaCanvasFullscreen}
+              obrigatorio={false}
+            />
+          </div>
+
+          {/* Rodapé de Ações */}
+          <div className="pt-3 sm:pt-4 border-t border-slate-800 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setModalAssinaturaFullscreen(false)}
+              className="px-4 sm:px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-bold border border-slate-800 transition cursor-pointer"
+            >
+              Voltar
+            </button>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!baixaAssinaturaUrl) {
+                    setMensagem({ tipo: 'erro', texto: 'Por favor, realize a assinatura antes de confirmar.' });
+                    return;
+                  }
+                  setModalAssinaturaFullscreen(false);
+                  setMensagem({ tipo: 'sucesso', texto: 'Assinatura capturada com sucesso!' });
+                }}
+                className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 active:scale-95 text-white text-xs font-black rounded-xl transition shadow-lg shadow-purple-600/30 flex items-center gap-2 cursor-pointer"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Confirmar Assinatura</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
