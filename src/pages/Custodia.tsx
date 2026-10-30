@@ -1127,6 +1127,12 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
                           <span className="font-mono text-[10px] font-black bg-slate-900 text-white dark:bg-slate-800 dark:text-emerald-400 px-2 py-0.5 rounded-md tracking-wider">
                             {item.codigo_custodia}
                           </span>
+                          {item.destino_unidade && (
+                            <span className="text-[10px] font-black bg-blue-600 text-white px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
+                              <Building2 className="w-3 h-3 shrink-0" />
+                              <span>{eEstruturaCasas ? 'Casa' : rotuloUnidade} {item.destino_unidade}{item.destino_bloco && !eEstruturaCasas ? ` · ${item.destino_bloco}` : ''}</span>
+                            </span>
+                          )}
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 ${
                             permanencia.nivel === 'vermelho'
                               ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300'
@@ -1172,35 +1178,52 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
                       )}
                     </div>
 
-                    {/* Origem e Destino com Visual Claro */}
-                    <div className="mt-3 grid grid-cols-2 gap-2 p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700/60 text-xs">
-                      {/* Deixado Por */}
-                      <div className="min-w-0 space-y-0.5">
+                    {/* Origem e Destino com Destaque Forte no Destino para Busca */}
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      {/* Deixado Por (Origem) */}
+                      <div className="p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200/80 dark:border-slate-700/60 min-w-0 space-y-1">
                         <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span> De:
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span> De (Origem)
                         </span>
-                        <p className="font-bold text-slate-900 dark:text-white truncate">
+                        <p className="font-semibold text-slate-800 dark:text-slate-200 truncate text-xs" title={item.origem_nome_doc || 'Depositante'}>
                           {item.origem_nome_doc || 'Depositante'}
                         </p>
-                        {item.origem_unidade && (
-                          <p className="text-[10px] text-slate-600 dark:text-slate-400 font-semibold truncate">
+                        {item.origem_unidade ? (
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
                             {eEstruturaCasas ? 'Casa' : rotuloUnidade} {item.origem_unidade} {item.origem_bloco && !eEstruturaCasas ? `(${item.origem_bloco})` : ''}
                           </p>
+                        ) : (
+                          <p className="text-[10px] text-slate-400 italic">Sem unidade</p>
                         )}
                       </div>
 
-                      {/* Destinado A */}
-                      <div className="min-w-0 space-y-0.5 border-l border-slate-200 dark:border-slate-700 pl-2">
-                        <span className="text-[9px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span> Para:
-                        </span>
-                        <p className="font-bold text-slate-900 dark:text-white truncate">
+                      {/* Destinado A (Destino) — Destaque Forte para busca rápida */}
+                      <div className="p-2.5 bg-blue-50/90 dark:bg-blue-950/50 rounded-xl border-2 border-blue-500/80 dark:border-blue-500/80 shadow-xs min-w-0 space-y-1 ring-1 ring-blue-500/20">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-300 flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span> Para (Destino)
+                          </span>
+                          {item.destino_unidade && (
+                            <span className="px-1.5 py-0.5 bg-blue-600 text-white dark:bg-blue-500 text-[10px] font-black rounded font-mono shadow-2xs">
+                              {item.destino_unidade}
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="font-black text-blue-950 dark:text-white text-xs truncate leading-snug" title={item.destino_nome_doc || 'Destinatário'}>
                           {item.destino_nome_doc || 'Destinatário'}
                         </p>
-                        {item.destino_unidade && (
-                          <p className="text-[10px] text-slate-600 dark:text-slate-400 font-semibold truncate">
-                            {eEstruturaCasas ? 'Casa' : rotuloUnidade} {item.destino_unidade} {item.destino_bloco && !eEstruturaCasas ? `(${item.destino_bloco})` : ''}
-                          </p>
+
+                        {item.destino_unidade ? (
+                          <div className="flex items-center gap-1 text-[11px] font-extrabold text-blue-800 dark:text-blue-200 truncate">
+                            <Building2 className="w-3 h-3 text-blue-600 dark:text-blue-400 shrink-0" />
+                            <span>{eEstruturaCasas ? 'Casa' : rotuloUnidade} {item.destino_unidade}</span>
+                            {item.destino_bloco && !eEstruturaCasas && (
+                              <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">· {rotuloBloco} {item.destino_bloco}</span>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-blue-700/80 dark:text-blue-300/80 font-medium italic">Retirada na Guarita</p>
                         )}
                       </div>
                     </div>
@@ -1389,12 +1412,15 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
 
                       {/* Destino */}
                       <td className="px-3 py-2.5">
-                        <div className="font-bold text-slate-900 dark:text-white truncate max-w-[130px]">
+                        <div className="font-extrabold text-blue-700 dark:text-blue-300 truncate max-w-[140px]">
                           {item.destino_nome_doc || '—'}
                         </div>
                         {item.destino_unidade && (
-                          <div className="text-[10px] text-slate-500">
-                            {rotuloUnidade} {item.destino_unidade}
+                          <div className="text-[10px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 mt-0.5">
+                            <span className="px-1.5 py-0.2 bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300 rounded font-black text-[9px] font-mono">
+                              {item.destino_unidade}
+                            </span>
+                            <span>{rotuloUnidade} {item.destino_unidade} {item.destino_bloco ? `(${item.destino_bloco})` : ''}</span>
                           </div>
                         )}
                       </td>
