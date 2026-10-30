@@ -906,9 +906,6 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
                 Posto Ativo
               </span>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Guarda temporária de pertences, achados e perdidos e entrega na guarita
-            </p>
           </div>
         </div>
 
@@ -949,19 +946,6 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
               </button>
             )}
           </div>
-
-          {/* Botão Novo Registro */}
-          {podeCriar && (
-            <button
-              type="button"
-              onClick={() => setFabCustodiaAberto(true)}
-              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer shrink-0"
-            >
-              <PackagePlus className="w-4 h-4" />
-              <span className="hidden sm:inline">Receber Item</span>
-              <span className="sm:hidden">Receber</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -1030,18 +1014,6 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
                 <option value="M-M">🏢 Morador ➔ Morador</option>
                 <option value="M-T">🚚 Morador ➔ Terceiro</option>
                 <option value="T-M">📦 Terceiro ➔ Morador</option>
-              </select>
-
-              {/* Filtro de Idade / Alerta */}
-              <select
-                value={filtroIdadeAtivos}
-                onChange={(e) => setFiltroIdadeAtivos(e.target.value as any)}
-                className="h-8 px-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer focus:outline-none"
-              >
-                <option value="todos">Qualquer Tempo</option>
-                <option value="recentes">🟢 Menos de 24h</option>
-                <option value="atencao">🟡 Entre 1 e 3 dias</option>
-                <option value="alerta">🔴 Mais de 3 dias retido</option>
               </select>
 
               {/* Botão Atualizar */}
