@@ -726,6 +726,11 @@ export default function App() {
       setCondominioAtivoId(idCondFinal);
       carregarNiveisAcesso(idCondFinal);
 
+      // Dispara bootstrapping assíncrono Local-First (IndexedDB) imediatamente no login
+      if (idCondFinal && idCondFinal !== 'todos' && idCondFinal !== 'global') {
+        preCarregarDadosCondominio(idCondFinal);
+      }
+
       if (lembrarAcesso) {
         localStorage.setItem(CHAVE_SESSAO, JSON.stringify({
           operadorId: opData.id,
@@ -828,6 +833,7 @@ export default function App() {
         console.error('Erro ao sincronizar condomínio após troca de operador:', err);
       }
       carregarNiveisAcesso(novoOperador.condominio_id);
+      preCarregarDadosCondominio(novoOperador.condominio_id);
     }
 
     // 3. Registra assunção de plantão no Histórico Absoluto

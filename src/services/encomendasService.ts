@@ -9,6 +9,7 @@
 import { supabase } from './supabase';
 import { cachedQuery } from './redisCacheService';
 import { isUUID } from './condominioService';
+import { salvarLoteItensLocal } from './porttoHubDb';
 
 export interface EncomendasCacheBundle {
   condominioId: string;
@@ -236,13 +237,18 @@ export async function carregarEPreaquecerEncomendas(
       // Grava em memória RAM
       memoriaEncomendas.set(condominioId, novoBundle);
 
-      // Persiste no localStorage para sobreviver a recarregamentos de página
+      // Persiste no IndexedDB de alta capacidade (sem limite de 5MB do localStorage)
+      salvarLoteItensLocal('encomendas_itens', itensRetidosFinal, condominioId, new Date().toISOString(), false).catch((err) => {
+        console.warn('[encomendasService] Erro ao gravar itens no IndexedDB:', err);
+      });
+
+      // Persiste no localStorage como contingência secundária
       if (typeof window !== 'undefined' && window.localStorage) {
         try {
           localStorage.setItem(`${CHAVE_PREFIXO_STORAGE}${condominioId}`, JSON.stringify(novoBundle));
           localStorage.setItem(`infport_cache_retidos_${condominioId}`, JSON.stringify(itensRetidosFinal));
         } catch (e) {
-          console.warn('[encomendasService] Quota ou erro ao gravar cache:', e);
+          console.warn('[encomendasService] Quota ou erro ao gravar cache no localStorage:', e);
         }
       }
 

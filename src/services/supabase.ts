@@ -61,15 +61,50 @@ export function obterStorageBucket(): string {
 }
 
 /**
+ * Configurações de Conexão e Pooler do Supabase (PgBouncer / Supavisor)
+ * 
+ * DIRETRIZES DE CONNECTION LIMITS NA VERCEL:
+ * - Porta 5432: Modo Sessão (Direto ao PostgreSQL) -> Limite estrito (~60 conexões). NÃO USAR na Vercel!
+ * - Porta 6543: Modo Transação (Supavisor / PgBouncer) -> Suporta milhares de lambdas concorrentes.
+ *   Connection String Vercel: postgresql://postgres.[REF]:[SENHA]@aws-0-[REGIAO].pooler.supabase.com:6543/postgres?pgbouncer=true
+ */
+export function obterConfiguracaoPooler() {
+  const url = obterSupabaseUrl();
+  const match = url.match(/https:\/\/([^.]+)\.supabase\.co/);
+  const projectRef = match ? match[1] : 'kkeizhscivyfjgetnbke';
+
+  return {
+    projectRef,
+    portaPoolerTransacao: 6543,
+    portaPoolerSessao: 5432,
+    hostPoolerPadrao: `aws-0-sa-east-1.pooler.supabase.com`,
+    parametroPgBouncer: '?pgbouncer=true',
+    modoRecomendadoVercel: 'Transaction Mode (Port 6543)'
+  };
+}
+
+/**
  * Cliente Oficial Dedicado do Supabase para Banco de Dados e Realtime
+ * Otimizado com keepalive, schema public e tratamento de reconexão de WebSockets
  */
 export const supabase = createClient(obterSupabaseUrl(), obterSupabaseKey(), {
   auth: {
     persistSession: true,
-    autoRefreshToken: true
+    autoRefreshToken: true,
+    detectSessionInUrl: true
   },
   db: {
     schema: 'public'
+  },
+  global: {
+    headers: {
+      'x-application-name': 'porttohub-localfirst-pwa'
+    }
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10
+    }
   }
 });
 

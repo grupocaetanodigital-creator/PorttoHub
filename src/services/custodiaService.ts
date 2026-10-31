@@ -14,6 +14,7 @@ import { salvarCacheLocal, obterCacheLocal, invalidarCacheLocal } from './offlin
 import { enfileirarAcaoOffline } from './offlineSyncEngine';
 import { registrarAtividade } from './auditoriaService';
 import { isUUID } from './condominioService';
+import { salvarLoteItensLocal, salvarItemLocal, obterTodosItensLocal } from './porttoHubDb';
 
 export interface ItemCustodia {
   id: string;
@@ -175,8 +176,9 @@ export async function carregarCustodiaAtiva(
       foto_entrada_url: item.foto_entrada_url || item.foto_url || ''
     }));
 
-    // Atualiza o cache local
+    // Atualiza o cache local (localStorage e IndexedDB de alta capacidade)
     salvarCacheLocal(CACHE_KEY_CUSTODIA_ATIVA, itensNormalizados, condominioId, 10);
+    salvarLoteItensLocal('custodia', itensNormalizados, condominioId, new Date().toISOString(), false).catch(() => {});
 
     return { itens: itensNormalizados, doCache: false };
   } catch (err) {

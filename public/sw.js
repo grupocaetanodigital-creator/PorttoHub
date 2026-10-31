@@ -1,12 +1,18 @@
 /**
  * PorttoHub / INFPORT 1.0 - Service Worker Oficial PWA
- * Habilita instalação como aplicativo nativo no PC / Android / iOS
- * e garante resiliência offline para a guarita com cache de páginas e imagens dos cards.
+ * OTIMIZAÇÃO DE ASSETS, ZERO-LATENCY E RESILIÊNCIA OFFLINE
+ * 
+ * ESTRATÉGIAS DE CACHE APLICADAS:
+ * 1. Stale-While-Revalidate: Para Scripts JS, CSS, Fontes e Imagens.
+ *    -> Entrega imediata em 0ms a partir do cache local, revalidando silenciosamente em segundo plano.
+ * 2. Network-First com Fallback: Apenas para checagem de versão (/version.json) e rotas críticas de autenticação.
+ * 3. Cache Storage Segregado: Permite purga seletiva de versões antigas sem perder cache de fotos.
  */
 
-const CACHE_APP_SHELL = 'porttohub-shell-v3';
-const CACHE_IMAGENS = 'infport-card-images-v1';
-const CACHE_DINAMICO = 'porttohub-runtime-v3';
+const CACHE_APP_SHELL = 'porttohub-shell-v4';
+const CACHE_ESTATICOS_ASSETS = 'porttohub-assets-v4';
+const CACHE_IMAGENS = 'porttohub-images-v4';
+const CACHE_DINAMICO = 'porttohub-runtime-v4';
 
 const ASSETS_ESSENCIAIS = [
   '/',
@@ -24,7 +30,7 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_APP_SHELL).then((cache) => {
       return cache.addAll(ASSETS_ESSENCIAIS).catch((err) => {
-        console.warn('[SW] Aviso no precache:', err);
+        console.warn('[SW] Aviso no precache inicial:', err);
       });
     })
   );
@@ -37,10 +43,11 @@ self.addEventListener('activate', (event) => {
         keys.map((key) => {
           if (
             key !== CACHE_APP_SHELL && 
+            key !== CACHE_ESTATICOS_ASSETS && 
             key !== CACHE_IMAGENS && 
-            key !== CACHE_DINAMICO && 
-            !key.includes('workbox')
+            key !== CACHE_DINAMICO
           ) {
+            console.log('[SW] Purgando cache legado:', key);
             return caches.delete(key);
           }
         })
@@ -53,83 +60,124 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
 
-  // Não intercepta WebSockets ou chamadas RPC da API de backend
-  if (
-    url.pathname.startsWith('/api') || 
-    url.protocol === 'ws:' ||
-    url.protocol === 'wss:'
-  ) {
+  // Não intercepta WebSockets
+  if (url.protocol === 'ws:' || url.protocol === 'wss:') {
     return;
   }
 
-  // ESTRATÉGIA PARA IMAGENS DOS CARDS (Supabase Storage, Fotos de Pacotes, Visitantes, Ocorrências)
-  const ehImagem = 
-    event.request.destination === 'image' ||
-    url.pathname.includes('/storage/v1/object/public/') ||
-    /\.(png|jpe?g|webp|svg|gif|avif)$/i.test(url.pathname);
+  // 1. NETWORK-FIRST ESTRITO: Rotas de autenticação e verificação de versão para OTA Instantâneo
+  const ehRotaCriticaAuthOuVersao = 
+    url.pathname === '/version.json' || 
+    url.pathname.startsWith('/auth') || 
+    url.pathname.startsWith('/api/auth') ||
+    url.searchParams.has('ts');
 
-  if (ehImagem) {
+  if (ehRotaCriticaAuthOuVersao) {
     event.respondWith(
-      caches.open(CACHE_IMAGENS).then((cache) => {
-        return cache.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) {
-            // Em segundo plano, revalida se houver conexão (Stale-While-Revalidate)
-            fetch(event.request)
-              .then((networkResponse) => {
-                if (networkResponse && networkResponse.status === 200) {
-                  cache.put(event.request, networkResponse.clone());
-                }
-              })
-              .catch(() => {});
-            return cachedResponse;
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copia = networkResponse.clone();
+            caches.open(CACHE_DINAMICO).then((c) => c.put(event.request, copia));
           }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
 
-          // Se não está em cache, busca na rede e guarda no cache
-          return fetch(event.request)
+  // 2. STALE-WHILE-REVALIDATE PARA SCRIPTS JS, CSS E FONTES
+  // Entrega imediata em 0ms do cache local com atualização invisível em background
+  const ehScriptOuCssOuFonte = 
+    /\.(js|css|woff2?|ttf|eot)$/i.test(url.pathname) ||
+    url.pathname.startsWith('/assets/');
+
+  if (ehScriptOuCssOuFonte) {
+    event.respondWith(
+      caches.open(CACHE_ESTATICOS_ASSETS).then((cache) => {
+        return cache.match(event.request).then((cachedResponse) => {
+          const fetchPromise = fetch(event.request)
             .then((networkResponse) => {
-              if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque')) {
+              if (networkResponse && networkResponse.status === 200) {
                 cache.put(event.request, networkResponse.clone());
               }
               return networkResponse;
             })
-            .catch(() => {
-              // Retorna fallback se estiver offline e sem cache prévio
-              return caches.match('/icon.svg');
-            });
+            .catch(() => null);
+
+          // Se tem cache, entrega na hora (0ms!) e atualiza cache em paralelo
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+
+          // Se ainda não estava no cache, aguarda a rede
+          return fetchPromise.then((res) => res || cachedResponse);
         });
       })
     );
     return;
   }
 
-  // ESTRATÉGIA PARA CONSULTAS DO SUPABASE (REST / PostgREST)
-  // Permite ler do cache local se a rede falhar
-  if (url.hostname.includes('supabase.co')) {
-    // Permite que o SDK do Supabase gerencie diretamente requisições da API, 
-    // com nosso offlineStorageService / offlineSyncEngine garantindo a persistência.
+  // 3. STALE-WHILE-REVALIDATE PARA IMAGENS DOS CARDS & STORAGE
+  const ehImagem = 
+    event.request.destination === 'image' ||
+    url.pathname.includes('/storage/v1/object/public/') ||
+    /\.(png|jpe?g|webp|svg|gif|avif|ico)$/i.test(url.pathname);
+
+  if (ehImagem) {
+    event.respondWith(
+      caches.open(CACHE_IMAGENS).then((cache) => {
+        return cache.match(event.request).then((cachedResponse) => {
+          const revalidacaoRede = fetch(event.request)
+            .then((networkResponse) => {
+              if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque')) {
+                cache.put(event.request, networkResponse.clone());
+              }
+              return networkResponse;
+            })
+            .catch(() => null);
+
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+
+          return revalidacaoRede.then((res) => res || caches.match('/icon.svg'));
+        });
+      })
+    );
     return;
   }
 
-  // ESTRATÉGIA PARA NAVEGAÇÃO E RECURSOS ESTÁTICOS DO APP
-  event.respondWith(
-    fetch(event.request)
-      .then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_DINAMICO).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-        }
-        return networkResponse;
-      })
-      .catch(() => {
-        return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) return cachedResponse;
-          if (event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html')) {
-            return caches.match('/') || caches.match('/index.html');
+  // 4. ESTRATÉGIA PARA CONSULTAS DO SUPABASE (REST / PostgREST)
+  // O SDK do Supabase e o nosso IndexedDB / deltaSyncService gerenciam o banco de dados
+  if (url.hostname.includes('supabase.co')) {
+    return;
+  }
+
+  // 5. NAVEGAÇÃO SPA (index.html Shell): Network-first com fallback instantâneo para App Shell em cache
+  if (event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html')) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copia = networkResponse.clone();
+            caches.open(CACHE_APP_SHELL).then((c) => c.put('/', copia));
           }
-        });
-      })
+          return networkResponse;
+        })
+        .catch(() => {
+          return caches.match('/') || caches.match('/index.html');
+        })
+    );
+    return;
+  }
+
+  // Fallback padrão para demais requisições
+  event.respondWith(
+    caches.match(event.request).then((cached) => {
+      return cached || fetch(event.request);
+    })
   );
 });
 

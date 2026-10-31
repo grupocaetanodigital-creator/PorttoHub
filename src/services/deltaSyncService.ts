@@ -1,85 +1,90 @@
 /**
- * PorttoHub — Motor de Cache Local, Data Pre-fetching e Delta Sync Incremental
+ * PorttoHub — Motor de Cache Local-First (IndexedDB), Data Pre-fetching e Delta Sync Incremental
  * 
  * ARQUITETURA DE PERFORMANCE E LARGURA DE BANDA (Supabase):
- * 1. Pre-fetching no Login: Carrega dados essenciais (encomendas, custódias, moradores, bancada, chaves)
- *    imediatamente após a validação da sessão do operador.
- * 2. Leitura Síncrona / Instantânea (0ms): Telas abrem consumindo o estado local do cache.
+ * 1. Pre-fetching no Login (Bootstrapping): Carrega dados essenciais (unidades, moradores, encomendas ativas,
+ *    veículos, custódias, bancada, chaves e regras) imediatamente após o login do operador.
+ * 2. Leitura Instantânea (0ms): Telas abrem consumindo o estado local do IndexedDB e memória.
  * 3. Sincronização Incremental (Delta Sync): Consultas subsequentes buscam exclusivamente registros
  *    onde `updated_at > last_sync_timestamp` ou `created_at > last_sync_timestamp`.
- * 4. Merge inteligente: Atualiza ou insere registros modificados sem rebaixar a tabela inteira.
+ * 4. Selects Cirúrgicos: Seleciona apenas colunas necessárias, eliminando payload inútil de rede.
+ * 5. Merge inteligente: Atualiza ou insere registros modificados sem rebaixar a tabela inteira.
  */
 
 import { supabase } from './supabase';
 import { isUUID } from './condominioService';
+import { 
+  obterTodosItensLocal, 
+  salvarLoteItensLocal, 
+  salvarItemLocal, 
+  excluirItemLocal, 
+  obterMetadataSyncLocal, 
+  salvarMetadataSyncLocal,
+  NomeTabelaLocal 
+} from './porttoHubDb';
 
-export interface DeltaCacheMetadata<T> {
-  lastSyncTimestamp: string;
-  condominioId: string;
-  total: number;
-  dados: T[];
+export interface DeltaSyncResult<T> {
+  dadosAtualizados: T[];
+  deltaCount: number;
+  veioDoCacheLocal: boolean;
+  timestampSync: string;
 }
 
-const PREFIX_DELTA_CACHE = 'porttohub_delta_cache_';
-const TABELAS_CORE = [
-  'encomendas_itens',
-  'custodia',
-  'moradores',
-  'bancada_volumes',
-  'chaves'
-] as const;
+// Projeções cirúrgicas de colunas por tabela para minimizar transferência de dados
+export const PROJECOES_CIRURGICAS: Record<string, string> = {
+  encomendas_itens: 'id, condominio_id, lote_re_id, codigo_rastreio, transportadora, destinatario_nome, unidade_bloco, unidade, bloco, local_armazenamento, status, data_hora_recebimento, data_hora_entrega, operador_recebimento, operador_entrega, recebedor_nome, recebedor_documento, foto_etiqueta_url, created_at, updated_at',
+  custodia: 'id, condominio_id, codigo_custodia, codigo, descricao, fluxo, origem_tipo, origem_unidade, origem_bloco, origem_nome_doc, origem_whats, destino_tipo, destino_unidade, destino_bloco, destino_nome_doc, destino_whats, local_armazenamento, foto_entrada_url, foto_saida_url, foto_url, status, operador_entrada, operador_saida, recebedor_nome, recebedor_doc, tipo_baixa, data_hora_entrada, data_hora_saida, observacoes, created_at, updated_at',
+  moradores: 'id, condominio_id, nome, unidade, bloco, telefone, email, tipo, documento, veiculo_placa, veiculo_modelo, veiculo_cor, ativo, created_at, updated_at',
+  bancada_volumes: 'id, condominio_id, codigo_volume, tipo, local, status, operador_entrada, morador_identificacao, created_at, updated_at',
+  chaves: 'id, condominio_id, numero, identificacao, setor, status, responsavel_atual, telefone_responsavel, retirada_em, created_at, updated_at',
+  registros_acesso: 'id, condominio_id, tipo, nome, documento, telefone, empresa, unidade_bloco, morador_responsavel, ponto_acesso_entrada, ponto_acesso_saida, veiculo_placa, veiculo_modelo, veiculo_cor, data_hora_entrada, data_hora_saida, status, operador_entrada_nome, operador_saida_nome, observacoes, created_at, updated_at'
+};
 
-type TabelaCore = typeof TABELAS_CORE[number];
+// Cache quente em memória RAM para renderização síncrona sem wait
+const memoriaRamPorCondominio = new Map<string, Map<string, any[]>>();
 
-/**
- * Retorna a chave de armazenamento local de uma tabela e condomínio
- */
-function obterChaveCache(tabela: string, condominioId: string): string {
-  return `${PREFIX_DELTA_CACHE}${tabela}_${condominioId}`;
+function obterCacheRam<T>(tabela: string, condominioId: string): T[] | null {
+  const mapaCondo = memoriaRamPorCondominio.get(condominioId);
+  if (!mapaCondo) return null;
+  const lista = mapaCondo.get(tabela);
+  return (lista as T[]) || null;
 }
 
-/**
- * Lê o estado em cache local de forma instantânea (0ms)
- */
-export function lerCacheLocalTabela<T>(tabela: string, condominioId: string): DeltaCacheMetadata<T> | null {
-  try {
-    const raw = localStorage.getItem(obterChaveCache(tabela, condominioId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (parsed && Array.isArray(parsed.dados)) {
-      return parsed as DeltaCacheMetadata<T>;
-    }
-  } catch (e) {
-    console.warn(`[DeltaSync] Erro ao ler cache de ${tabela}:`, e);
+function salvarCacheRam<T>(tabela: string, condominioId: string, dados: T[]): void {
+  let mapaCondo = memoriaRamPorCondominio.get(condominioId);
+  if (!mapaCondo) {
+    mapaCondo = new Map();
+    memoriaRamPorCondominio.set(condominioId, mapaCondo);
   }
-  return null;
+  mapaCondo.set(tabela, dados);
 }
 
 /**
- * Grava o estado consolidado no cache local com o timestamp do cursor de sincronização
+ * Lê os dados da tabela diretamente do cache local (Memória RAM -> IndexedDB) em 0ms
  */
-export function salvarCacheLocalTabela<T>(
-  tabela: string,
-  condominioId: string,
-  dados: T[],
-  lastSyncTimestamp: string = new Date().toISOString()
-): void {
-  try {
-    const payload: DeltaCacheMetadata<T> = {
-      lastSyncTimestamp,
-      condominioId,
-      total: dados.length,
-      dados
-    };
-    localStorage.setItem(obterChaveCache(tabela, condominioId), JSON.stringify(payload));
-  } catch (e) {
-    console.warn(`[DeltaSync] Erro ao gravar cache de ${tabela}:`, e);
+export async function obterDadosTabelaLocal<T = any>(
+  tabela: NomeTabelaLocal,
+  condominioId: string
+): Promise<T[]> {
+  // 1. Tenta memória RAM (0.0ms síncrono)
+  const ram = obterCacheRam<T>(tabela, condominioId);
+  if (ram && ram.length > 0) {
+    return ram;
   }
+
+  // 2. Lê do IndexedDB (assíncrono ultrarrápido)
+  const doBancoLocal = await obterTodosItensLocal<T>(tabela, condominioId);
+  if (doBancoLocal && doBancoLocal.length > 0) {
+    salvarCacheRam(tabela, condominioId, doBancoLocal);
+    return doBancoLocal;
+  }
+
+  return [];
 }
 
 /**
- * PRE-FETCHING COMPLETO DE DADOS NO LOGIN
- * Executa requisições em paralelo no login bem-sucedido e popula o cache local.
+ * PRE-FETCHING COMPLETO DE DADOS NO LOGIN (BOOTSTRAPPING MULTI-TENANT)
+ * Executado assincronamente assim que o operador valida a sessão e o condomínio ativo é resolvido.
  */
 export async function preCarregarDadosCondominio(condominioId: string): Promise<void> {
   if (!condominioId || condominioId === 'todos' || condominioId === 'global' || !isUUID(condominioId)) {
@@ -89,21 +94,29 @@ export async function preCarregarDadosCondominio(condominioId: string): Promise<
   const agoraTimestamp = new Date().toISOString();
 
   try {
-    console.log(`[DeltaSync] Iniciando pré-carregamento dos dados core para condomínio ${condominioId}...`);
+    console.log(`[LocalFirst] Iniciando bootstrapping completo para condomínio ${condominioId}...`);
 
-    const [encRes, custRes, morRes, bancadaRes, chavesRes] = await Promise.all([
+    // Dispara consultas cirúrgicas paralelas em 1 único roundtrip
+    const [
+      encRes, 
+      custRes, 
+      morRes, 
+      bancadaRes, 
+      chavesRes,
+      acessosRes
+    ] = await Promise.all([
       // 1. Encomendas retidas e recentes
       supabase
         .from('encomendas_itens')
-        .select('*')
+        .select(PROJECOES_CIRURGICAS.encomendas_itens || '*')
         .eq('condominio_id', condominioId)
         .order('created_at', { ascending: false })
-        .limit(300),
+        .limit(350),
 
       // 2. Custódia de pertences
       supabase
         .from('custodia')
-        .select('*')
+        .select(PROJECOES_CIRURGICAS.custodia || '*')
         .eq('condominio_id', condominioId)
         .order('created_at', { ascending: false })
         .limit(200),
@@ -111,109 +124,243 @@ export async function preCarregarDadosCondominio(condominioId: string): Promise<
       // 3. Moradores e Unidades
       supabase
         .from('moradores')
-        .select('*')
+        .select(PROJECOES_CIRURGICAS.moradores || '*')
         .eq('condominio_id', condominioId)
         .order('unidade', { ascending: true }),
 
       // 4. Bancada e balcão físico
       supabase
         .from('bancada_volumes')
-        .select('*')
+        .select(PROJECOES_CIRURGICAS.bancada_volumes || '*')
         .eq('condominio_id', condominioId)
         .order('created_at', { ascending: false }),
 
       // 5. Claviculário / Chaves
       supabase
         .from('chaves')
-        .select('*')
+        .select(PROJECOES_CIRURGICAS.chaves || '*')
         .eq('condominio_id', condominioId)
-        .order('numero', { ascending: true })
+        .order('numero', { ascending: true }),
+
+      // 6. Registros de Acesso Recentes
+      supabase
+        .from('registros_acesso')
+        .select(PROJECOES_CIRURGICAS.registros_acesso || '*')
+        .eq('condominio_id', condominioId)
+        .order('data_hora_entrada', { ascending: false })
+        .limit(100)
     ]);
 
-    if (encRes.data) salvarCacheLocalTabela('encomendas_itens', condominioId, encRes.data, agoraTimestamp);
-    if (custRes.data) salvarCacheLocalTabela('custodia', condominioId, custRes.data, agoraTimestamp);
-    if (morRes.data) salvarCacheLocalTabela('moradores', condominioId, morRes.data, agoraTimestamp);
-    if (bancadaRes.data) salvarCacheLocalTabela('bancada_volumes', condominioId, bancadaRes.data, agoraTimestamp);
-    if (chavesRes.data) salvarCacheLocalTabela('chaves', condominioId, chavesRes.data, agoraTimestamp);
+    // Grava de forma atômica no IndexedDB
+    const promisesGravacao: Promise<any>[] = [];
 
-    console.log(`[DeltaSync] Pré-carregamento concluído com sucesso. Estado offline pronto.`);
+    if (encRes.data) {
+      salvarCacheRam('encomendas_itens', condominioId, encRes.data);
+      promisesGravacao.push(salvarLoteItensLocal('encomendas_itens', encRes.data, condominioId, agoraTimestamp, true));
+    }
+    if (custRes.data) {
+      salvarCacheRam('custodia', condominioId, custRes.data);
+      promisesGravacao.push(salvarLoteItensLocal('custodia', custRes.data, condominioId, agoraTimestamp, true));
+    }
+    if (morRes.data) {
+      salvarCacheRam('moradores', condominioId, morRes.data);
+      promisesGravacao.push(salvarLoteItensLocal('moradores', morRes.data, condominioId, agoraTimestamp, true));
+
+      // Extrai e indexa veículos a partir dos moradores
+      const veiculosExtraidos = morRes.data
+        .filter((m: any) => m.veiculo_placa && m.veiculo_placa.trim().length > 0)
+        .map((m: any) => ({
+          id: `veic_${m.id}`,
+          condominio_id: condominioId,
+          placa: m.veiculo_placa.toUpperCase().trim(),
+          modelo: m.veiculo_modelo || '',
+          cor: m.veiculo_cor || '',
+          unidade_bloco: `${m.bloco ? `BL ${m.bloco} - ` : ''}AP ${m.unidade || ''}`.trim(),
+          proprietario_nome: m.nome,
+          proprietario_id: m.id,
+          updated_at: m.updated_at || agoraTimestamp
+        }));
+
+      if (veiculosExtraidos.length > 0) {
+        salvarCacheRam('veiculos', condominioId, veiculosExtraidos);
+        promisesGravacao.push(salvarLoteItensLocal('veiculos', veiculosExtraidos, condominioId, agoraTimestamp, true));
+      }
+    }
+    if (bancadaRes.data) {
+      salvarCacheRam('bancada_volumes', condominioId, bancadaRes.data);
+      promisesGravacao.push(salvarLoteItensLocal('bancada_volumes', bancadaRes.data, condominioId, agoraTimestamp, true));
+    }
+    if (chavesRes.data) {
+      salvarCacheRam('chaves', condominioId, chavesRes.data);
+      promisesGravacao.push(salvarLoteItensLocal('chaves', chavesRes.data, condominioId, agoraTimestamp, true));
+    }
+    if (acessosRes.data) {
+      salvarCacheRam('registros_acesso', condominioId, acessosRes.data);
+      promisesGravacao.push(salvarLoteItensLocal('registros_acesso', acessosRes.data, condominioId, agoraTimestamp, true));
+    }
+
+    await Promise.all(promisesGravacao);
+
+    console.log(`[LocalFirst] Bootstrapping no IndexedDB concluído com sucesso. Estado offline pronto para operação imediata.`);
     window.dispatchEvent(new CustomEvent('porttohub_dados_precarregados', { detail: { condominioId } }));
   } catch (err) {
-    console.warn('[DeltaSync] Falha durante pré-carregamento:', err);
+    console.warn('[LocalFirst] Falha durante bootstrapping:', err);
   }
 }
 
 /**
- * DELTA SYNC INCREMENTAL
- * Busca apenas itens alterados desde o último cursor de sincronização e faz merge no cache local
+ * DELTA SYNC INCREMENTAL (Verificação em Milissegundos)
+ * 
+ * - Lê imediatamente do IndexedDB / RAM (0ms).
+ * - Envia checagem ultraleve ao Supabase: `updated_at > cursor OR created_at > cursor`
+ * - Faz merge inteligente dos registros novos/modificados no IndexedDB e na RAM.
  */
 export async function sincronizarDeltaTabela<T extends { id: string | number; updated_at?: string; created_at?: string }>(
-  tabela: TabelaCore | string,
+  tabela: NomeTabelaLocal,
   condominioId: string,
   colunaChaveId: string = 'id'
-): Promise<{ dadosAtualizados: T[]; deltaCount: number }> {
-  const cacheAtual = lerCacheLocalTabela<T>(tabela, condominioId);
+): Promise<DeltaSyncResult<T>> {
+  if (!condominioId || condominioId === 'todos' || condominioId === 'global' || !isUUID(condominioId)) {
+    const dadosLocais = await obterDadosTabelaLocal<T>(tabela, condominioId);
+    return { dadosAtualizados: dadosLocais, deltaCount: 0, veioDoCacheLocal: true, timestampSync: new Date().toISOString() };
+  }
 
-  // Se não existir cache local prévio, faz carga inicial completa
-  if (!cacheAtual || !cacheAtual.lastSyncTimestamp) {
+  // 1. Lê os dados existentes localmente
+  const dadosLocais = await obterDadosTabelaLocal<T>(tabela, condominioId);
+  const metadata = await obterMetadataSyncLocal(tabela, condominioId);
+
+  // Se não houver dados locais nem cursor, faz carga inicial completa cirúrgica
+  if (!metadata || !metadata.lastSyncTimestamp || dadosLocais.length === 0) {
     try {
+      const colunas = PROJECOES_CIRURGICAS[tabela] || '*';
       const { data, error } = await supabase
         .from(tabela)
-        .select('*')
+        .select(colunas)
         .eq('condominio_id', condominioId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(400);
 
       if (!error && data) {
-        salvarCacheLocalTabela(tabela, condominioId, data);
-        return { dadosAtualizados: data, deltaCount: data.length };
+        const agora = new Date().toISOString();
+        salvarCacheRam(tabela, condominioId, data);
+        await salvarLoteItensLocal(tabela, data, condominioId, agora, true);
+        return {
+          dadosAtualizados: data,
+          deltaCount: data.length,
+          veioDoCacheLocal: false,
+          timestampSync: agora
+        };
       }
     } catch (e) {
       console.warn(`[DeltaSync] Erro na carga inicial de ${tabela}:`, e);
     }
-    return { dadosAtualizados: cacheAtual?.dados || [], deltaCount: 0 };
+    return {
+      dadosAtualizados: dadosLocais,
+      deltaCount: 0,
+      veioDoCacheLocal: true,
+      timestampSync: metadata?.lastSyncTimestamp || new Date().toISOString()
+    };
   }
 
-  // Busca delta incremental: registros atualizados após o cursor
-  const cursorTimestamp = cacheAtual.lastSyncTimestamp;
+  // 2. Consulta cirúrgica por Delta: Apenas registros modificados após o cursor
+  const cursorTimestamp = metadata.lastSyncTimestamp;
   const novoCursor = new Date().toISOString();
+  const colunas = PROJECOES_CIRURGICAS[tabela] || '*';
 
   try {
     const { data: deltaData, error } = await supabase
       .from(tabela)
-      .select('*')
+      .select(colunas)
       .eq('condominio_id', condominioId)
       .or(`updated_at.gt.${cursorTimestamp},created_at.gt.${cursorTimestamp}`);
 
     if (error) {
-      console.warn(`[DeltaSync] Erro ao buscar delta de ${tabela}:`, error);
-      return { dadosAtualizados: cacheAtual.dados, deltaCount: 0 };
+      console.warn(`[DeltaSync] Falha na busca delta de ${tabela}:`, error.message);
+      return {
+        dadosAtualizados: dadosLocais,
+        deltaCount: 0,
+        veioDoCacheLocal: true,
+        timestampSync: cursorTimestamp
+      };
     }
 
     if (!deltaData || deltaData.length === 0) {
-      // Nenhum dado modificado: atualiza apenas o timestamp de verificação
-      salvarCacheLocalTabela(tabela, condominioId, cacheAtual.dados, novoCursor);
-      return { dadosAtualizados: cacheAtual.dados, deltaCount: 0 };
+      // 0 alterações remotas: Atualiza apenas o timestamp de verificação
+      await salvarMetadataSyncLocal(tabela, condominioId, novoCursor, dadosLocais.length);
+      return {
+        dadosAtualizados: dadosLocais,
+        deltaCount: 0,
+        veioDoCacheLocal: true,
+        timestampSync: novoCursor
+      };
     }
 
-    // Merge inteligente: substitui modificados e adiciona novos
+    // 3. Merge inteligente: Substitui registros atualizados e insere novos
     const mapaItens = new Map<string, T>();
-    cacheAtual.dados.forEach((it: any) => mapaItens.set(String(it[colunaChaveId]), it));
+    dadosLocais.forEach((it: any) => mapaItens.set(String(it[colunaChaveId]), it));
 
     deltaData.forEach((deltaItem: any) => {
       mapaItens.set(String(deltaItem[colunaChaveId]), deltaItem);
     });
 
     const listaConsolidada = Array.from(mapaItens.values());
-    salvarCacheLocalTabela(tabela, condominioId, listaConsolidada, novoCursor);
 
-    console.log(`[DeltaSync] ${deltaData.length} alteração(ões) incorporada(s) em ${tabela}.`);
+    // Atualiza RAM e IndexedDB
+    salvarCacheRam(tabela, condominioId, listaConsolidada);
+    await salvarLoteItensLocal(tabela, deltaData, condominioId, novoCursor, false);
+
+    console.log(`[DeltaSync] ${deltaData.length} registro(s) sincronizado(s) em ${tabela} via Delta Sync.`);
     window.dispatchEvent(new CustomEvent(`porttohub_delta_${tabela}`, {
       detail: { tabela, condominioId, alterados: deltaData.length }
     }));
 
-    return { dadosAtualizados: listaConsolidada, deltaCount: deltaData.length };
+    return {
+      dadosAtualizados: listaConsolidada,
+      deltaCount: deltaData.length,
+      veioDoCacheLocal: false,
+      timestampSync: novoCursor
+    };
   } catch (err) {
     console.warn(`[DeltaSync] Exceção em sincronizarDeltaTabela para ${tabela}:`, err);
-    return { dadosAtualizados: cacheAtual.dados, deltaCount: 0 };
+    return {
+      dadosAtualizados: dadosLocais,
+      deltaCount: 0,
+      veioDoCacheLocal: true,
+      timestampSync: cursorTimestamp
+    };
   }
+}
+
+/**
+ * Atualiza um único item diretamente no cache local e dispara reatividade na UI
+ */
+export async function aplicarMutacaoLocal<T extends { id: any; condominio_id?: string }>(
+  tabela: NomeTabelaLocal,
+  condominioId: string,
+  item: T,
+  tipo: 'INSERT' | 'UPDATE' | 'DELETE'
+): Promise<void> {
+  const chaveId = String(item.id);
+  const itensAtuais = await obterDadosTabelaLocal<T>(tabela, condominioId);
+
+  let novaLista: T[] = [];
+  if (tipo === 'DELETE') {
+    novaLista = itensAtuais.filter((it: any) => String(it.id) !== chaveId);
+    await excluirItemLocal(tabela, item.id);
+  } else {
+    const idx = itensAtuais.findIndex((it: any) => String(it.id) === chaveId);
+    if (idx >= 0) {
+      novaLista = [...itensAtuais];
+      novaLista[idx] = { ...novaLista[idx], ...item };
+    } else {
+      novaLista = [item, ...itensAtuais];
+    }
+    await salvarItemLocal(tabela, item);
+  }
+
+  salvarCacheRam(tabela, condominioId, novaLista);
+
+  window.dispatchEvent(new CustomEvent(`porttohub_local_mutate_${tabela}`, {
+    detail: { tabela, condominioId, tipo, item }
+  }));
 }
