@@ -21,14 +21,71 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Garante legibilidade e alto contraste para campos de formulário com fundo branco */
-  input.bg-white, select.bg-white, textarea.bg-white {
+  /* ==============================================================================
+     REGRA SUPREMA DE USABILIDADE: Todo e qualquer campo editável deve ter
+     FUNDO BRANCO (#ffffff) e FONTE PRETA (#000000), em qualquer módulo, tela ou modal.
+     ============================================================================== */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="color"]),
+  select,
+  textarea,
+  [contenteditable="true"] {
+    background-color: #ffffff !important;
+    background: #ffffff !important;
     color: #000000 !important;
     -webkit-text-fill-color: #000000 !important;
+    border-color: #cbd5e1 !important;
   }
-  input.bg-white::placeholder, textarea.bg-white::placeholder {
-    color: #64748b !important;
-    -webkit-text-fill-color: #64748b !important;
+
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="color"]):focus,
+  select:focus,
+  textarea:focus {
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
+    outline: none !important;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4) !important;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="color"])::placeholder,
+  textarea::placeholder {
+    color: #475569 !important;
+    -webkit-text-fill-color: #475569 !important;
+    opacity: 1 !important;
+  }
+
+  /* Blindagem irrestrita mesmo sob classes .dark, html.dark ou temas customizados */
+  html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="color"]),
+  html.dark select,
+  html.dark textarea,
+  html.dark [contenteditable="true"],
+  .dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="color"]),
+  .dark select,
+  .dark textarea,
+  .dark [contenteditable="true"] {
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
+    border-color: #cbd5e1 !important;
+  }
+
+  html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="color"])::placeholder,
+  html.dark textarea::placeholder,
+  .dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="color"])::placeholder,
+  .dark textarea::placeholder {
+    color: #475569 !important;
+    -webkit-text-fill-color: #475569 !important;
+    opacity: 1 !important;
+  }
+
+  /* Opções de menus dropdown/select sempre brancas com texto preto */
+  select option,
+  .dark select option,
+  html.dark select option {
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    color: #000000 !important;
   }
 }
 

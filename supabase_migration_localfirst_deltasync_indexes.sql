@@ -26,7 +26,10 @@ $$ LANGUAGE plpgsql;
 
 -- 2.1. ENCOMENDAS ITENS
 ALTER TABLE public.encomendas_itens 
-  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CLOCK_TIMESTAMP();
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CLOCK_TIMESTAMP(),
+  ADD COLUMN IF NOT EXISTS transportadora TEXT,
+  ADD COLUMN IF NOT EXISTS destinatario_nome TEXT,
+  ADD COLUMN IF NOT EXISTS unidade_bloco TEXT;
 
 DROP TRIGGER IF EXISTS trg_encomendas_itens_updated_at ON public.encomendas_itens;
 CREATE TRIGGER trg_encomendas_itens_updated_at
@@ -114,7 +117,7 @@ CREATE INDEX IF NOT EXISTS idx_encomendas_tenant_unidade_bloco
 -- Índice cobridor para Delta Sync de Encomendas: Index Only Scan
 CREATE INDEX IF NOT EXISTS idx_encomendas_delta_covering
   ON public.encomendas_itens (condominio_id, updated_at, created_at)
-  INCLUDE (status, codigo_rastreio, transportadora, destinatario_nome, unidade_bloco);
+  INCLUDE (status, codigo_rastreio, codigo_barras, destinatario, unidade, bloco);
 
 -- 3.2. Custódia: Busca de pendências e delta sync
 CREATE INDEX IF NOT EXISTS idx_custodia_tenant_status 

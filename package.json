@@ -1,7 +1,7 @@
 {
   "name": "porttohub",
   "private": true,
-  "version": "3110260030",
+  "version": "3110260043",
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",

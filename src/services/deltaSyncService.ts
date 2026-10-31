@@ -32,7 +32,7 @@ export interface DeltaSyncResult<T> {
 
 // Projeções cirúrgicas de colunas por tabela para minimizar transferência de dados
 export const PROJECOES_CIRURGICAS: Record<string, string> = {
-  encomendas_itens: 'id, condominio_id, lote_re_id, codigo_rastreio, transportadora, destinatario_nome, unidade_bloco, unidade, bloco, local_armazenamento, status, data_hora_recebimento, data_hora_entrega, operador_recebimento, operador_entrega, recebedor_nome, recebedor_documento, foto_etiqueta_url, created_at, updated_at',
+  encomendas_itens: 'id, condominio_id, lote_re_id, codigo_rastreio, codigo_barras, destinatario, bloco, unidade, local_armazenamento, status, data_recebimento, data_retirada, operador_entrada, operador_baixa, retirado_por, foto_etiqueta, foto_etiqueta_url, assinatura_url, morador_id, created_at, updated_at',
   custodia: 'id, condominio_id, codigo_custodia, codigo, descricao, fluxo, origem_tipo, origem_unidade, origem_bloco, origem_nome_doc, origem_whats, destino_tipo, destino_unidade, destino_bloco, destino_nome_doc, destino_whats, local_armazenamento, foto_entrada_url, foto_saida_url, foto_url, status, operador_entrada, operador_saida, recebedor_nome, recebedor_doc, tipo_baixa, data_hora_entrada, data_hora_saida, observacoes, created_at, updated_at',
   moradores: 'id, condominio_id, nome, unidade, bloco, telefone, email, tipo, documento, veiculo_placa, veiculo_modelo, veiculo_cor, ativo, created_at, updated_at',
   bancada_volumes: 'id, condominio_id, codigo_volume, tipo, local, status, operador_entrada, morador_identificacao, created_at, updated_at',
