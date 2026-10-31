@@ -80,200 +80,43 @@ export interface ReservaArea {
 const CHAVE_STORAGE_AREAS = 'porttohub_areas_comuns_';
 const CHAVE_STORAGE_RESERVAS = 'porttohub_reservas_';
 
-export const AREAS_PADRAO_SEED: Omit<AreaComum, 'id' | 'condominio_id'>[] = [
-  {
-    nome: 'Quadra de Tênis Rápida',
-    descricao: 'Quadra de piso rápido oficial com iluminação em LED profissional e arquibancada.',
-    capacidade_maxima: 4,
-    taxa_reserva: 0.00,
-    taxa_limpeza: 0.00,
-    valor_caucao: 0.00,
-    antecedencia_minima_dias: 0,
-    antecedencia_maxima_dias: 14,
-    horario_inicio: '07:00',
-    horario_fim: '22:00',
-    duracao_slot_minutos: 60,
-    tipo_area: 'quadra',
-    intervalo_limpeza_horas: 0,
-    turnos_disponiveis: ['manha', 'tarde', 'noite'],
-    dias_funcionamento: [0, 1, 2, 3, 4, 5, 6],
-    regras_termo: 'Uso obrigatório de tênis esportivo com sola clara (non-marking). Máximo de 4 atletas simultâneos por horário.',
-    exige_aprovacao_sindico: false,
-    foto_url: 'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=800&q=80',
-    ativa: true
-  },
-  {
-    nome: 'Academia & Fitness Center',
-    descricao: 'Aparelhos modernos de musculação, esteiras ergométricas, halteres e área livre para funcional.',
-    capacidade_maxima: 15,
-    taxa_reserva: 0.00,
-    taxa_limpeza: 0.00,
-    valor_caucao: 0.00,
-    antecedencia_minima_dias: 0,
-    antecedencia_maxima_dias: 7,
-    horario_inicio: '06:00',
-    horario_fim: '23:00',
-    duracao_slot_minutos: 60,
-    tipo_area: 'academia',
-    intervalo_limpeza_horas: 0,
-    turnos_disponiveis: ['manha', 'tarde', 'noite'],
-    dias_funcionamento: [0, 1, 2, 3, 4, 5, 6],
-    regras_termo: 'Uso obrigatório de toalha individual e higienização dos equipamentos após o uso com álcool 70%.',
-    exige_aprovacao_sindico: false,
-    foto_url: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=800&q=80',
-    ativa: true
-  },
-  {
-    nome: 'Salão de Jogos & Sinuca',
-    descricao: 'Mesa de sinuca oficial, pebolim, mesa de cartas e tênis de mesa.',
-    capacidade_maxima: 10,
-    taxa_reserva: 0.00,
-    taxa_limpeza: 0.00,
-    valor_caucao: 0.00,
-    antecedencia_minima_dias: 0,
-    antecedencia_maxima_dias: 14,
-    horario_inicio: '08:00',
-    horario_fim: '23:00',
-    duracao_slot_minutos: 60,
-    tipo_area: 'jogos',
-    intervalo_limpeza_horas: 0,
-    turnos_disponiveis: ['manha', 'tarde', 'noite'],
-    dias_funcionamento: [0, 1, 2, 3, 4, 5, 6],
-    regras_termo: 'Retirar tacos e bolas na portaria. Proibido apoiar copos sobre as mesas de jogo.',
-    exige_aprovacao_sindico: false,
-    foto_url: 'https://images.unsplash.com/photo-1511193311914-0346f16efe90?auto=format&fit=crop&w=800&q=80',
-    ativa: true
-  },
-  {
-    nome: 'Quadra Beach Tennis & Vôlei de Areia',
-    descricao: 'Quadra de areia tratada com iluminação noturna e ducha externa.',
-    capacidade_maxima: 6,
-    taxa_reserva: 0.00,
-    taxa_limpeza: 0.00,
-    valor_caucao: 0.00,
-    antecedencia_minima_dias: 0,
-    antecedencia_maxima_dias: 14,
-    horario_inicio: '06:00',
-    horario_fim: '22:00',
-    duracao_slot_minutos: 60,
-    tipo_area: 'quadra',
-    intervalo_limpeza_horas: 0,
-    turnos_disponiveis: ['manha', 'tarde', 'noite'],
-    dias_funcionamento: [0, 1, 2, 3, 4, 5, 6],
-    regras_termo: 'Passar pela ducha antes de retornar às áreas comuns internas do condomínio.',
-    exige_aprovacao_sindico: false,
-    foto_url: 'https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&fit=crop&w=800&q=80',
-    ativa: true
-  },
-  {
-    nome: 'Salão de Festas Nobre',
-    descricao: 'Espaço climatizado com cozinha completa, churrasqueira interna, freezer, mesas e cadeiras para celebrações especiais.',
-    capacidade_maxima: 80,
-    taxa_reserva: 150.00,
-    taxa_limpeza: 80.00,
-    valor_caucao: 300.00,
-    antecedencia_minima_dias: 3,
-    antecedencia_maxima_dias: 90,
-    horario_inicio: '10:00',
-    horario_fim: '23:00',
-    duracao_slot_minutos: 360,
-    tipo_area: 'festa',
-    intervalo_limpeza_horas: 4,
-    turnos_disponiveis: ['manha', 'tarde', 'noite', 'dia_todo'],
-    dias_funcionamento: [0, 1, 2, 3, 4, 5, 6],
-    regras_termo: 'Respeitar a Lei do Silêncio a partir das 22h. Proibido som ao vivo amplificado de alta potência na área externa. Entregar o espaço sem danos materiais e lixo recolhido nas lixeiras adequadas.',
-    exige_aprovacao_sindico: true,
-    foto_url: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80',
-    ativa: true
-  },
-  {
-    nome: 'Churrasqueira Gourmet 01 (Piscina)',
-    descricao: 'Bancada em granito, grelha em inox, pia, geladeira e mesas de apoio próximas ao deck da piscina.',
-    capacidade_maxima: 25,
-    taxa_reserva: 60.00,
-    taxa_limpeza: 50.00,
-    valor_caucao: 150.00,
-    antecedencia_minima_dias: 1,
-    antecedencia_maxima_dias: 60,
-    horario_inicio: '10:00',
-    horario_fim: '22:00',
-    duracao_slot_minutos: 240,
-    tipo_area: 'churrasqueira',
-    intervalo_limpeza_horas: 2,
-    turnos_disponiveis: ['manha', 'tarde', 'noite'],
-    dias_funcionamento: [0, 2, 3, 4, 5, 6],
-    regras_termo: 'Uso de copos e pratos de vidro expressamente proibido ao redor da borda da piscina. Não é permitido animais dentro da água.',
-    exige_aprovacao_sindico: false,
-    foto_url: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80',
-    ativa: true
-  },
-  {
-    nome: 'Espaço Gourmet & Lounge',
-    descricao: 'Ambiente aconchegante para jantares intimistas, adega climatizada, cooktop por indução e smart TV.',
-    capacidade_maxima: 30,
-    taxa_reserva: 100.00,
-    taxa_limpeza: 60.00,
-    valor_caucao: 200.00,
-    antecedencia_minima_dias: 2,
-    antecedencia_maxima_dias: 60,
-    horario_inicio: '11:00',
-    horario_fim: '23:00',
-    duracao_slot_minutos: 240,
-    tipo_area: 'gourmet',
-    intervalo_limpeza_horas: 3,
-    turnos_disponiveis: ['tarde', 'noite'],
-    dias_funcionamento: [0, 1, 2, 3, 4, 5, 6],
-    regras_termo: 'Equipamentos gourmet devem ser higienizados e desligados ao final. Acesso restrito a maiores ou menores acompanhados.',
-    exige_aprovacao_sindico: false,
-    foto_url: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80',
-    ativa: true
-  },
-  {
-    nome: 'Quadra Poliesportiva',
-    descricao: 'Quadra com demarcações para futsal, basquete e vôlei com iluminação em LED.',
-    capacidade_maxima: 20,
-    taxa_reserva: 0.00,
-    taxa_limpeza: 0.00,
-    valor_caucao: 0.00,
-    antecedencia_minima_dias: 0,
-    antecedencia_maxima_dias: 15,
-    horario_inicio: '07:00',
-    horario_fim: '22:00',
-    duracao_slot_minutos: 60,
-    tipo_area: 'quadra',
-    intervalo_limpeza_horas: 0,
-    turnos_disponiveis: ['manha', 'tarde', 'noite'],
-    dias_funcionamento: [0, 1, 2, 3, 4, 5, 6],
-    regras_termo: 'Uso obrigatório de calçado apropriado com solado de borracha. Desligar refletores ao encerrar.',
-    exige_aprovacao_sindico: false,
-    foto_url: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80',
-    ativa: true
-  },
-  {
-    nome: 'Coworking & Sala de Reunião',
-    descricao: 'Ambiente silencioso com Wi-Fi ultra veloz, tomada em todas as bancadas, TV para projeções e café expresso.',
-    capacidade_maxima: 12,
-    taxa_reserva: 0.00,
-    taxa_limpeza: 0.00,
-    valor_caucao: 0.00,
-    antecedencia_minima_dias: 0,
-    antecedencia_maxima_dias: 30,
-    horario_inicio: '08:00',
-    horario_fim: '21:00',
-    duracao_slot_minutos: 60,
-    tipo_area: 'coworking',
-    intervalo_limpeza_horas: 0,
-    turnos_disponiveis: ['manha', 'tarde', 'noite'],
-    dias_funcionamento: [1, 2, 3, 4, 5, 6],
-    regras_termo: 'Uso de fones de ouvido obrigatório para chamadas de áudio e vídeo na área compartilhada.',
-    exige_aprovacao_sindico: false,
-    foto_url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=800&q=80',
-    ativa: true
-  }
-];
+export const AREAS_PADRAO_SEED: Omit<AreaComum, 'id' | 'condominio_id'>[] = [];
+
+// Chave para identificar que as áreas padrão pré-cadastradas antigas foram devidamente limpas
+const CHAVE_MIGRACAO_LIMPEZA = 'porttohub_areas_limpas_v3_';
 
 export async function carregarAreasComuns(condominioId: string): Promise<AreaComum[]> {
   if (!condominioId) return [];
+
+  // Se o usuário ainda tinha áreas padrão/mock salvas anteriormente no localStorage,
+  // nós realizamos uma limpeza para atender ao pedido de excluir todas as áreas pré-cadastradas.
+  const migradoKey = `${CHAVE_MIGRACAO_LIMPEZA}${condominioId}`;
+  const jaLimpouAntigas = localStorage.getItem(migradoKey);
+
+  if (!jaLimpouAntigas) {
+    const cached = localStorage.getItem(`${CHAVE_STORAGE_AREAS}${condominioId}`);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          // Detecta se contém as áreas mock iniciais
+          const eramMocks = parsed.some((a: any) => 
+            (typeof a.id === 'string' && a.id.startsWith('area-')) || 
+            a.nome === 'Quadra de Tênis Rápida' || 
+            a.nome === 'Academia & Fitness Center' || 
+            a.nome === 'Salão de Festas Nobre' ||
+            a.nome === 'Salão de Jogos & Sinuca' ||
+            a.nome === 'Churrasqueira Gourmet 01 (Piscina)' ||
+            a.nome === 'Espaço Gourmet & Lounge'
+          );
+          if (eramMocks) {
+            localStorage.removeItem(`${CHAVE_STORAGE_AREAS}${condominioId}`);
+          }
+        }
+      } catch {}
+    }
+    localStorage.setItem(migradoKey, 'true');
+  }
 
   // 1. Tenta carregar do Supabase se houver tabela
   if (isUUID(condominioId)) {
@@ -284,7 +127,7 @@ export async function carregarAreasComuns(condominioId: string): Promise<AreaCom
         .eq('condominio_id', condominioId)
         .order('nome', { ascending: true });
 
-      if (!error && data && data.length > 0) {
+      if (!error && data) {
         localStorage.setItem(`${CHAVE_STORAGE_AREAS}${condominioId}`, JSON.stringify(data));
         return data as AreaComum[];
       }
@@ -298,19 +141,27 @@ export async function carregarAreasComuns(condominioId: string): Promise<AreaCom
   if (cached) {
     try {
       const parsed = JSON.parse(cached);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     } catch {}
   }
 
-  // 3. Inicializa com áreas padrão para o condomínio
-  const seeds: AreaComum[] = AREAS_PADRAO_SEED.map((seed, idx) => ({
-    ...seed,
-    id: `area-${condominioId.slice(0, 8)}-${idx + 1}`,
-    condominio_id: condominioId
-  }));
+  // 3. Nenhuma área pré-cadastrada: começa 100% vazia
+  return [];
+}
 
-  localStorage.setItem(`${CHAVE_STORAGE_AREAS}${condominioId}`, JSON.stringify(seeds));
-  return seeds;
+export async function excluirTodasAreasComuns(condominioId: string): Promise<boolean> {
+  if (!condominioId) return false;
+  localStorage.removeItem(`${CHAVE_STORAGE_AREAS}${condominioId}`);
+  localStorage.setItem(`${CHAVE_MIGRACAO_LIMPEZA}${condominioId}`, 'true');
+
+  if (isUUID(condominioId)) {
+    try {
+      await supabase.from('areas_comuns').delete().eq('condominio_id', condominioId);
+    } catch (e) {
+      console.warn('Erro ao deletar áreas no Supabase:', e);
+    }
+  }
+  return true;
 }
 
 export async function salvarAreaComum(condominioId: string, area: Partial<AreaComum>): Promise<AreaComum> {

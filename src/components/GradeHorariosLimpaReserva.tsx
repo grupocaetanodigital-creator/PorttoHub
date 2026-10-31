@@ -266,14 +266,17 @@ export const GradeHorariosLimpaReserva: React.FC<GradeHorariosLimpaReservaProps>
         </div>
 
         {areasAtivas.length === 0 ? (
-          <div className="p-3 text-center text-xs text-slate-500">
-            Nenhuma área ativa configurada para agendamento.{' '}
+          <div className="p-4 text-center text-xs text-slate-500 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+            <p className="font-bold text-slate-700 dark:text-slate-300 mb-2">
+              Nenhuma área comum ativa cadastrada para este condomínio.
+            </p>
             <button
               type="button"
               onClick={onAbrirConfigEspacos}
-              className="text-emerald-600 font-bold underline"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-500 cursor-pointer shadow-xs"
             >
-              Configurar áreas agora
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Cadastrar e Configurar Área Comum</span>
             </button>
           </div>
         ) : (
@@ -302,6 +305,15 @@ export const GradeHorariosLimpaReserva: React.FC<GradeHorariosLimpaReservaProps>
                 </button>
               );
             })}
+
+            <button
+              type="button"
+              onClick={onAbrirConfigEspacos}
+              className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer shrink-0 border border-dashed border-emerald-400 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Nova Área</span>
+            </button>
           </div>
         )}
       </div>

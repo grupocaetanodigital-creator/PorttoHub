@@ -57,6 +57,7 @@ import {
   carregarAreasComuns,
   salvarAreaComum,
   excluirAreaComum,
+  excluirTodasAreasComuns,
   alternarStatusAreaComum,
   carregarReservas,
   criarOuAtualizarReserva,
@@ -725,15 +726,54 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
       }
       return [...prev, salva];
     });
+    // Auto-seleciona a área salva/criada no formulário de reserva
+    setFormNovaReserva(prev => ({ ...prev, area_id: salva.id }));
     setModalNovaArea(false);
-    setFeedback({ tipo: 'sucesso', texto: 'Espaço comum salvo com sucesso!' });
+    setFeedback({ tipo: 'sucesso', texto: `Espaço comum "${salva.nome}" configurado com sucesso!` });
   };
 
   const handleExcluirArea = async (areaId: string) => {
     if (!confirm('Deseja realmente remover este espaço comum?')) return;
     await excluirAreaComum(condId, areaId);
-    setAreas(prev => prev.filter(a => a.id !== areaId));
+    setAreas(prev => {
+      const rest = prev.filter(a => a.id !== areaId);
+      if (formNovaReserva.area_id === areaId) {
+        setFormNovaReserva(f => ({ ...f, area_id: rest[0]?.id || '' }));
+      }
+      return rest;
+    });
     setFeedback({ tipo: 'sucesso', texto: 'Espaço comum removido.' });
+  };
+
+  const handleExcluirTodasAreas = async () => {
+    if (!confirm('CONFIRMAÇÃO: Deseja EXCLUIR TODAS as áreas comuns deste condomínio? Todos os espaços pré-cadastrados serão removidos.')) {
+      return;
+    }
+    await excluirTodasAreasComuns(condId);
+    setAreas([]);
+    setFormNovaReserva(prev => ({ ...prev, area_id: '' }));
+    setFeedback({ tipo: 'sucesso', texto: 'Todas as áreas comuns foram excluídas.' });
+  };
+
+  const handleAbrirNovaArea = (dadosIniciais?: Partial<AreaComum>) => {
+    setAreaEmEdicao({
+      nome: '',
+      descricao: '',
+      capacidade_maxima: 40,
+      taxa_reserva: 0,
+      taxa_limpeza: 0,
+      valor_caucao: 0,
+      horario_inicio: '08:00',
+      horario_fim: '23:00',
+      duracao_slot_minutos: 60,
+      intervalo_limpeza_horas: 1,
+      turnos_disponiveis: ['manha', 'tarde', 'noite', 'dia_todo'],
+      regras_termo: 'Respeitar normas internas, lei do silêncio e entregar o local limpo e conservado.',
+      exige_aprovacao_sindico: true,
+      ativa: true,
+      ...dadosIniciais
+    });
+    setModalNovaArea(true);
   };
 
   const handleAlternarStatusArea = async (areaId: string) => {
@@ -1493,76 +1533,143 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
           <form onSubmit={handleCriarReserva} className="space-y-4">
             {/* PASSO 1: SELEÇÃO DO ESPAÇO */}
             {passoFormReserva === 1 && (
-              <div className="space-y-3">
-                <label className="block text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                  Selecione a Área Comum Desejada:
-                </label>
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 pb-1 border-b border-slate-100 dark:border-slate-800">
+                  <div>
+                    <label className="block text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                      Selecione a Área Comum Desejada:
+                    </label>
+                    <p className="text-[11px] text-slate-500">
+                      Escolha o espaço do condomínio ou adicione uma nova área personalizada.
+                    </p>
+                  </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => handleAbrirNovaArea()}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-black text-xs shadow-md shadow-emerald-600/20 transition-all cursor-pointer self-start sm:self-auto shrink-0"
+                  >
+                    <Plus className="w-4 h-4 stroke-[3]" />
+                    <span>+ Adicionar e Configurar Área Comum</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {areasAtivas.length === 0 ? (
-                    <div className="sm:col-span-2 p-6 text-center bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-700">
-                      <Building className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                        Nenhuma área comum ativa encontrada no condomínio.
-                      </p>
+                    <div className="sm:col-span-2 p-8 text-center bg-gradient-to-b from-slate-50 to-emerald-50/20 dark:from-slate-850 dark:to-slate-900 rounded-3xl border-2 border-dashed border-slate-300 dark:border-slate-700 space-y-3.5">
+                      <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-inner">
+                        <Building className="w-7 h-7" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                          Nenhuma área comum cadastrada neste condomínio
+                        </h4>
+                        <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+                          Todas as áreas pré-definidas foram removidas. Adicione seus espaços reais (Salão de Festas, Churrasqueira, Quadra, Espaço Gourmet, Piscina, etc.) com suas capacidades e regras personalizadas.
+                        </p>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => setAbaAtiva('espacos')}
-                        className="mt-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                        onClick={() => handleAbrirNovaArea()}
+                        className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-extrabold text-xs shadow-lg shadow-emerald-600/25 transition-all cursor-pointer"
                       >
-                        Cadastrar ou ativar áreas comuns
+                        <Plus className="w-4 h-4 stroke-[3]" />
+                        <span>+ Cadastrar e Configurar Primeira Área Comum</span>
                       </button>
                     </div>
                   ) : (
-                    areasAtivas.map(area => {
-                    const selecionada = formNovaReserva.area_id === area.id;
-                    const taxaTotal = (area.taxa_reserva || 0) + (area.taxa_limpeza || 0);
+                    <>
+                      {areasAtivas.map(area => {
+                        const selecionada = formNovaReserva.area_id === area.id;
+                        const taxaTotal = (area.taxa_reserva || 0) + (area.taxa_limpeza || 0);
 
-                    return (
+                        return (
+                          <div
+                            key={area.id}
+                            onClick={() => setFormNovaReserva(prev => ({ ...prev, area_id: area.id }))}
+                            className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 relative group ${
+                              selecionada
+                                ? 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/50 ring-2 ring-emerald-500/20'
+                                : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/40 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 shadow-xs shrink-0">
+                              {getIconeArea(area.nome)}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between">
+                                <h4 className="font-black text-sm text-slate-900 dark:text-white truncate">
+                                  {area.nome}
+                                </h4>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    title="Configurar esta área"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setAreaEmEdicao(area);
+                                      setModalNovaArea(true);
+                                    }}
+                                    className="p-1 text-slate-400 hover:text-emerald-600 rounded-md hover:bg-white/80 dark:hover:bg-slate-800 cursor-pointer transition-colors"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                  {selecionada && <Check className="w-4 h-4 text-emerald-600 stroke-[3]" />}
+                                </div>
+                              </div>
+                              <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5 leading-relaxed">
+                                {area.descricao || 'Sem descrição cadastrada.'}
+                              </p>
+
+                              <div className="mt-2 pt-1.5 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between text-[11px] font-mono">
+                                <span className="text-slate-600 dark:text-slate-400">
+                                  Cap: <strong>{area.capacidade_maxima} pess.</strong>
+                                </span>
+                                <span className="font-extrabold text-emerald-600 dark:text-emerald-400">
+                                  {taxaTotal > 0 ? `R$ ${taxaTotal.toFixed(2)}` : 'Gratuito'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Card de Adição Rápida de Nova Área Comum */}
                       <div
-                        key={area.id}
-                        onClick={() => setFormNovaReserva(prev => ({ ...prev, area_id: area.id }))}
-                        className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 relative ${
-                          selecionada
-                            ? 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/50 ring-2 ring-emerald-500/20'
-                            : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/40 hover:border-slate-300'
-                        }`}
+                        onClick={() => handleAbrirNovaArea()}
+                        className="p-3.5 rounded-2xl border-2 border-dashed border-emerald-300 dark:border-emerald-800/80 bg-emerald-50/30 dark:bg-emerald-950/20 hover:bg-emerald-50/70 hover:border-emerald-500 dark:hover:border-emerald-600 transition-all cursor-pointer flex items-center justify-center gap-3 text-emerald-700 dark:text-emerald-400 group min-h-[90px]"
                       >
-                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 shadow-xs shrink-0">
-                          {getIconeArea(area.nome)}
+                        <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
+                          <Plus className="w-5 h-5 stroke-[3]" />
                         </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between">
-                            <h4 className="font-black text-sm text-slate-900 dark:text-white truncate">
-                              {area.nome}
-                            </h4>
-                            {selecionada && <Check className="w-4 h-4 text-emerald-600 stroke-[3] shrink-0" />}
-                          </div>
-                          <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5 leading-relaxed">
-                            {area.descricao}
+                        <div className="text-left">
+                          <h4 className="font-black text-xs sm:text-sm">
+                            + Adicionar Outra Área Comum
+                          </h4>
+                          <p className="text-[11px] text-emerald-600/80 dark:text-emerald-400/80">
+                            Cadastre e configure um novo espaço
                           </p>
-
-                          <div className="mt-2 pt-1.5 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between text-[11px] font-mono">
-                            <span className="text-slate-600 dark:text-slate-400">
-                              Cap: <strong>{area.capacidade_maxima} pess.</strong>
-                            </span>
-                            <span className="font-extrabold text-emerald-600 dark:text-emerald-400">
-                              {taxaTotal > 0 ? `R$ ${taxaTotal.toFixed(2)}` : 'Gratuito'}
-                            </span>
-                          </div>
                         </div>
                       </div>
-                    );
-                  })
-                )}
+                    </>
+                  )}
                 </div>
 
-                <div className="pt-3 flex justify-end">
+                <div className="pt-3 flex flex-col sm:flex-row items-center justify-between gap-2">
+                  {!formNovaReserva.area_id && areasAtivas.length > 0 ? (
+                    <span className="text-xs text-amber-600 dark:text-amber-400 font-bold">
+                      Selecione uma área comum acima para prosseguir.
+                    </span>
+                  ) : (
+                    <span />
+                  )}
+
                   <button
                     type="button"
+                    disabled={!formNovaReserva.area_id || areasAtivas.length === 0}
                     onClick={() => setPassoFormReserva(2)}
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-extrabold text-xs shadow-md shadow-emerald-600/20 cursor-pointer"
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed text-white font-extrabold text-xs shadow-md shadow-emerald-600/20 cursor-pointer"
                   >
                     <span>Avançar para Data & Horário</span>
                     <ArrowRight className="w-4 h-4" />
@@ -2334,141 +2441,181 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
       {/* ABA 5: GESTÃO DE ESPAÇOS COMUNS */}
       {abaAtiva === 'espacos' && podeGerenciarAreas && (
         <div className="space-y-3.5">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
                 <Building className="w-5 h-5 text-indigo-500" />
-                Espaços Comuns
+                Gestão de Espaços Comuns
               </h3>
               <p className="text-[11px] sm:text-xs text-slate-500">
-                Configure horários, limites de convidados e taxas
+                Configure horários, limites de convidados, taxas e aprovação por condomínio
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setAreaEmEdicao({
-                  nome: '',
-                  descricao: '',
-                  capacidade_maxima: 50,
-                  taxa_reserva: 100,
-                  taxa_limpeza: 60,
-                  valor_caucao: 200,
-                  horario_inicio: '10:00',
-                  horario_fim: '23:00',
-                  turnos_disponiveis: ['manha', 'tarde', 'noite', 'dia_todo'],
-                  regras_termo: 'Respeitar normas e lei do silêncio.',
-                  exige_aprovacao_sindico: true,
-                  ativa: true
-                });
-                setModalNovaArea(true);
-              }}
-              className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer"
-            >
-              + Novo Espaço
-            </button>
+
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              {areas.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleExcluirTodasAreas}
+                  title="Excluir todas as áreas comuns pré-cadastradas deste condomínio"
+                  className="px-3.5 py-2 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Excluir Todas as Áreas</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => handleAbrirNovaArea()}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-indigo-600/20 active:scale-95 cursor-pointer transition-all"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>+ Novo Espaço</span>
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {areas.map(area => (
-              <div
-                key={area.id}
-                className={`p-4 rounded-2xl sm:rounded-3xl border shadow-xs flex flex-col justify-between transition-all ${
-                  area.ativa
-                    ? 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
-                    : 'bg-slate-50 dark:bg-slate-900/50 border-dashed border-slate-300 dark:border-slate-800 opacity-75'
-                }`}
+          {areas.length === 0 ? (
+            <div className="p-10 text-center bg-white dark:bg-slate-900 rounded-3xl border-2 border-dashed border-slate-300 dark:border-slate-800 space-y-3.5">
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-inner">
+                <Building className="w-7 h-7" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                  Nenhuma área comum cadastrada no condomínio
+                </h4>
+                <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+                  Todas as áreas pré-definidas foram removidas. Adicione seus próprios espaços sob medida para este condomínio.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleAbrirNovaArea()}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold shadow-lg shadow-indigo-600/25 active:scale-95 transition-all cursor-pointer"
               >
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      {getIconeArea(area.nome)}
-                      <h4 className="font-black text-sm text-slate-900 dark:text-white">{area.nome}</h4>
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>+ Cadastrar e Configurar Espaço Comum</span>
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {areas.map(area => (
+                <div
+                  key={area.id}
+                  className={`p-4 rounded-2xl sm:rounded-3xl border shadow-xs flex flex-col justify-between transition-all ${
+                    area.ativa
+                      ? 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                      : 'bg-slate-50 dark:bg-slate-900/50 border-dashed border-slate-300 dark:border-slate-800 opacity-75'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        {getIconeArea(area.nome)}
+                        <h4 className="font-black text-sm text-slate-900 dark:text-white">{area.nome}</h4>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleAlternarStatusArea(area.id)}
+                        title="Clique para alternar o status do espaço"
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-black cursor-pointer transition-colors flex items-center gap-1 ${
+                          area.ativa
+                            ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200'
+                            : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-300'
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${area.ativa ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                        {area.ativa ? 'Ativo' : 'Desativado'}
+                      </button>
                     </div>
+                    <p className="text-xs text-slate-500 line-clamp-2 mb-3">{area.descricao || 'Sem descrição informada.'}</p>
+                    
+                    <div className="space-y-1.5 text-xs text-slate-700 dark:text-slate-300 font-medium">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">Capacidade:</span>
+                        <span className="font-bold text-slate-900 dark:text-white">{area.capacidade_maxima} pessoas</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">Horário Permitido:</span>
+                        <span className="font-bold text-slate-900 dark:text-white">{area.horario_inicio} às {area.horario_fim}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">Taxa Reserva:</span>
+                        <span className="font-bold font-mono text-slate-900 dark:text-white">R$ {(area.taxa_reserva || 0).toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">Taxa Limpeza:</span>
+                        <span className="font-bold font-mono text-slate-900 dark:text-white">R$ {(area.taxa_limpeza || 0).toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800">
+                        <span className="text-slate-500">Aprovação Síndico:</span>
+                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
+                          area.exige_aprovacao_sindico
+                            ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300'
+                            : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
+                        }`}>
+                          {area.exige_aprovacao_sindico ? 'Exige Aprovação' : 'Aprovação Direta'}
+                        </span>
+                      </div>
+                      {area.regras_termo && (
+                        <div className="pt-1.5 text-[11px] text-slate-500 line-clamp-2 italic bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg">
+                          "{area.regras_termo}"
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
                     <button
                       type="button"
                       onClick={() => handleAlternarStatusArea(area.id)}
-                      title="Clique para alternar o status do espaço"
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-black cursor-pointer transition-colors flex items-center gap-1 ${
-                        area.ativa
-                          ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200'
-                          : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-300'
-                      }`}
+                      className="text-[11px] font-bold text-slate-500 hover:text-indigo-600 cursor-pointer"
                     >
-                      <span className={`w-1.5 h-1.5 rounded-full ${area.ativa ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                      {area.ativa ? 'Ativo' : 'Desativado'}
+                      {area.ativa ? 'Desativar Espaço' : 'Ativar Espaço'}
                     </button>
-                  </div>
-                  <p className="text-xs text-slate-500 line-clamp-2 mb-3">{area.descricao || 'Sem descrição informada.'}</p>
-                  
-                  <div className="space-y-1.5 text-xs text-slate-700 dark:text-slate-300 font-medium">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Capacidade:</span>
-                      <span className="font-bold text-slate-900 dark:text-white">{area.capacidade_maxima} pessoas</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        title="Editar Espaço"
+                        onClick={() => {
+                          setAreaEmEdicao(area);
+                          setModalNovaArea(true);
+                        }}
+                        className="p-2 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 cursor-pointer"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        title="Excluir Espaço"
+                        onClick={() => handleExcluirArea(area.id)}
+                        className="p-2 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Horário Permitido:</span>
-                      <span className="font-bold text-slate-900 dark:text-white">{area.horario_inicio} às {area.horario_fim}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Taxa Reserva:</span>
-                      <span className="font-bold font-mono text-slate-900 dark:text-white">R$ {(area.taxa_reserva || 0).toFixed(2)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Taxa Limpeza:</span>
-                      <span className="font-bold font-mono text-slate-900 dark:text-white">R$ {(area.taxa_limpeza || 0).toFixed(2)}</span>
-                    </div>
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800">
-                      <span className="text-slate-500">Aprovação Síndico:</span>
-                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
-                        area.exige_aprovacao_sindico
-                          ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300'
-                          : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
-                      }`}>
-                        {area.exige_aprovacao_sindico ? 'Exige Aprovação' : 'Aprovação Direta'}
-                      </span>
-                    </div>
-                    {area.regras_termo && (
-                      <div className="pt-1.5 text-[11px] text-slate-500 line-clamp-2 italic bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg">
-                        "{area.regras_termo}"
-                      </div>
-                    )}
                   </div>
                 </div>
+              ))}
 
-                <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleAlternarStatusArea(area.id)}
-                    className="text-[11px] font-bold text-slate-500 hover:text-indigo-600 cursor-pointer"
-                  >
-                    {area.ativa ? 'Desativar Espaço' : 'Ativar Espaço'}
-                  </button>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      title="Editar Espaço"
-                      onClick={() => {
-                        setAreaEmEdicao(area);
-                        setModalNovaArea(true);
-                      }}
-                      className="p-2 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 cursor-pointer"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      title="Excluir Espaço"
-                      onClick={() => handleExcluirArea(area.id)}
-                      className="p-2 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+              {/* Card de Adição de Nova Área na Gestão */}
+              <div
+                onClick={() => handleAbrirNovaArea()}
+                className="p-5 rounded-2xl sm:rounded-3xl border-2 border-dashed border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/20 dark:bg-indigo-950/20 hover:bg-indigo-50/60 dark:hover:bg-indigo-950/40 hover:border-indigo-400 transition-all cursor-pointer flex flex-col items-center justify-center text-center gap-2 text-indigo-700 dark:text-indigo-300 min-h-[220px]"
+              >
+                <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-900/60 flex items-center justify-center">
+                  <Plus className="w-6 h-6 stroke-[3]" />
                 </div>
+                <h4 className="font-black text-sm text-slate-900 dark:text-white mt-1">
+                  + Adicionar Espaço Comum
+                </h4>
+                <p className="text-xs text-slate-500 max-w-xs">
+                  Cadastre um novo salão, quadra, churrasqueira ou espaço personalizado
+                </p>
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
