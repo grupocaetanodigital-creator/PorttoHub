@@ -3045,8 +3045,9 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Nome do Espaço / Área Comum *
+                <label className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  <Building className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <span>Nome do Espaço / Área Comum *</span>
                 </label>
                 <input
                   type="text"
@@ -3054,27 +3055,29 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                   placeholder="Ex: Salão de Festas Nobre, Churrasqueira 01, Quadra de Tênis, Espaço Gourmet, Espaço Pet..."
                   value={areaEmEdicao.nome}
                   onChange={e => setAreaEmEdicao(prev => ({ ...prev, nome: e.target.value }))}
-                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
+                  className="w-full px-3 py-2.5 rounded-xl bg-white text-slate-900 border border-slate-300 dark:border-slate-600 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-600 shadow-xs"
                 />
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Descrição e Recursos Inclusos
+                <label className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <span>Descrição e Recursos Inclusos</span>
                 </label>
                 <textarea
                   rows={2}
                   placeholder="Itens inclusos, localização, infraestrutura (fogão, freezer, ar-condicionado, mesas)..."
                   value={areaEmEdicao.descricao}
                   onChange={e => setAreaEmEdicao(prev => ({ ...prev, descricao: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium resize-none text-slate-900 dark:text-white"
+                  className="w-full px-3 py-2 rounded-xl bg-white text-slate-900 border border-slate-300 dark:border-slate-600 font-medium resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-600 shadow-xs"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Capacidade Máxima de Pessoas *
+                  <label className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    <Users className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <span>Capacidade Máxima *</span>
                   </label>
                   <input
                     type="number"
@@ -3084,12 +3087,13 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                     onChange={e =>
                       setAreaEmEdicao(prev => ({ ...prev, capacidade_maxima: Number(e.target.value) }))
                     }
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
+                    className="w-full px-3 py-2.5 rounded-xl bg-white text-slate-900 border border-slate-300 dark:border-slate-600 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-600 shadow-xs"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Taxa de Reserva (R$)
+                  <label className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    <DollarSign className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <span>Taxa Reserva (R$)</span>
                   </label>
                   <input
                     type="number"
@@ -3099,15 +3103,16 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                     onChange={e =>
                       setAreaEmEdicao(prev => ({ ...prev, taxa_reserva: Number(e.target.value) }))
                     }
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
+                    className="w-full px-3 py-2.5 rounded-xl bg-white text-slate-900 border border-slate-300 dark:border-slate-600 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-600 shadow-xs"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Taxa de Limpeza (R$)
+                  <label className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    <DollarSign className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <span>Taxa Limpeza (R$)</span>
                   </label>
                   <input
                     type="number"
@@ -3117,12 +3122,13 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                     onChange={e =>
                       setAreaEmEdicao(prev => ({ ...prev, taxa_limpeza: Number(e.target.value) }))
                     }
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
+                    className="w-full px-3 py-2.5 rounded-xl bg-white text-slate-900 border border-slate-300 dark:border-slate-600 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-600 shadow-xs"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Valor Caução (R$)
+                  <label className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <span>Valor Caução (R$)</span>
                   </label>
                   <input
                     type="number"
@@ -3132,48 +3138,51 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                     onChange={e =>
                       setAreaEmEdicao(prev => ({ ...prev, valor_caucao: Number(e.target.value) }))
                     }
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
+                    className="w-full px-3 py-2.5 rounded-xl bg-white text-slate-900 border border-slate-300 dark:border-slate-600 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-600 shadow-xs"
                   />
                 </div>
               </div>
 
               {/* HORÁRIOS PERMITIDOS PARA AGENDAMENTO */}
-              <div className="p-3.5 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200/80 dark:border-indigo-800 rounded-2xl space-y-2.5">
-                <div className="flex items-center gap-1.5 font-black text-indigo-900 dark:text-indigo-200">
-                  <Clock className="w-4 h-4 text-indigo-600" />
+              <div className="p-3.5 bg-white dark:bg-slate-900 border-2 border-blue-200 dark:border-blue-800 rounded-2xl space-y-2.5 shadow-xs">
+                <div className="flex items-center gap-1.5 font-black text-blue-900 dark:text-blue-300">
+                  <Clock className="w-4 h-4 text-blue-600" />
                   <span>Horários de Funcionamento e Slot</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 mb-0.5">
-                      Horário Início
+                    <label className="flex items-center gap-1 text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      <span>Horário Início</span>
                     </label>
                     <input
                       type="time"
                       value={areaEmEdicao.horario_inicio || '07:00'}
                       onChange={e => setAreaEmEdicao(prev => ({ ...prev, horario_inicio: e.target.value }))}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono font-bold text-xs"
+                      className="w-full px-2.5 py-2 rounded-xl bg-white text-slate-900 border border-slate-300 dark:border-slate-600 font-mono font-bold text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-600 shadow-xs"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 mb-0.5">
-                      Horário Fim
+                    <label className="flex items-center gap-1 text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      <span>Horário Fim</span>
                     </label>
                     <input
                       type="time"
                       value={areaEmEdicao.horario_fim || '22:00'}
                       onChange={e => setAreaEmEdicao(prev => ({ ...prev, horario_fim: e.target.value }))}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono font-bold text-xs"
+                      className="w-full px-2.5 py-2 rounded-xl bg-white text-slate-900 border border-slate-300 dark:border-slate-600 font-mono font-bold text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-600 shadow-xs"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 mb-0.5">
-                      Duração do Slot
+                    <label className="flex items-center gap-1 text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      <span>Duração Slot</span>
                     </label>
                     <select
                       value={areaEmEdicao.duracao_slot_minutos || 60}
                       onChange={e => setAreaEmEdicao(prev => ({ ...prev, duracao_slot_minutos: Number(e.target.value) }))}
-                      className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-xs"
+                      className="w-full px-2 py-2 rounded-xl bg-white text-slate-900 border border-slate-300 dark:border-slate-600 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-600 shadow-xs cursor-pointer"
                     >
                       <option value={30}>30 min</option>
                       <option value={60}>1 hora (Padrão)</option>
@@ -3187,12 +3196,12 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
               </div>
 
               {/* APROVAÇÃO PRÉVIA DO SÍNDICO */}
-              <label className="flex items-center gap-2.5 p-3 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/50 cursor-pointer">
+              <label className="flex items-center gap-2.5 p-3 rounded-xl bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 cursor-pointer shadow-xs">
                 <input
                   type="checkbox"
                   checked={areaEmEdicao.exige_aprovacao_sindico ?? true}
                   onChange={e => setAreaEmEdicao(prev => ({ ...prev, exige_aprovacao_sindico: e.target.checked }))}
-                  className="w-4 h-4 rounded text-amber-600 cursor-pointer shrink-0"
+                  className="w-4 h-4 rounded text-blue-600 cursor-pointer shrink-0"
                 />
                 <div>
                   <span className="font-extrabold text-slate-800 dark:text-slate-200 block text-xs">
@@ -3206,8 +3215,9 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
 
               {/* REGRAS E TERMOS DE RESPONSABILIDADE */}
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Regras de Uso e Termo de Responsabilidade *
+                <label className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <span>Regras de Uso e Termo de Responsabilidade *</span>
                 </label>
                 <textarea
                   rows={3}
@@ -3215,7 +3225,7 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                   placeholder="Ex: Lei do silêncio a partir das 22h. Proibido som alto e garrafas de vidro na área da piscina. O morador é responsável pela conservação dos equipamentos."
                   value={areaEmEdicao.regras_termo || ''}
                   onChange={e => setAreaEmEdicao(prev => ({ ...prev, regras_termo: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium resize-none text-slate-900 dark:text-white"
+                  className="w-full px-3 py-2 rounded-xl bg-white text-slate-900 border border-slate-300 dark:border-slate-600 font-medium resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-600 shadow-xs"
                 />
               </div>
 
