@@ -616,3 +616,187 @@ export function formatarMensagemWhatsAppPasse(passe: PasseVirtualQR, condominioN
   msg += `_Emitido com segurança via PorttoHub._`;
   return msg;
 }
+
+// --- INTEGRAÇÃO COM MÓDULO DE CADASTRO BASE, MORADORES E UNIDADES ---
+
+export interface MoradorBaseInfo {
+  id: string;
+  nome: string;
+  bloco?: string;
+  unidade: string;
+  telefone?: string;
+  email?: string;
+  cpf?: string;
+  rg?: string;
+  tipo?: string;
+  condominio_id: string;
+  tag_rfid?: string;
+  codigo_acesso?: string;
+  status_acesso?: 'liberado' | 'bloqueado' | string;
+  veiculo_placa?: string;
+  veiculo_modelo?: string;
+  veiculo_cor?: string;
+  foto_url?: string;
+  foto_base64?: string;
+  contato_emergencia?: string;
+  observacoes?: string;
+}
+
+export async function carregarMoradoresBase(condominioId: string): Promise<MoradorBaseInfo[]> {
+  if (!condominioId || condominioId === 'global' || condominioId === 'todos') {
+    return [];
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('moradores')
+      .select('*')
+      .eq('condominio_id', condominioId)
+      .order('unidade', { ascending: true });
+
+    if (!error && data && Array.isArray(data)) {
+      try {
+        localStorage.setItem(`porttohub_cache_moradores_${condominioId}`, JSON.stringify(data));
+      } catch {}
+      return data as MoradorBaseInfo[];
+    }
+  } catch (err) {
+    console.warn('[ControleAcesso] Erro ao buscar moradores base do Supabase:', err);
+  }
+
+  // Fallback 1: cache local de moradores
+  try {
+    const cached = localStorage.getItem(`porttohub_cache_moradores_${condominioId}`);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed as MoradorBaseInfo[];
+      }
+    }
+  } catch {}
+
+  // Fallback 2: cache global de moradores
+  try {
+    const cachedGlobal = localStorage.getItem('porttohub_moradores_v1');
+    if (cachedGlobal) {
+      const parsed = JSON.parse(cachedGlobal);
+      if (Array.isArray(parsed)) {
+        const filtrados = parsed.filter((m: any) => m.condominio_id === condominioId || m.condoId === condominioId);
+        if (filtrados.length > 0) {
+          return filtrados.map((m: any) => ({
+            id: m.id,
+            nome: m.name || m.nome,
+            bloco: m.block || m.bloco,
+            unidade: m.unitNumber || m.unit || m.unidade,
+            telefone: m.phone || m.telefone,
+            email: m.email,
+            cpf: m.document || m.cpf,
+            tipo: m.type || m.tipo,
+            condominio_id: condominioId,
+            status_acesso: m.status === 'Bloqueado' ? 'bloqueado' : 'liberado',
+            veiculo_placa: m.vehiclePlate || m.veiculo_placa,
+            foto_url: m.avatar || m.foto_url
+          }));
+        }
+      }
+    }
+  } catch {}
+
+  return [];
+}
+
+export function extrairUnidadesBase(
+  condoConfig?: any,
+  moradores?: MoradorBaseInfo[]
+): string[] {
+  const setUnidades = new Set<string>();
+
+  // 1. Unidades cadastradas nos moradores
+  if (moradores && Array.isArray(moradores)) {
+    moradores.forEach(m => {
+      if (m.unidade) {
+        const rotulo = m.bloco ? `${m.bloco} - Apto ${m.unidade}` : `Apto ${m.unidade}`;
+        setUnidades.add(rotulo);
+        setUnidades.add(m.unidade);
+      }
+    });
+  }
+
+  // 2. Unidades da estrutura do condomínio
+  if (condoConfig?.blocos_detalhes && Array.isArray(condoConfig.blocos_detalhes)) {
+    condoConfig.blocos_detalhes.forEach((bloco: any) => {
+      const nomeBloco = bloco.nome || 'Bloco A';
+      if (bloco.estrutura?.unidadesCustomizadas && Array.isArray(bloco.estrutura.unidadesCustomizadas)) {
+        bloco.estrutura.unidadesCustomizadas.forEach((u: string) => {
+          setUnidades.add(`${nomeBloco} - Apto ${u}`);
+          setUnidades.add(u);
+        });
+      } else {
+        const qtd = bloco.unidades || 20;
+        for (let i = 1; i <= Math.min(qtd, 40); i++) {
+          setUnidades.add(`${nomeBloco} - Apto ${i}`);
+        }
+      }
+    });
+  }
+
+  // 3. Unidades customizadas avulsas
+  if (condoConfig?.unidades_customizadas && Array.isArray(condoConfig.unidades_customizadas)) {
+    condoConfig.unidades_customizadas.forEach((u: string) => setUnidades.add(u));
+  }
+
+  return Array.from(setUnidades).sort();
+}
+
+export function buscarMoradorPorPlaca(placa: string, moradores: MoradorBaseInfo[]): MoradorBaseInfo | null {
+  if (!placa || !moradores) return null;
+  const pLimpa = placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  if (pLimpa.length < 3) return null;
+
+  return moradores.find(m => {
+    if (!m.veiculo_placa) return false;
+    const pMorador = m.veiculo_placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    return pMorador === pLimpa;
+  }) || null;
+}
+
+export function buscarMoradoresPorUnidade(unidadeStr: string, moradores: MoradorBaseInfo[]): MoradorBaseInfo[] {
+  if (!unidadeStr || !moradores) return [];
+  const uLimpa = unidadeStr.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  return moradores.filter(m => {
+    if (!m.unidade) return false;
+    const mUnidadeLimpa = m.unidade.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const mCompletoLimpo = `${m.bloco || ''}${m.unidade}`.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return mUnidadeLimpa === uLimpa || mCompletoLimpo.includes(uLimpa) || uLimpa.includes(mUnidadeLimpa);
+  });
+}
+
+export async function alternarStatusAcessoMorador(
+  moradorId: string,
+  novoStatus: 'liberado' | 'bloqueado',
+  condominioId: string
+): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('moradores')
+      .update({ status_acesso: novoStatus })
+      .eq('id', moradorId);
+
+    if (error) {
+      console.warn('Erro ao atualizar status_acesso no Supabase:', error);
+    }
+  } catch {}
+
+  // Atualiza cache local
+  try {
+    const cached = localStorage.getItem(`porttohub_cache_moradores_${condominioId}`);
+    if (cached) {
+      const parsed: MoradorBaseInfo[] = JSON.parse(cached);
+      const atualizados = parsed.map(m => m.id === moradorId ? { ...m, status_acesso: novoStatus } : m);
+      localStorage.setItem(`porttohub_cache_moradores_${condominioId}`, JSON.stringify(atualizados));
+    }
+  } catch {}
+
+  return true;
+}

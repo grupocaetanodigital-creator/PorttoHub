@@ -48,7 +48,13 @@ import {
   registrarSaidaAcesso,
   gerarPasseVirtual,
   validarTokenPasse,
-  formatarMensagemWhatsAppPasse
+  formatarMensagemWhatsAppPasse,
+  carregarMoradoresBase,
+  extrairUnidadesBase,
+  buscarMoradorPorPlaca,
+  buscarMoradoresPorUnidade,
+  alternarStatusAcessoMorador,
+  MoradorBaseInfo
 } from '../services/controleAcessoService';
 import {
   carregarCondominioConfig,
@@ -77,8 +83,14 @@ export default function ControleAcesso({ usuarioLogado }: ControleAcessoProps) {
   const [passesVirtuais, setPassesVirtuais] = useState<PasseVirtualQR[]>([]);
   const [blacklist, setBlacklist] = useState<BloqueioSeguranca[]>([]);
 
+  // Informações do Módulo de Cadastro Base (Moradores & Unidades)
+  const [moradoresBase, setMoradoresBase] = useState<MoradorBaseInfo[]>([]);
+  const [unidadesBase, setUnidadesBase] = useState<string[]>([]);
+  const [moradorVinculadoPlaca, setMoradorVinculadoPlaca] = useState<MoradorBaseInfo | null>(null);
+  const [mostrarSugestoesUnidade, setMostrarSugestoesUnidade] = useState(false);
+
   // Abas
-  const [abaAtiva, setAbaAtiva] = useState<'totem_facial' | 'entrada' | 'presentes' | 'validador_qr' | 'passes' | 'historico' | 'blacklist'>('totem_facial');
+  const [abaAtiva, setAbaAtiva] = useState<'totem_facial' | 'entrada' | 'presentes' | 'validador_qr' | 'passes' | 'moradores_base' | 'historico' | 'blacklist'>('totem_facial');
 
   // Filtros & Buscas
   const [termoBusca, setTermoBusca] = useState('');
@@ -182,8 +194,27 @@ export default function ControleAcesso({ usuarioLogado }: ControleAcessoProps) {
   }), [condId, condoConfig]);
 
   const residentsForTotem = useMemo(() => {
+    if (moradoresBase && moradoresBase.length > 0) {
+      return moradoresBase.map((m: MoradorBaseInfo) => ({
+        id: m.id,
+        condoId: m.condominio_id || condId,
+        name: m.nome,
+        unit: m.bloco ? `${m.bloco} - Apto ${m.unidade}` : `Apto ${m.unidade}`,
+        block: m.bloco || '',
+        type: (m.tipo as any) || 'Morador',
+        status: (m.status_acesso === 'bloqueado' ? 'Bloqueado' : 'Ativo') as any,
+        document: m.cpf || m.rg || '000.000.000-00',
+        phone: m.telefone || '',
+        email: m.email || '',
+        vehiclePlate: m.veiculo_placa || undefined,
+        faceEnrolled: !!(m.foto_url || m.foto_base64),
+        avatar: m.foto_url || m.foto_base64 || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250',
+        accessSchedule: '24h' as const,
+        createdAt: new Date().toISOString()
+      }));
+    }
     return storageService.getResidentsForCondo(condId);
-  }, [condId]);
+  }, [moradoresBase, condId]);
 
   const passesForTotem = useMemo(() => {
     return storageService.getVisitorPassesForCondo(condId);
@@ -205,9 +236,17 @@ export default function ControleAcesso({ usuarioLogado }: ControleAcessoProps) {
     } as any, ...prev]);
   };
 
-  // Carrega dados iniciais
+  // Carrega dados iniciais e escuta eventos de atualização
   useEffect(() => {
     carregarTudo();
+
+    const handleAtualizacao = () => carregarTudo();
+    window.addEventListener('porttohub_moradores_alterados', handleAtualizacao);
+    window.addEventListener('porttohub_dados_precarregados', handleAtualizacao);
+    return () => {
+      window.removeEventListener('porttohub_moradores_alterados', handleAtualizacao);
+      window.removeEventListener('porttohub_dados_precarregados', handleAtualizacao);
+    };
   }, [condId]);
 
   const carregarTudo = async () => {
@@ -217,18 +256,23 @@ export default function ControleAcesso({ usuarioLogado }: ControleAcessoProps) {
     }
     setLoading(true);
     try {
-      const [cfg, pontos, regs, passes, blk] = await Promise.all([
+      const [cfg, pontos, regs, passes, blk, morBase] = await Promise.all([
         carregarCondominioConfig(condId),
         carregarPontosAcesso(condId),
         carregarRegistrosAcesso(condId),
         carregarPassesVirtuais(condId),
-        carregarBlacklist(condId)
+        carregarBlacklist(condId),
+        carregarMoradoresBase(condId)
       ]);
       setCondoConfig(cfg);
       setPontosAcesso(pontos);
       setRegistros(regs);
       setPassesVirtuais(passes);
       setBlacklist(blk);
+      setMoradoresBase(morBase);
+
+      const unids = extrairUnidadesBase(cfg, morBase);
+      setUnidadesBase(unids);
 
       if (pontos.length > 0 && !formEntrada.ponto_acesso_entrada) {
         setFormEntrada(prev => ({ ...prev, ponto_acesso_entrada: pontos[0].nome }));
@@ -239,6 +283,38 @@ export default function ControleAcesso({ usuarioLogado }: ControleAcessoProps) {
       setLoading(false);
     }
   };
+
+  // Verificação de veículo no Cadastro Base de Moradores
+  useEffect(() => {
+    if (!formEntrada.veiculo_placa || formEntrada.veiculo_placa.trim().length < 3) {
+      setMoradorVinculadoPlaca(null);
+      return;
+    }
+    const achado = buscarMoradorPorPlaca(formEntrada.veiculo_placa, moradoresBase);
+    setMoradorVinculadoPlaca(achado);
+    if (achado && !formEntrada.unidade_bloco) {
+      const uFmt = achado.bloco ? `${achado.bloco} - Apto ${achado.unidade}` : `Apto ${achado.unidade}`;
+      setFormEntrada(prev => ({
+        ...prev,
+        unidade_bloco: uFmt,
+        morador_responsavel: achado.nome,
+        telefone: achado.telefone || prev.telefone,
+        veiculo_modelo: achado.veiculo_modelo || prev.veiculo_modelo
+      }));
+    }
+  }, [formEntrada.veiculo_placa, moradoresBase]);
+
+  // Sugestões de Unidades e Moradores vinculados
+  const sugestoesUnidadesFiltradas = useMemo(() => {
+    if (!formEntrada.unidade_bloco || formEntrada.unidade_bloco.length < 1) return [];
+    const termo = formEntrada.unidade_bloco.toLowerCase().trim();
+    return unidadesBase.filter(u => u.toLowerCase().includes(termo)).slice(0, 8);
+  }, [formEntrada.unidade_bloco, unidadesBase]);
+
+  const moradoresDaUnidadeSelecionada = useMemo(() => {
+    if (!formEntrada.unidade_bloco) return [];
+    return buscarMoradoresPorUnidade(formEntrada.unidade_bloco, moradoresBase);
+  }, [formEntrada.unidade_bloco, moradoresBase]);
 
   // Checagem em tempo real de Blacklist no form de entrada
   useEffect(() => {
@@ -687,6 +763,18 @@ export default function ControleAcesso({ usuarioLogado }: ControleAcessoProps) {
         </button>
 
         <button
+          onClick={() => setAbaAtiva('moradores_base')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition cursor-pointer whitespace-nowrap ${
+            abaAtiva === 'moradores_base'
+              ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Building className="w-4 h-4 text-cyan-500" />
+          <span>Moradores & Unidades Base ({moradoresBase.length})</span>
+        </button>
+
+        <button
           onClick={() => setAbaAtiva('historico')}
           className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition cursor-pointer whitespace-nowrap ${
             abaAtiva === 'historico'
@@ -798,18 +886,78 @@ export default function ControleAcesso({ usuarioLogado }: ControleAcessoProps) {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Unidade / Bloco de Destino *
+              <div className="relative">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center justify-between">
+                  <span>Unidade / Bloco de Destino *</span>
+                  <span className="text-[10px] text-cyan-500 font-mono">Puxado da Base ({unidadesBase.length} unidades)</span>
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Torre A - Apto 302 ou Lote 14"
+                  placeholder="Digite o número (Ex: 302, 101, Bloco A...)"
                   value={formEntrada.unidade_bloco}
-                  onChange={e => setFormEntrada(prev => ({ ...prev, unidade_bloco: e.target.value }))}
+                  onChange={e => {
+                    setFormEntrada(prev => ({ ...prev, unidade_bloco: e.target.value }));
+                    setMostrarSugestoesUnidade(true);
+                  }}
+                  onFocus={() => setMostrarSugestoesUnidade(true)}
                   className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold focus:ring-2 focus:ring-blue-500/50"
                 />
+
+                {/* Sugestões Rápidas de Unidades do Cadastro Base */}
+                {mostrarSugestoesUnidade && sugestoesUnidadesFiltradas.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2 p-2 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <span className="text-[10px] text-slate-400 font-bold self-center mr-1">Unidades Base:</span>
+                    {sugestoesUnidadesFiltradas.slice(0, 6).map(u => (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => {
+                          setFormEntrada(prev => ({ ...prev, unidade_bloco: u }));
+                          setMostrarSugestoesUnidade(false);
+                        }}
+                        className="px-2 py-0.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/25 text-cyan-600 dark:text-cyan-400 text-[10px] font-bold border border-cyan-500/30 transition cursor-pointer"
+                      >
+                        {u}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Moradores Residentes nesta Unidade Específica */}
+                {moradoresDaUnidadeSelecionada.length > 0 && (
+                  <div className="mt-2.5 p-2.5 rounded-xl bg-cyan-50/70 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-800/60 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 dark:text-slate-200">
+                      <span className="flex items-center gap-1 text-cyan-600 dark:text-cyan-400">
+                        <Users className="w-3.5 h-3.5" />
+                        Moradores Cadastrados nesta Unidade:
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">{moradoresDaUnidadeSelecionada.length} morador(es)</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {moradoresDaUnidadeSelecionada.map(m => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => {
+                            setFormEntrada(prev => ({
+                              ...prev,
+                              morador_responsavel: m.nome,
+                              telefone: m.telefone || prev.telefone
+                            }));
+                          }}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-semibold hover:border-cyan-500 transition cursor-pointer shadow-xs"
+                          title="Clique para selecionar este morador responsável"
+                        >
+                          <Check className="w-3 h-3 text-emerald-500" />
+                          <span className="text-slate-900 dark:text-white font-bold">{m.nome}</span>
+                          <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-mono">({m.tipo || 'Morador'})</span>
+                          {m.telefone && <span className="text-[10px] text-slate-400 font-mono">{m.telefone}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -862,6 +1010,26 @@ export default function ControleAcesso({ usuarioLogado }: ControleAcessoProps) {
                 <Car className="w-4 h-4 text-emerald-500" />
                 Dados Veiculares (Preencha se o acesso for de carro/moto/caminhão):
               </span>
+
+              {/* Banner de Reconhecimento Automático de Placa Base */}
+              {moradorVinculadoPlaca && (
+                <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-xs font-bold flex items-center justify-between gap-3 animate-in fade-in duration-150">
+                  <div className="flex items-center gap-2.5">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                    <div>
+                      <span className="block font-black text-emerald-800 dark:text-emerald-300">
+                        Placa Identificada no Cadastro Base de Moradores!
+                      </span>
+                      <span className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
+                        Proprietário(a): <strong className="text-emerald-700 dark:text-emerald-400">{moradorVinculadoPlaca.nome}</strong> &bull; {moradorVinculadoPlaca.bloco ? `${moradorVinculadoPlaca.bloco} - ` : ''}Apto {moradorVinculadoPlaca.unidade} {moradorVinculadoPlaca.veiculo_modelo ? `(${moradorVinculadoPlaca.veiculo_modelo})` : ''}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-[10px] bg-emerald-500 text-white font-black uppercase shrink-0">
+                    Morador Autorizado
+                  </span>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-500 mb-1">Placa do Veículo</label>
@@ -1272,6 +1440,166 @@ export default function ControleAcesso({ usuarioLogado }: ControleAcessoProps) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ABA: MORADORES & UNIDADES DO CADASTRO BASE */}
+      {abaAtiva === 'moradores_base' && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Building className="w-5 h-5 text-cyan-500" />
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                  Base Cadastral Integrada &bull; Moradores & Unidades
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-100 text-cyan-800 dark:bg-cyan-950/80 dark:text-cyan-300">
+                  {condoConfig?.nome || 'Condomínio'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Informações sincronizadas diretamente do Módulo de Cadastro Base. O Totem Facial e a Guarita utilizam estes dados para validação instantânea.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200">
+                Total: <strong>{moradoresBase.length}</strong> moradores
+              </span>
+              <span className="px-3 py-1.5 rounded-xl bg-cyan-500/10 text-xs font-bold text-cyan-500 border border-cyan-500/20">
+                <strong>{unidadesBase.length}</strong> unidades
+              </span>
+            </div>
+          </div>
+
+          {/* Grid de Moradores da Base */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {moradoresBase.map(m => {
+              const rotuloUnidade = m.bloco ? `${m.bloco} - Apto ${m.unidade}` : `Apto ${m.unidade}`;
+              const isBloqueado = m.status_acesso === 'bloqueado';
+
+              return (
+                <div
+                  key={m.id}
+                  className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between space-y-3"
+                >
+                  <div className="flex items-start gap-3">
+                    {m.foto_url ? (
+                      <img
+                        src={m.foto_url}
+                        alt={m.nome}
+                        className="w-12 h-12 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 text-cyan-500 flex items-center justify-center font-black text-sm shrink-0 border border-cyan-500/20">
+                        {m.nome.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                          {rotuloUnidade}
+                        </span>
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                          isBloqueado
+                            ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300'
+                            : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300'
+                        }`}>
+                          {isBloqueado ? 'Acesso Bloqueado' : 'Acesso Liberado'}
+                        </span>
+                      </div>
+
+                      <h4 className="font-extrabold text-sm text-slate-900 dark:text-white truncate mt-1">
+                        {m.nome}
+                      </h4>
+                      <p className="text-xs text-slate-500 truncate">
+                        {m.tipo || 'Morador'} {m.telefone ? `&bull; ${m.telefone}` : ''}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Detalhes Veiculares & Tag */}
+                  <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-850/60 text-xs font-mono text-slate-600 dark:text-slate-400 space-y-1">
+                    {m.veiculo_placa && (
+                      <div className="flex justify-between items-center text-emerald-600 dark:text-emerald-400">
+                        <span>Placa Veículo:</span>
+                        <strong className="font-bold">{m.veiculo_placa} {m.veiculo_modelo ? `(${m.veiculo_modelo})` : ''}</strong>
+                      </div>
+                    )}
+                    {m.cpf && (
+                      <div className="flex justify-between items-center">
+                        <span>CPF:</span>
+                        <span>{m.cpf}</span>
+                      </div>
+                    )}
+                    {m.tag_rfid && (
+                      <div className="flex justify-between items-center text-purple-500">
+                        <span>Tag RFID:</span>
+                        <strong>{m.tag_rfid}</strong>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Ações Rápidas */}
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const novoStatus = isBloqueado ? 'liberado' : 'bloqueado';
+                        await alternarStatusAcessoMorador(m.id, novoStatus, condId);
+                        setMoradoresBase(prev => prev.map(item => item.id === m.id ? { ...item, status_acesso: novoStatus } : item));
+                        setFeedback({
+                          tipo: isBloqueado ? 'sucesso' : 'alerta',
+                          texto: `Status de acesso de "${m.nome}" alterado para ${novoStatus.toUpperCase()}!`
+                        });
+                      }}
+                      className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                        isBloqueado
+                          ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700'
+                          : 'bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-400 border-rose-300 dark:border-rose-700'
+                      }`}
+                    >
+                      {isBloqueado ? 'Desbloquear Acesso' : 'Bloquear Acesso'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormEntrada(prev => ({
+                          ...prev,
+                          tipo: 'morador',
+                          nome: m.nome,
+                          documento: m.cpf || '',
+                          telefone: m.telefone || '',
+                          unidade_bloco: rotuloUnidade,
+                          morador_responsavel: m.nome,
+                          veiculo_placa: m.veiculo_placa || ''
+                        }));
+                        setAbaAtiva('entrada');
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition cursor-pointer"
+                      title="Registrar entrada deste morador na guarita"
+                    >
+                      Registrar Entrada
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {moradoresBase.length === 0 && (
+            <div className="p-12 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-2">
+              <Users className="w-10 h-10 text-slate-400 mx-auto" />
+              <h4 className="font-extrabold text-sm text-slate-800 dark:text-slate-200">
+                Nenhum Morador Cadastrado na Base deste Condomínio
+              </h4>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                Cadastre moradores e unidades no módulo "Cadastros" para que apareçam automaticamente aqui no Controle de Acesso e no Totem Facial.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
