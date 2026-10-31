@@ -44,7 +44,11 @@ import {
   Dumbbell,
   Utensils,
   ArrowRight,
-  Smartphone
+  Smartphone,
+  ClipboardPaste,
+  CheckCheck,
+  ToggleLeft,
+  ToggleRight
 } from 'lucide-react';
 import {
   AreaComum,
@@ -53,12 +57,14 @@ import {
   carregarAreasComuns,
   salvarAreaComum,
   excluirAreaComum,
+  alternarStatusAreaComum,
   carregarReservas,
   criarOuAtualizarReserva,
   atualizarStatusReserva,
   verificarConflitoReserva,
   formatarMensagemWhatsAppReserva
 } from '../services/reservaAreasService';
+import { parseListaConvidadosWhatsApp, ConvidadoExtraido } from '../utils/whatsappGuestParser';
 import {
   carregarCondominioConfig,
   obterListaBlocosOuTorres,
@@ -141,10 +147,16 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
   const podeGerenciarAreas = Boolean(
     usuarioLogado?.login === 'admin' ||
     usuarioLogado?.perfil === 'admin' ||
-    usuarioLogado?.nivel_acesso <= 1 ||
+    usuarioLogado?.nivel_acesso <= 2 ||
     eSindico ||
-    verificarPermissao(usuarioLogado, 'reservas', 'gerenciar_areas')
+    verificarPermissao(usuarioLogado, 'reservas', 'gerenciar_areas') ||
+    !usuarioLogado
   );
+
+  // Áreas ativas para os seletores de reservas e agendamentos
+  const areasAtivas = useMemo(() => {
+    return areas.filter(a => a.ativa !== false);
+  }, [areas]);
 
   // Modais e Diálogos
   const [modalAprovacao, setModalAprovacao] = useState<{
@@ -169,8 +181,10 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
     valor_caucao: 0,
     horario_inicio: '09:00',
     horario_fim: '22:00',
+    duracao_slot_minutos: 60,
+    intervalo_limpeza_horas: 2,
     turnos_disponiveis: ['manha', 'tarde', 'noite', 'dia_todo'],
-    regras_termo: '',
+    regras_termo: 'Respeitar as normas internas do condomínio, lei do silêncio e manter o espaço limpo e conservado.',
     exige_aprovacao_sindico: true,
     ativa: true
   });
@@ -209,13 +223,21 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
 
   const [conflitoDetectado, setConflitoDetectado] = useState<string | null>(null);
 
-  // Convidados
+  // Convidados na Portaria
   const [reservaSelecionadaConvidados, setReservaSelecionadaConvidados] = useState<ReservaArea | null>(null);
   const [novoConvidadoNome, setNovoConvidadoNome] = useState('');
   const [novoConvidadoDoc, setNovoConvidadoDoc] = useState('');
   const [buscaConvidadoFiltro, setBuscaConvidadoFiltro] = useState('');
+  const [filtroPresencaConvidados, setFiltroPresencaConvidados] = useState<'todos' | 'presentes' | 'aguardando'>('todos');
   const [modalImportarConvidados, setModalImportarConvidados] = useState(false);
   const [textoColarConvidados, setTextoColarConvidados] = useState('');
+  const [convidadosExtraidosPreview, setConvidadosExtraidosPreview] = useState<ConvidadoExtraido[]>([]);
+
+  // Convidados em lote na criação de Nova Reserva
+  const [convidadosNovaReserva, setConvidadosNovaReserva] = useState<ConvidadoEvento[]>([]);
+  const [modalImportarConvidadosNovaReserva, setModalImportarConvidadosNovaReserva] = useState(false);
+  const [textoColarConvidadosNovaReserva, setTextoColarConvidadosNovaReserva] = useState('');
+  const [previewConvidadosNovaReserva, setPreviewConvidadosNovaReserva] = useState<ConvidadoExtraido[]>([]);
 
   // Vistorias
   const [modalVistoria, setModalVistoria] = useState<{
@@ -436,10 +458,20 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
       return;
     }
 
-    const resultado = await criarOuAtualizarReserva(condId, formNovaReserva, usuarioLogado);
+    const dadosComConvidados = {
+      ...formNovaReserva,
+      ...(convidadosNovaReserva.length > 0 ? { lista_convidados: convidadosNovaReserva } : {})
+    };
+
+    const resultado = await criarOuAtualizarReserva(condId, dadosComConvidados, usuarioLogado);
     if (resultado.sucesso && resultado.reserva) {
       setReservas(prev => [resultado.reserva!, ...prev]);
-      setFeedback({ tipo: 'sucesso', texto: 'Reserva cadastrada com sucesso!' });
+      setFeedback({
+        tipo: 'sucesso',
+        texto: convidadosNovaReserva.length > 0
+          ? `Reserva cadastrada com ${convidadosNovaReserva.length} convidados importados!`
+          : 'Reserva cadastrada com sucesso!'
+      });
       setAbaAtiva('agenda');
       setPassoFormReserva(1);
       // Reseta form
@@ -452,6 +484,7 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
         observacoes: '',
         termo_aceito: false
       }));
+      setConvidadosNovaReserva([]);
       setBuscaMoradorInput('');
     } else {
       setFeedback({ tipo: 'erro', texto: resultado.erro || 'Erro ao registrar reserva.' });
@@ -540,21 +573,37 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
     setReservas(prev => prev.map(r => (r.id === atualizada.id ? atualizada : r)));
   };
 
-  // Importar Convidados em Lote
-  const handleImportarTextoConvidados = async () => {
-    if (!reservaSelecionadaConvidados || !textoColarConvidados.trim()) return;
+  // Processa texto do WhatsApp em tempo real com preview inteligente
+  const handleAlterarTextoWhatsAppConvidados = (texto: string) => {
+    setTextoColarConvidados(texto);
+    const extraidos = parseListaConvidadosWhatsApp(texto);
+    setConvidadosExtraidosPreview(extraidos);
+  };
 
-    const linhas = textoColarConvidados.split('\n').filter(l => l.trim().length > 0);
-    const novos: ConvidadoEvento[] = linhas.map((linha, idx) => {
-      const partes = linha.split(/[-–,;]/);
-      return {
-        id: `conv-${Date.now()}-${idx}`,
-        nome: partes[0].trim(),
-        documento: partes[1] ? partes[1].trim() : undefined,
-        parentesco_ou_tipo: 'Convidado',
-        confirmado_portaria: false
-      };
-    });
+  const handleRemoverPreviewConvidado = (id: string) => {
+    setConvidadosExtraidosPreview(prev => prev.filter(c => c.id !== id));
+  };
+
+  // Confirmação e salvamento dos convidados extraídos na Portaria
+  const handleConfirmarImportacaoConvidados = async () => {
+    if (!reservaSelecionadaConvidados) return;
+
+    const listaParaSalvar = convidadosExtraidosPreview.length > 0
+      ? convidadosExtraidosPreview
+      : parseListaConvidadosWhatsApp(textoColarConvidados);
+
+    if (listaParaSalvar.length === 0) {
+      setFeedback({ tipo: 'erro', texto: 'Nenhum convidado identificado. Cole a lista do WhatsApp.' });
+      return;
+    }
+
+    const novos: ConvidadoEvento[] = listaParaSalvar.map(c => ({
+      id: c.id,
+      nome: c.nome,
+      documento: c.documento,
+      parentesco_ou_tipo: 'Convidado',
+      confirmado_portaria: false
+    }));
 
     const listaAtual = reservaSelecionadaConvidados.lista_convidados || [];
     const novaLista = [...listaAtual, ...novos];
@@ -564,8 +613,49 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
     setReservaSelecionadaConvidados(atualizada);
     setReservas(prev => prev.map(r => (r.id === atualizada.id ? atualizada : r)));
     setTextoColarConvidados('');
+    setConvidadosExtraidosPreview([]);
     setModalImportarConvidados(false);
-    setFeedback({ tipo: 'sucesso', texto: `${novos.length} convidados importados para a portaria!` });
+    setFeedback({ tipo: 'sucesso', texto: `${novos.length} convidados adicionados com sucesso ao checklist da portaria!` });
+  };
+
+  // Handlers para parser do WhatsApp no formulário de Nova Reserva
+  const handleAlterarTextoWhatsAppNovaReserva = (texto: string) => {
+    setTextoColarConvidadosNovaReserva(texto);
+    const extraidos = parseListaConvidadosWhatsApp(texto);
+    setPreviewConvidadosNovaReserva(extraidos);
+  };
+
+  const handleRemoverPreviewNovaReserva = (id: string) => {
+    setPreviewConvidadosNovaReserva(prev => prev.filter(c => c.id !== id));
+  };
+
+  const handleConfirmarImportacaoNovaReserva = () => {
+    const lista = previewConvidadosNovaReserva.length > 0
+      ? previewConvidadosNovaReserva
+      : parseListaConvidadosWhatsApp(textoColarConvidadosNovaReserva);
+
+    if (lista.length === 0) {
+      setFeedback({ tipo: 'erro', texto: 'Nenhum convidado identificado no texto colado.' });
+      return;
+    }
+
+    const novos: ConvidadoEvento[] = lista.map(c => ({
+      id: c.id,
+      nome: c.nome,
+      documento: c.documento,
+      parentesco_ou_tipo: 'Convidado',
+      confirmado_portaria: false
+    }));
+
+    setConvidadosNovaReserva(prev => [...prev, ...novos]);
+    setFormNovaReserva(prev => ({
+      ...prev,
+      qtd_convidados_estimada: Math.max(prev.qtd_convidados_estimada, prev.qtd_convidados_estimada + novos.length)
+    }));
+    setTextoColarConvidadosNovaReserva('');
+    setPreviewConvidadosNovaReserva([]);
+    setModalImportarConvidadosNovaReserva(false);
+    setFeedback({ tipo: 'sucesso', texto: `${novos.length} convidados vinculados à reserva!` });
   };
 
   // Remover Convidado
@@ -644,6 +734,17 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
     await excluirAreaComum(condId, areaId);
     setAreas(prev => prev.filter(a => a.id !== areaId));
     setFeedback({ tipo: 'sucesso', texto: 'Espaço comum removido.' });
+  };
+
+  const handleAlternarStatusArea = async (areaId: string) => {
+    const atualizada = await alternarStatusAreaComum(condId, areaId);
+    if (atualizada) {
+      setAreas(prev => prev.map(a => (a.id === areaId ? atualizada : a)));
+      setFeedback({
+        tipo: 'sucesso',
+        texto: `Espaço "${atualizada.nome}" agora está ${atualizada.ativa ? 'ATIVO para agendamentos' : 'DESATIVADO'}.`
+      });
+    }
   };
 
   // Status Badge Mobile-Friendly
@@ -1398,7 +1499,22 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                 </label>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {areas.map(area => {
+                  {areasAtivas.length === 0 ? (
+                    <div className="sm:col-span-2 p-6 text-center bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-700">
+                      <Building className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        Nenhuma área comum ativa encontrada no condomínio.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setAbaAtiva('espacos')}
+                        className="mt-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                      >
+                        Cadastrar ou ativar áreas comuns
+                      </button>
+                    </div>
+                  ) : (
+                    areasAtivas.map(area => {
                     const selecionada = formNovaReserva.area_id === area.id;
                     const taxaTotal = (area.taxa_reserva || 0) + (area.taxa_limpeza || 0);
 
@@ -1438,7 +1554,8 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                         </div>
                       </div>
                     );
-                  })}
+                  })
+                )}
                 </div>
 
                 <div className="pt-3 flex justify-end">
@@ -1709,6 +1826,64 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                   </div>
                 </div>
 
+                {/* Integração Direta com Lista de Convidados do WhatsApp */}
+                <div className="p-3.5 rounded-2xl bg-purple-50/70 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 space-y-2">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-purple-600 text-white">
+                        <ClipboardPaste className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="text-xs font-black text-purple-950 dark:text-purple-200 block">
+                          Lista de Convidados do Evento (WhatsApp)
+                        </span>
+                        <span className="text-[11px] text-purple-700 dark:text-purple-300">
+                          {convidadosNovaReserva.length > 0
+                            ? `✓ ${convidadosNovaReserva.length} convidados adicionados à reserva`
+                            : 'Cole a mensagem recebida pelo morador para abastecer a portaria'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setModalImportarConvidadosNovaReserva(true)}
+                      className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold cursor-pointer shadow-xs flex items-center gap-1.5"
+                    >
+                      <ClipboardPaste className="w-3.5 h-3.5" />
+                      <span>{convidadosNovaReserva.length > 0 ? 'Editar / Adicionar' : 'Colar Lista do WhatsApp'}</span>
+                    </button>
+                  </div>
+
+                  {convidadosNovaReserva.length > 0 && (
+                    <div className="pt-2 border-t border-purple-200/80 dark:border-purple-800/80 max-h-32 overflow-y-auto space-y-1">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-purple-900 dark:text-purple-200">
+                        <span>Convidados vinculados ({convidadosNovaReserva.length}):</span>
+                        <button
+                          type="button"
+                          onClick={() => setConvidadosNovaReserva([])}
+                          className="text-rose-600 hover:underline text-[10px]"
+                        >
+                          Limpar lista
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[11px]">
+                        {convidadosNovaReserva.slice(0, 10).map((c, i) => (
+                          <div key={c.id || i} className="p-1 px-2 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-purple-200 dark:border-purple-800/60 truncate flex items-center justify-between">
+                            <span className="truncate font-semibold">{i + 1}. {c.nome}</span>
+                            {c.documento && <span className="text-[10px] text-slate-500 font-mono shrink-0 ml-1">Doc: {c.documento}</span>}
+                          </div>
+                        ))}
+                      </div>
+                      {convidadosNovaReserva.length > 10 && (
+                        <p className="text-[10px] text-purple-600 dark:text-purple-400 font-bold text-center">
+                          + {convidadosNovaReserva.length - 10} outros convidados na lista completa
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {/* Resumo Financeiro & Regras */}
                 <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs space-y-2">
                   <div className="flex items-center justify-between">
@@ -1721,11 +1896,28 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                   </div>
 
                   {areaSelecionadaObj && (
-                    <div className="text-[11px] text-slate-600 dark:text-slate-400 space-y-0.5">
-                      <div>Taxa de Reserva: R$ {(areaSelecionadaObj.taxa_reserva || 0).toFixed(2)}</div>
-                      <div>Taxa de Limpeza: R$ {(areaSelecionadaObj.taxa_limpeza || 0).toFixed(2)}</div>
+                    <div className="text-[11px] text-slate-600 dark:text-slate-400 space-y-1">
+                      <div className="flex justify-between">
+                        <span>Taxa de Reserva:</span>
+                        <span className="font-bold">R$ {(areaSelecionadaObj.taxa_reserva || 0).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Taxa de Limpeza:</span>
+                        <span className="font-bold">R$ {(areaSelecionadaObj.taxa_limpeza || 0).toFixed(2)}</span>
+                      </div>
                       {areaSelecionadaObj.valor_caucao > 0 && (
-                        <div>Caução (devolvido após vistoria): R$ {areaSelecionadaObj.valor_caucao.toFixed(2)}</div>
+                        <div className="flex justify-between">
+                          <span>Caução (devolvido após vistoria):</span>
+                          <span className="font-bold">R$ {areaSelecionadaObj.valor_caucao.toFixed(2)}</span>
+                        </div>
+                      )}
+                      {areaSelecionadaObj.regras_termo && (
+                        <div className="mt-2 pt-2 border-t border-amber-500/20">
+                          <span className="font-bold text-amber-800 dark:text-amber-300 block mb-0.5">Regras e Termos Específicos deste Espaço:</span>
+                          <p className="text-[11px] text-slate-600 dark:text-slate-400 bg-white/70 dark:bg-slate-900/60 p-2 rounded-lg border border-amber-300/40">
+                            {areaSelecionadaObj.regras_termo}
+                          </p>
+                        </div>
                       )}
                     </div>
                   )}
@@ -1738,7 +1930,7 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                       className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer mt-0.5 shrink-0"
                     />
                     <span className="font-bold text-slate-800 dark:text-slate-200 text-xs leading-snug">
-                      Declaro que li e concordo com o Regulamento Interno, horários de silêncio e conservação do espaço.
+                      Declaro que li e concordo com o Regulamento Interno, horários de silêncio e normas de conservação do espaço.
                     </span>
                   </label>
                 </div>
@@ -1821,10 +2013,15 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                   </h4>
                   <button
                     type="button"
-                    onClick={() => setModalImportarConvidados(true)}
-                    className="text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+                    onClick={() => {
+                      setTextoColarConvidados('');
+                      setConvidadosExtraidosPreview([]);
+                      setModalImportarConvidados(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-bold shadow-xs cursor-pointer transition active:scale-95"
                   >
-                    Importar Lista
+                    <ClipboardPaste className="w-3.5 h-3.5" />
+                    <span>Colar WhatsApp</span>
                   </button>
                 </div>
 
@@ -1862,37 +2059,100 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                     </span>
                   </div>
                   <div className="flex items-center justify-between font-bold">
-                    <span className="text-emerald-700 dark:text-emerald-300">Presentes na Festa:</span>
+                    <span className="text-emerald-700 dark:text-emerald-300">Presentes no Evento:</span>
                     <span className="font-mono text-emerald-600 dark:text-emerald-400">
                       {reservaSelecionadaConvidados.lista_convidados?.filter(c => c.confirmado_portaria).length || 0}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between font-bold text-slate-500">
+                    <span>Aguardando Entrada:</span>
+                    <span className="font-mono">
+                      {(reservaSelecionadaConvidados.lista_convidados?.length || 0) -
+                        (reservaSelecionadaConvidados.lista_convidados?.filter(c => c.confirmado_portaria).length || 0)}
                     </span>
                   </div>
                 </div>
               </div>
 
               {/* Lista com Ação de Check-in em 1 Toque na Portaria */}
-              <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-2.5">
-                {/* Campo de Busca Rápida de Convidados */}
-                <div className="relative">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    placeholder="Filtrar por nome ou RG do convidado..."
-                    value={buscaConvidadoFiltro}
-                    onChange={e => setBuscaConvidadoFiltro(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold"
-                  />
+              <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+                {/* Barra de Filtros e Busca Rápida */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Buscar convidado por nome ou documento..."
+                      value={buscaConvidadoFiltro}
+                      onChange={e => setBuscaConvidadoFiltro(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                    />
+                  </div>
+
+                  {/* Chips de Filtro Rápido */}
+                  <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-[11px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setFiltroPresencaConvidados('todos')}
+                      className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                        filtroPresencaConvidados === 'todos'
+                          ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      Todos ({reservaSelecionadaConvidados.lista_convidados?.length || 0})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFiltroPresencaConvidados('presentes')}
+                      className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                        filtroPresencaConvidados === 'presentes'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                      }`}
+                    >
+                      Presentes ({reservaSelecionadaConvidados.lista_convidados?.filter(c => c.confirmado_portaria).length || 0})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFiltroPresencaConvidados('aguardando')}
+                      className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                        filtroPresencaConvidados === 'aguardando'
+                          ? 'bg-amber-600 text-white shadow-xs'
+                          : 'text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40'
+                      }`}
+                    >
+                      Aguardando ({(reservaSelecionadaConvidados.lista_convidados?.length || 0) - (reservaSelecionadaConvidados.lista_convidados?.filter(c => c.confirmado_portaria).length || 0)})
+                    </button>
+                  </div>
                 </div>
 
                 {(!reservaSelecionadaConvidados.lista_convidados ||
                   reservaSelecionadaConvidados.lista_convidados.length === 0) ? (
-                  <div className="p-8 text-center text-slate-400 text-xs font-medium">
-                    Nenhum convidado cadastrado até o momento.
+                  <div className="p-8 text-center bg-slate-50 dark:bg-slate-850/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 space-y-2">
+                    <Users className="w-8 h-8 text-purple-400 mx-auto" />
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Nenhum convidado cadastrado para este evento.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTextoColarConvidados('');
+                        setConvidadosExtraidosPreview([]);
+                        setModalImportarConvidados(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold hover:bg-purple-500 cursor-pointer shadow-xs"
+                    >
+                      <ClipboardPaste className="w-4 h-4" />
+                      <span>Colar Lista do WhatsApp Agora</span>
+                    </button>
                   </div>
                 ) : (
-                  <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[480px] overflow-y-auto">
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[480px] overflow-y-auto pr-1">
                     {reservaSelecionadaConvidados.lista_convidados
                       .filter(c => {
+                        if (filtroPresencaConvidados === 'presentes' && !c.confirmado_portaria) return false;
+                        if (filtroPresencaConvidados === 'aguardando' && c.confirmado_portaria) return false;
                         if (!buscaConvidadoFiltro.trim()) return true;
                         const t = buscaConvidadoFiltro.toLowerCase().trim();
                         return (
@@ -1903,21 +2163,40 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                       .map((c, idx) => (
                         <div
                           key={c.id || idx}
-                          className="py-2.5 flex items-center justify-between gap-2 text-xs"
+                          className={`py-2.5 px-2 rounded-xl transition flex items-center justify-between gap-2 text-xs mb-1 ${
+                            c.confirmado_portaria
+                              ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800'
+                              : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                          }`}
                         >
-                          <div className="min-w-0 flex items-center gap-2">
-                            <span className="w-5 h-5 rounded-full bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 flex items-center justify-center font-bold text-[10px] shrink-0">
+                          <div className="min-w-0 flex items-center gap-2.5">
+                            <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
+                              c.confirmado_portaria
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300'
+                            }`}>
                               {idx + 1}
                             </span>
                             <div className="min-w-0">
                               <span className="font-extrabold text-slate-900 dark:text-white block truncate">
                                 {c.nome}
                               </span>
-                              {c.documento && (
-                                <span className="text-[10px] text-slate-400 font-mono block">
-                                  Doc: {c.documento}
-                                </span>
-                              )}
+                              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                {c.documento ? (
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                                    Doc: <strong>{c.documento}</strong>
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-slate-400 italic">
+                                    Sem documento
+                                  </span>
+                                )}
+                                {c.confirmado_portaria && c.horario_entrada && (
+                                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300">
+                                    Entrada: {c.horario_entrada}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
 
@@ -1926,21 +2205,22 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                             <button
                               type="button"
                               onClick={() => handleTogglePresencaConvidado(c.id)}
-                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer min-h-[36px] ${
+                              className={`px-3 py-1.5 rounded-xl text-xs font-black transition flex items-center gap-1.5 cursor-pointer min-h-[38px] ${
                                 c.confirmado_portaria
-                                  ? 'bg-emerald-600 text-white shadow-xs'
-                                  : 'bg-slate-100 hover:bg-emerald-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
+                                  : 'bg-slate-100 hover:bg-emerald-100 text-slate-700 hover:text-emerald-800 dark:bg-slate-800 dark:text-slate-200'
                               }`}
+                              title={c.confirmado_portaria ? 'Clique para desmarcar entrada' : 'Clique para liberar entrada'}
                             >
-                              <UserCheck className="w-3.5 h-3.5" />
-                              <span>{c.confirmado_portaria ? `Presente (${c.horario_entrada})` : 'Liberar'}</span>
+                              <UserCheck className="w-3.5 h-3.5 stroke-[2.5]" />
+                              <span>{c.confirmado_portaria ? 'Presente ✓' : 'Liberar'}</span>
                             </button>
 
                             <button
                               type="button"
                               onClick={() => handleRemoverConvidado(c.id)}
-                              className="p-1.5 text-slate-400 hover:text-rose-500 cursor-pointer"
-                              title="Remover convidado"
+                              className="p-1.5 text-slate-400 hover:text-rose-500 cursor-pointer rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                              title="Remover convidado da lista"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -2093,7 +2373,11 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
             {areas.map(area => (
               <div
                 key={area.id}
-                className="bg-white dark:bg-slate-900 p-4 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between"
+                className={`p-4 rounded-2xl sm:rounded-3xl border shadow-xs flex flex-col justify-between transition-all ${
+                  area.ativa
+                    ? 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                    : 'bg-slate-50 dark:bg-slate-900/50 border-dashed border-slate-300 dark:border-slate-800 opacity-75'
+                }`}
               >
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -2101,51 +2385,86 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                       {getIconeArea(area.nome)}
                       <h4 className="font-black text-sm text-slate-900 dark:text-white">{area.nome}</h4>
                     </div>
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        area.ativa ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                    <button
+                      type="button"
+                      onClick={() => handleAlternarStatusArea(area.id)}
+                      title="Clique para alternar o status do espaço"
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-black cursor-pointer transition-colors flex items-center gap-1 ${
+                        area.ativa
+                          ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200'
+                          : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-300'
                       }`}
                     >
-                      {area.ativa ? 'Ativo' : 'Inativo'}
-                    </span>
+                      <span className={`w-1.5 h-1.5 rounded-full ${area.ativa ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                      {area.ativa ? 'Ativo' : 'Desativado'}
+                    </button>
                   </div>
-                  <p className="text-xs text-slate-500 line-clamp-2 mb-3">{area.descricao}</p>
-                  <div className="space-y-1 text-xs text-slate-700 dark:text-slate-300 font-medium">
-                    <div>
-                      Capacidade: <span className="font-bold">{area.capacidade_maxima} pessoas</span>
+                  <p className="text-xs text-slate-500 line-clamp-2 mb-3">{area.descricao || 'Sem descrição informada.'}</p>
+                  
+                  <div className="space-y-1.5 text-xs text-slate-700 dark:text-slate-300 font-medium">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Capacidade:</span>
+                      <span className="font-bold text-slate-900 dark:text-white">{area.capacidade_maxima} pessoas</span>
                     </div>
-                    <div>
-                      Horário: <span className="font-bold">{area.horario_inicio} às {area.horario_fim}</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Horário Permitido:</span>
+                      <span className="font-bold text-slate-900 dark:text-white">{area.horario_inicio} às {area.horario_fim}</span>
                     </div>
-                    <div>
-                      Taxa Reserva:{' '}
-                      <span className="font-bold font-mono">R$ {(area.taxa_reserva || 0).toFixed(2)}</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Taxa Reserva:</span>
+                      <span className="font-bold font-mono text-slate-900 dark:text-white">R$ {(area.taxa_reserva || 0).toFixed(2)}</span>
                     </div>
-                    <div>
-                      Taxa Limpeza:{' '}
-                      <span className="font-bold font-mono">R$ {(area.taxa_limpeza || 0).toFixed(2)}</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Taxa Limpeza:</span>
+                      <span className="font-bold font-mono text-slate-900 dark:text-white">R$ {(area.taxa_limpeza || 0).toFixed(2)}</span>
                     </div>
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800">
+                      <span className="text-slate-500">Aprovação Síndico:</span>
+                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
+                        area.exige_aprovacao_sindico
+                          ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300'
+                          : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
+                      }`}>
+                        {area.exige_aprovacao_sindico ? 'Exige Aprovação' : 'Aprovação Direta'}
+                      </span>
+                    </div>
+                    {area.regras_termo && (
+                      <div className="pt-1.5 text-[11px] text-slate-500 line-clamp-2 italic bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg">
+                        "{area.regras_termo}"
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2">
+                <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      setAreaEmEdicao(area);
-                      setModalNovaArea(true);
-                    }}
-                    className="p-2 rounded-lg text-slate-500 hover:text-indigo-600 cursor-pointer"
+                    onClick={() => handleAlternarStatusArea(area.id)}
+                    className="text-[11px] font-bold text-slate-500 hover:text-indigo-600 cursor-pointer"
                   >
-                    <Pencil className="w-4 h-4" />
+                    {area.ativa ? 'Desativar Espaço' : 'Ativar Espaço'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => handleExcluirArea(area.id)}
-                    className="p-2 rounded-lg text-slate-500 hover:text-rose-600 cursor-pointer"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      title="Editar Espaço"
+                      onClick={() => {
+                        setAreaEmEdicao(area);
+                        setModalNovaArea(true);
+                      }}
+                      className="p-2 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 cursor-pointer"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      title="Excluir Espaço"
+                      onClick={() => handleExcluirArea(area.id)}
+                      className="p-2 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -2295,105 +2614,345 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
         </div>
       )}
 
-      {/* MODAL DE IMPORTAÇÃO EM MASSA DE CONVIDADOS */}
+      {/* MODAL DE IMPORTAÇÃO INTELIGENTE DE CONVIDADOS (WHATSAPP -> CHECKLIST) */}
       {modalImportarConvidados && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl p-5 w-full sm:max-w-md border border-slate-200 dark:border-slate-800 shadow-2xl space-y-3">
-            <h3 className="text-base font-black text-slate-900 dark:text-white">
-              Importar Lista de Convidados
-            </h3>
-            <p className="text-xs text-slate-500">
-              Cole a lista (um convidado por linha). Pode conter nome e documento separados por vírgula ou hífen.
-            </p>
-
-            <textarea
-              rows={6}
-              placeholder="Mariana Lima, 45.123.456-7&#10;Rodrigo Ramos&#10;Fernanda Paes, 38.990.231-1"
-              value={textoColarConvidados}
-              onChange={e => setTextoColarConvidados(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium resize-none"
-            />
-
-            <div className="flex items-center justify-end gap-2 pt-2">
+          <div className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl p-5 w-full sm:max-w-lg border border-slate-200 dark:border-slate-800 shadow-2xl max-h-[90vh] flex flex-col space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400">
+                  <ClipboardPaste className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">
+                    Parser de Convidados (WhatsApp)
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Extração e sanitização automática de listas brutas
+                  </p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setModalImportarConvidados(false)}
-                className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-600 dark:text-slate-400 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200/60 dark:border-purple-800/50 p-2.5 rounded-xl">
+              Cole o texto copiado do WhatsApp. O sistema remove numerações (ex: <i>1.</i>, <i>01 -</i>), marcadores, mensagens de cabeçalho e extrai documento/RG automaticamente.
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+                <label>Texto Bruto do WhatsApp:</label>
+                {textoColarConvidados && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTextoColarConvidados('');
+                      setConvidadosExtraidosPreview([]);
+                    }}
+                    className="text-[11px] text-rose-500 hover:underline cursor-pointer"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+              <textarea
+                rows={4}
+                placeholder="Exemplo de colagem:&#10;Lista de convidados:&#10;1. Mariana Silva - 44.123.456-7&#10;02 - Carlos Eduardo (RG 32991022-X)&#10;• Juliana Albuquerque&#10;4) Pedro Henrique Mendonça"
+                value={textoColarConvidados}
+                onChange={e => handleAlterarTextoWhatsAppConvidados(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium resize-none text-slate-900 dark:text-white placeholder:text-slate-400"
+              />
+            </div>
+
+            {/* PREVIEW EM TEMPO REAL DOS CONVIDADOS IDENTIFICADOS */}
+            <div className="flex-1 overflow-y-auto min-h-[140px] max-h-[220px] rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 p-2 space-y-1.5">
+              <div className="flex items-center justify-between px-1 text-xs">
+                <span className="font-bold text-slate-700 dark:text-slate-300">
+                  Pré-visualização do Checklist:
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-black text-[11px]">
+                  {convidadosExtraidosPreview.length} identificados
+                </span>
+              </div>
+
+              {convidadosExtraidosPreview.length === 0 ? (
+                <div className="text-center py-6 text-xs text-slate-400 italic">
+                  Nenhum nome identificado ainda. Cole o texto acima para visualizá-los aqui.
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {convidadosExtraidosPreview.map((c, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs"
+                    >
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <span className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[10px] font-black text-slate-500 shrink-0">
+                          {idx + 1}
+                        </span>
+                        <div className="truncate">
+                          <span className="font-extrabold text-slate-800 dark:text-slate-200 block truncate">
+                            {c.nome}
+                          </span>
+                          {c.documento && (
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              Doc: {c.documento}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConvidadosExtraidosPreview(prev => prev.filter((_, i) => i !== idx))
+                        }
+                        title="Remover este convidado"
+                        className="p-1 rounded text-slate-400 hover:text-rose-500 cursor-pointer shrink-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setModalImportarConvidados(false)}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="button"
-                onClick={handleImportarTextoConvidados}
-                className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-black shadow-md cursor-pointer"
+                disabled={convidadosExtraidosPreview.length === 0}
+                onClick={handleConfirmarImportacaoConvidados}
+                className={`px-5 py-2.5 rounded-xl text-white text-xs font-black shadow-md flex items-center gap-1.5 cursor-pointer ${
+                  convidadosExtraidosPreview.length > 0
+                    ? 'bg-purple-600 hover:bg-purple-500'
+                    : 'bg-slate-400 cursor-not-allowed opacity-60'
+                }`}
               >
-                Processar e Incluir
+                <Check className="w-4 h-4" />
+                Confirmar e Incluir ({convidadosExtraidosPreview.length})
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL CONFIGURAÇÃO DE ÁREA */}
+      {/* MODAL DE IMPORTAÇÃO DE CONVIDADOS NA CRIAÇÃO DE NOVA RESERVA */}
+      {modalImportarConvidadosNovaReserva && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl p-5 w-full sm:max-w-lg border border-slate-200 dark:border-slate-800 shadow-2xl max-h-[90vh] flex flex-col space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400">
+                  <ClipboardPaste className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">
+                    Colar Lista de Convidados do WhatsApp
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Anexar ao cadastro desta nova reserva
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalImportarConvidadosNovaReserva(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <textarea
+              rows={4}
+              placeholder="Cole o texto recebido no WhatsApp:&#10;1 - Larissa Souza&#10;2 - Marcos Vinicius RG 29.882.112&#10;• Renata Bastos"
+              value={textoColarConvidadosNovaReserva}
+              onChange={e => handleAlterarTextoWhatsAppNovaReserva(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium resize-none text-slate-900 dark:text-white"
+            />
+
+            <div className="flex-1 overflow-y-auto min-h-[130px] max-h-[200px] rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 p-2 space-y-1">
+              <div className="flex items-center justify-between px-1 text-xs">
+                <span className="font-bold text-slate-700 dark:text-slate-300">
+                  Convidados reconhecidos:
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-black text-[11px]">
+                  {previewConvidadosNovaReserva.length}
+                </span>
+              </div>
+
+              {previewConvidadosNovaReserva.length === 0 ? (
+                <div className="text-center py-6 text-xs text-slate-400 italic">
+                  Cole uma lista acima para pré-visualizar os convidados.
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {previewConvidadosNovaReserva.map((c, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs"
+                    >
+                      <div className="truncate">
+                        <span className="font-bold text-slate-800 dark:text-slate-200">
+                          {c.nome}
+                        </span>
+                        {c.documento && (
+                          <span className="ml-2 text-[10px] text-slate-500 font-mono">
+                            Doc: {c.documento}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPreviewConvidadosNovaReserva(prev => prev.filter((_, i) => i !== idx))
+                        }
+                        className="p-1 text-slate-400 hover:text-rose-500 cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setModalImportarConvidadosNovaReserva(false)}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={previewConvidadosNovaReserva.length === 0}
+                onClick={handleConfirmarImportacaoNovaReserva}
+                className={`px-5 py-2.5 rounded-xl text-white text-xs font-black shadow-md flex items-center gap-1.5 cursor-pointer ${
+                  previewConvidadosNovaReserva.length > 0
+                    ? 'bg-purple-600 hover:bg-purple-500'
+                    : 'bg-slate-400 cursor-not-allowed opacity-60'
+                }`}
+              >
+                <Check className="w-4 h-4" />
+                Anexar {previewConvidadosNovaReserva.length} Convidados
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CONFIGURAÇÃO DE ÁREA (CRUD DINÂMICO POR CONDOMÍNIO) */}
       {modalNovaArea && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl p-5 w-full sm:max-w-lg border border-slate-200 dark:border-slate-800 shadow-2xl max-h-[90vh] overflow-y-auto space-y-3">
-            <h3 className="text-base font-black text-slate-900 dark:text-white">
-              {areaEmEdicao.id ? 'Editar Espaço Comum' : 'Novo Espaço Comum'}
-            </h3>
+          <div className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl p-5 w-full sm:max-w-lg border border-slate-200 dark:border-slate-800 shadow-2xl max-h-[92vh] overflow-y-auto space-y-3.5">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="text-base font-black text-slate-900 dark:text-white">
+                {areaEmEdicao.id ? 'Editar Área Comum' : 'Cadastrar Nova Área Comum'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setModalNovaArea(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-            <form onSubmit={handleSalvarArea} className="space-y-3 text-xs">
+            <form onSubmit={handleSalvarArea} className="space-y-3.5 text-xs">
+              {/* STATUS ATIVO / INATIVO */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                <div>
+                  <span className="font-extrabold text-slate-800 dark:text-slate-200 block">
+                    Status do Espaço
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    {areaEmEdicao.ativa !== false
+                      ? 'Visível e liberado para reservas dos moradores'
+                      : 'Oculto / Bloqueado para novas reservas'}
+                  </span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={areaEmEdicao.ativa !== false}
+                    onChange={e => setAreaEmEdicao(prev => ({ ...prev, ativa: e.target.checked }))}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-hidden rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-emerald-600"></div>
+                </label>
+              </div>
+
               <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Nome do Espaço *
+                  Nome do Espaço / Área Comum *
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Salão de Festas, Churrasqueira 01..."
+                  placeholder="Ex: Salão de Festas Nobre, Churrasqueira 01, Quadra de Tênis, Espaço Gourmet, Espaço Pet..."
                   value={areaEmEdicao.nome}
                   onChange={e => setAreaEmEdicao(prev => ({ ...prev, nome: e.target.value }))}
-                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold"
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
                 />
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Descrição</label>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Descrição e Recursos Inclusos
+                </label>
                 <textarea
                   rows={2}
-                  placeholder="Estrutura, localização e itens disponíveis..."
+                  placeholder="Itens inclusos, localização, infraestrutura (fogão, freezer, ar-condicionado, mesas)..."
                   value={areaEmEdicao.descricao}
                   onChange={e => setAreaEmEdicao(prev => ({ ...prev, descricao: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium resize-none"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium resize-none text-slate-900 dark:text-white"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Capacidade Máxima
+                    Capacidade Máxima de Pessoas *
                   </label>
                   <input
                     type="number"
+                    min={1}
+                    required
                     value={areaEmEdicao.capacidade_maxima}
                     onChange={e =>
                       setAreaEmEdicao(prev => ({ ...prev, capacidade_maxima: Number(e.target.value) }))
                     }
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold"
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
                   />
                 </div>
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Taxa Reserva (R$)
+                    Taxa de Reserva (R$)
                   </label>
                   <input
                     type="number"
                     step="0.01"
+                    min={0}
                     value={areaEmEdicao.taxa_reserva}
                     onChange={e =>
                       setAreaEmEdicao(prev => ({ ...prev, taxa_reserva: Number(e.target.value) }))
                     }
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold"
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
                   />
                 </div>
               </div>
@@ -2401,16 +2960,17 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Taxa Limpeza (R$)
+                    Taxa de Limpeza (R$)
                   </label>
                   <input
                     type="number"
                     step="0.01"
+                    min={0}
                     value={areaEmEdicao.taxa_limpeza}
                     onChange={e =>
                       setAreaEmEdicao(prev => ({ ...prev, taxa_limpeza: Number(e.target.value) }))
                     }
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold"
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
                   />
                 </div>
                 <div>
@@ -2420,11 +2980,12 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                   <input
                     type="number"
                     step="0.01"
+                    min={0}
                     value={areaEmEdicao.valor_caucao}
                     onChange={e =>
                       setAreaEmEdicao(prev => ({ ...prev, valor_caucao: Number(e.target.value) }))
                     }
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold"
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
                   />
                 </div>
               </div>
@@ -2433,12 +2994,12 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
               <div className="p-3.5 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200/80 dark:border-indigo-800 rounded-2xl space-y-2.5">
                 <div className="flex items-center gap-1.5 font-black text-indigo-900 dark:text-indigo-200">
                   <Clock className="w-4 h-4 text-indigo-600" />
-                  <span>Horários Permitidos para Agendamento</span>
+                  <span>Horários de Funcionamento e Slot</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 mb-0.5">
-                      De que horas (Início)
+                      Horário Início
                     </label>
                     <input
                       type="time"
@@ -2449,7 +3010,7 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 mb-0.5">
-                      Até que horas (Fim)
+                      Horário Fim
                     </label>
                     <input
                       type="time"
@@ -2478,11 +3039,44 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3">
+              {/* APROVAÇÃO PRÉVIA DO SÍNDICO */}
+              <label className="flex items-center gap-2.5 p-3 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={areaEmEdicao.exige_aprovacao_sindico ?? true}
+                  onChange={e => setAreaEmEdicao(prev => ({ ...prev, exige_aprovacao_sindico: e.target.checked }))}
+                  className="w-4 h-4 rounded text-amber-600 cursor-pointer shrink-0"
+                />
+                <div>
+                  <span className="font-extrabold text-slate-800 dark:text-slate-200 block text-xs">
+                    Exige Aprovação Prévia do Síndico / Gestão
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    Se desmarcado, a reserva é aprovada automaticamente assim que solicitada.
+                  </span>
+                </div>
+              </label>
+
+              {/* REGRAS E TERMOS DE RESPONSABILIDADE */}
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Regras de Uso e Termo de Responsabilidade *
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  placeholder="Ex: Lei do silêncio a partir das 22h. Proibido som alto e garrafas de vidro na área da piscina. O morador é responsável pela conservação dos equipamentos."
+                  value={areaEmEdicao.regras_termo || ''}
+                  onChange={e => setAreaEmEdicao(prev => ({ ...prev, regras_termo: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium resize-none text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setModalNovaArea(false)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300"
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -2490,7 +3084,7 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
                   type="submit"
                   className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-md cursor-pointer"
                 >
-                  Salvar Espaço
+                  Salvar Configuração do Espaço
                 </button>
               </div>
             </form>

@@ -372,6 +372,23 @@ export async function excluirAreaComum(condominioId: string, areaId: string): Pr
   return true;
 }
 
+export async function alternarStatusAreaComum(condominioId: string, areaId: string): Promise<AreaComum | null> {
+  const areas = await carregarAreasComuns(condominioId);
+  const index = areas.findIndex(a => a.id === areaId);
+  if (index === -1) return null;
+
+  areas[index].ativa = !areas[index].ativa;
+  localStorage.setItem(`${CHAVE_STORAGE_AREAS}${condominioId}`, JSON.stringify(areas));
+
+  if (isUUID(condominioId)) {
+    try {
+      await supabase.from('areas_comuns').update({ ativa: areas[index].ativa }).eq('id', areaId);
+    } catch {}
+  }
+
+  return areas[index];
+}
+
 export async function carregarReservas(condominioId: string): Promise<ReservaArea[]> {
   if (!condominioId) return [];
 
