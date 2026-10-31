@@ -149,6 +149,25 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
   const [tempoAtual, setTempoAtual] = useState(Date.now());
   const [alertaSonoroHabilitado, setAlertaSonoroHabilitado] = useState(true);
 
+  // Standby Inteligente de Visitantes (5 Minutos com Cronômetro Regressivo)
+  const [standbyVisitantes, setStandbyVisitantes] = useState<Record<string, number>>(() => {
+    try {
+      const salvo = localStorage.getItem('porttohub_standby_visitantes');
+      if (salvo) {
+        const parsed = JSON.parse(salvo);
+        const agora = Date.now();
+        const limpo: Record<string, number> = {};
+        for (const [k, v] of Object.entries(parsed)) {
+          if (typeof v === 'number' && v > agora) {
+            limpo[k] = v;
+          }
+        }
+        return limpo;
+      }
+    } catch {}
+    return {};
+  });
+
   // Modais
   const [modalNovoCadastro, setModalNovoCadastro] = useState(false);
   const [modalEditarCadastro, setModalEditarCadastro] = useState(false);
@@ -629,6 +648,45 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
     };
   };
 
+  // Standby Inteligente de Visitantes (5 Minutos com Cronômetro Regressivo)
+  const checarStandbyVisitante = (item: any) => {
+    if (!item) return { emStandby: false, segundosRestantes: 0, formatado: '', progressoPct: 0 };
+    const perfil = item.perfil_acesso || 'autorizado';
+    const ehVisitante = perfil === 'autorizado';
+    if (!ehVisitante) {
+      return { emStandby: false, segundosRestantes: 0, formatado: '', progressoPct: 0 };
+    }
+
+    // Duração do standby para visitantes: 5 minutos (300.000 ms)
+    const DURACAO_STANDBY_MS = 5 * 60 * 1000;
+    
+    // Obtém o timestamp de expiração da memória local ou da data_hora_entrada persistida
+    const expMemoria = standbyVisitantes[item.id] || 0;
+    const expEntrada = item.data_hora_entrada 
+      ? new Date(item.data_hora_entrada).getTime() + DURACAO_STANDBY_MS 
+      : 0;
+    
+    const expiraEm = Math.max(expMemoria, expEntrada);
+    const diffMs = expiraEm - tempoAtual;
+
+    if (diffMs > 0 && diffMs <= DURACAO_STANDBY_MS) {
+      const segundosRestantes = Math.ceil(diffMs / 1000);
+      const minutos = Math.floor(segundosRestantes / 60);
+      const segundos = segundosRestantes % 60;
+      const formatado = `${minutos.toString().padStart(2, '0')}:${segundos.toString().padStart(2, '0')}`;
+      const progressoPct = Math.max(0, Math.min(100, Math.round(((DURACAO_STANDBY_MS - diffMs) / DURACAO_STANDBY_MS) * 100)));
+
+      return {
+        emStandby: true,
+        segundosRestantes,
+        formatado,
+        progressoPct
+      };
+    }
+
+    return { emStandby: false, segundosRestantes: 0, formatado: '', progressoPct: 0 };
+  };
+
   // Salvar Novo Cadastro
   const salvarCadastro = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -766,6 +824,15 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
   // - PRESTADORES: CONTROLE DE TEMPO, LIMITE DE PERMANÊNCIA E SAÍDA OBRIGATÓRIA
   // =========================================================================
   const abrirModalEntradaPara = (pessoa: any) => {
+    const statusStandby = checarStandbyVisitante(pessoa);
+    if (statusStandby.emStandby) {
+      setMensagem({
+        tipo: 'aviso',
+        texto: `Atenção: ${pessoa.nome_profissional || pessoa.nome_completo || 'Visitante'} já possui Entrada Registrada recentemente. Aguarde ${statusStandby.formatado} para registrar nova entrada.`
+      });
+      return;
+    }
+
     setItemSelecionado(pessoa);
     setTempoMaximoMinutos(240);
     setTempoMaximoCustomizado('');
@@ -795,10 +862,21 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
       const agora = new Date();
 
       if (ehVisitante) {
+        // Ativa o standby de 5 minutos (300.000 ms) para este visitante
+        const agoraMs = agora.getTime();
+        const fimStandby = agoraMs + 5 * 60 * 1000;
+        setStandbyVisitantes(prev => {
+          const atualizado = { ...prev, [itemSelecionado.id]: fimStandby };
+          try {
+            localStorage.setItem('porttohub_standby_visitantes', JSON.stringify(atualizado));
+          } catch {}
+          return atualizado;
+        });
+
         // =====================================================================
         // REGRA DE OURO: VISITANTE / FAMÍLIA
         // Apenas registra a entrada auditada. NÃO precisa dar saída!
-        // Não gera cronômetro regressivo, não exige devolução de crachá.
+        // O botão entra em standby por 5 minutos com cronômetro regressivo.
         // =====================================================================
         await supabase
           .from('prestadores')
@@ -837,7 +915,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
         await registrarAtividade({
           modulo: 'Autorizados',
           acao: 'ENTRADA',
-          descricao: `Registrou ENTRADA de ${itemSelecionado.nome_profissional || itemSelecionado.nome_completo} (Visitante/Família) para ${itemSelecionado.unidade} ${itemSelecionado.bloco || ''}. Permanência livre (sem necessidade de saída).`,
+          descricao: `Registrou ENTRADA de ${itemSelecionado.nome_profissional || itemSelecionado.nome_completo} (Visitante/Família) para ${itemSelecionado.unidade} ${itemSelecionado.bloco || ''}. Permanência livre (Standby de 5 minutos ativado).`,
           detalhes: {
             pessoaId: itemSelecionado.id,
             nome: itemSelecionado.nome_profissional || itemSelecionado.nome_completo,
@@ -850,7 +928,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
 
         setMensagem({ 
           tipo: 'sucesso', 
-          texto: `✅ Entrada registrada! ${itemSelecionado.nome_profissional || itemSelecionado.nome_completo} liberado para acesso à unidade (Visita livre - sem necessidade de dar saída).` 
+          texto: `✅ Entrada registrada! ${itemSelecionado.nome_profissional || itemSelecionado.nome_completo} liberado (Entrada Registrada com cronômetro de 5 minutos ativado).` 
         });
 
       } else {
@@ -1583,6 +1661,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                 const vinculoOuEmpresa = item.empresa || item.parentesco_vinculo;
                 const ehVisitante = perfil === 'autorizado';
                 const infoValidade = checarValidade(item);
+                const statusStandby = checarStandbyVisitante(item);
                 const prestadorNoLocal = prestadoresAtivos.find((a: any) => (a.prestador_id || a.id) === item.id);
                 const jaEstaDentro = Boolean(prestadorNoLocal);
 
@@ -1590,7 +1669,9 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                   <div
                     key={item.id}
                     className={`group bg-slate-900/90 hover:bg-slate-850 p-3 sm:p-4 rounded-2xl border transition-all duration-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-xs hover:shadow-md ${
-                      infoValidade.expirou 
+                      ehVisitante && statusStandby.emStandby
+                        ? 'border-amber-500/40 bg-amber-950/20 shadow-amber-950/20'
+                        : infoValidade.expirou 
                         ? 'border-amber-500/30 bg-amber-950/10' 
                         : jaEstaDentro 
                         ? 'border-blue-500/40 bg-blue-950/15' 
@@ -1642,6 +1723,17 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                           <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${infoValidade.cor}`}>
                             {infoValidade.texto}
                           </span>
+
+                          {/* Indicador Entrada Registrada de Visitante */}
+                          {ehVisitante && statusStandby.emStandby && (
+                            <span 
+                              className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1 font-mono tracking-tight"
+                              title={`Visitante liberado recentemente. Tempo restante: ${statusStandby.formatado}`}
+                            >
+                              <Clock className="w-3 h-3 text-amber-400 animate-pulse" />
+                              Entrada Registrada ({statusStandby.formatado})
+                            </span>
+                          )}
 
                           {/* Indicador No Local (Apenas se estiver dentro) */}
                           {jaEstaDentro && (
@@ -1718,17 +1810,29 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
 
                       {/* BOTÃO DE ENTRADA / SAÍDA ESPECÍFICO POR CATEGORIA */}
                       {ehVisitante ? (
-                        /* VISITANTES: SÓ DAR ENTRADA */
-                        <button
-                          type="button"
-                          onClick={() => abrirModalEntradaPara(item)}
-                          disabled={!permissoesOperador.darEntrada}
-                          className="bg-purple-600 hover:bg-purple-500 text-white font-black px-3.5 py-2 rounded-xl text-xs uppercase flex items-center gap-1.5 transition shadow-sm active:scale-95 cursor-pointer disabled:bg-slate-800 disabled:text-slate-500"
-                          title="Registrar entrada do visitante"
-                        >
-                          <LogIn className="w-3.5 h-3.5" />
-                          <span>Dar Entrada</span>
-                        </button>
+                        /* VISITANTES: ENTRADA OU ENTRADA REGISTRADA (CRONÔMETRO DE 5 MINUTOS) */
+                        statusStandby.emStandby ? (
+                          <button
+                            type="button"
+                            disabled
+                            className="bg-amber-500/15 text-amber-300 border border-amber-500/40 font-mono font-bold px-3.5 py-2 rounded-xl text-xs uppercase flex items-center gap-1.5 cursor-not-allowed select-none shadow-xs transition-all"
+                            title={`Entrada registrada recentemente! Aguarde ${statusStandby.formatado} para novo registro.`}
+                          >
+                            <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse shrink-0" />
+                            <span>Entrada Registrada ({statusStandby.formatado})</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => abrirModalEntradaPara(item)}
+                            disabled={!permissoesOperador.darEntrada}
+                            className="bg-purple-600 hover:bg-purple-500 text-white font-black px-3.5 py-2 rounded-xl text-xs uppercase flex items-center gap-1.5 transition shadow-sm active:scale-95 cursor-pointer disabled:bg-slate-800 disabled:text-slate-500"
+                            title="Registrar entrada do visitante"
+                          >
+                            <LogIn className="w-3.5 h-3.5" />
+                            <span>Dar Entrada</span>
+                          </button>
+                        )
                       ) : jaEstaDentro ? (
                         /* PRESTADOR DENTRO: DAR SAÍDA */
                         <button
@@ -1974,9 +2078,19 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                     </div>
 
                     <div className="flex items-center gap-3 shrink-0 text-right">
-                      <span className="font-mono text-emerald-400 font-bold text-[11px]">
-                        Entrada: {v.data_hora_entrada ? new Date(v.data_hora_entrada).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--'}
-                      </span>
+                      <div className="text-right">
+                        <span className="font-mono text-emerald-400 font-bold text-[11px] block">
+                          Entrada: {v.data_hora_entrada ? new Date(v.data_hora_entrada).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--'}
+                        </span>
+                        {(() => {
+                          const s = checarStandbyVisitante({ id: v.prestador_id || v.id, perfil_acesso: 'autorizado', data_hora_entrada: v.data_hora_entrada });
+                          return s.emStandby ? (
+                            <span className="font-mono text-[10px] text-amber-400 font-bold inline-flex items-center gap-1">
+                              <Clock className="w-2.5 h-2.5 animate-pulse" /> Entrada Registrada ({s.formatado})
+                            </span>
+                          ) : null;
+                        })()}
+                      </div>
                       <button
                         type="button"
                         onClick={() => dispararWhatsAppEntrada(v)}
@@ -2503,7 +2617,7 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
               
               {/* Se for Visitante/Família: Informativo de Livre Acesso */}
               {itemSelecionado.perfil_acesso === 'autorizado' ? (
-                <div className="bg-purple-950/40 border border-purple-500/40 p-4 rounded-2xl text-xs space-y-1.5">
+                <div className="bg-purple-950/40 border border-purple-500/40 p-4 rounded-2xl text-xs space-y-2">
                   <span className="font-black text-purple-300 block flex items-center gap-1.5 uppercase text-xs">
                     <CheckCircle2 className="w-4 h-4 text-purple-400 shrink-0" />
                     Livre Circulação • Sem Necessidade de Saída
@@ -2511,6 +2625,10 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
                   <p className="text-slate-300 text-xs leading-relaxed">
                     A entrada deste visitante/familiar será auditada no sistema. Ele não possui limite de horas e a portaria não precisará dar saída quando ele for embora.
                   </p>
+                  <div className="flex items-center gap-1.5 pt-1.5 border-t border-purple-500/20 text-[11px] text-amber-300 font-medium">
+                    <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>Ao confirmar, o botão deste visitante ficará como <strong>Entrada Registrada por 5 minutos</strong> com cronômetro regressivo.</span>
+                  </div>
                 </div>
               ) : (
                 /* Se for Prestador: Tempo Máximo de Permanência */
