@@ -291,7 +291,7 @@ export async function excluirItemLocal(
 /**
  * Salva um lote inteiro de registros em uma única transação atômica (Ultra-Rápido)
  */
-export async function salvarLoteItensLocal<T extends { id?: any; condominio_id?: string }>(
+export async function salvarLoteItensLocal<T = any>(
   storeName: NomeTabelaLocal,
   itens: T[],
   condominioId: string,

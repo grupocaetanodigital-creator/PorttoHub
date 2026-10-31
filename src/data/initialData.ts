@@ -505,3 +505,157 @@ export const INITIAL_RESERVATIONS: Reservation[] = [
     reservationCode: 'RES-601-9921',
   },
 ];
+
+import { Resident as BiometricResident, AccessLog, VisitorPass, HardwareDevice } from '../types';
+
+export const INITIAL_RESIDENTS: BiometricResident[] = [
+  {
+    id: 'res_101',
+    condoId: 'condo_1',
+    name: 'Carlos Eduardo Silva',
+    unit: 'Bloco A - Apto 302',
+    block: 'Bloco A',
+    type: 'Morador',
+    status: 'Ativo',
+    document: '123.456.789-00',
+    phone: '(11) 98765-4321',
+    email: 'carlos.silva@alphaville.com.br',
+    vehiclePlate: 'BRA2E19',
+    faceEnrolled: true,
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=300',
+    accessSchedule: '24h',
+    createdAt: '2025-01-15',
+    isResponsible: true
+  },
+  {
+    id: 'res_102',
+    condoId: 'condo_1',
+    name: 'Mariana Santos Ribeiro',
+    unit: 'Bloco B - Apto 104',
+    block: 'Bloco B',
+    type: 'Morador',
+    status: 'Ativo',
+    document: '987.654.321-11',
+    phone: '(11) 97654-3210',
+    email: 'mariana.ribeiro@outlook.com',
+    vehiclePlate: 'SPX9J88',
+    faceEnrolled: true,
+    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=300',
+    accessSchedule: '24h',
+    createdAt: '2025-02-01',
+    isResponsible: true
+  },
+  {
+    id: 'res_103',
+    condoId: 'condo_1',
+    name: 'Roberto de Oliveira',
+    unit: 'Bloco A - Apto 101',
+    block: 'Bloco A',
+    type: 'Prestador',
+    status: 'Bloqueado',
+    document: '456.789.123-55',
+    phone: '(11) 91234-5678',
+    email: 'roberto.oliveira@reformas.com',
+    vehiclePlate: 'ABC1234',
+    faceEnrolled: true,
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=300',
+    accessSchedule: 'Comercial',
+    createdAt: '2025-02-10',
+    isResponsible: false
+  },
+  {
+    id: 'res_201',
+    condoId: 'condo_2',
+    name: 'Fernanda Lima Castro',
+    unit: 'Torre 1 - Apto 1502',
+    block: 'Torre 1',
+    type: 'Inquilino',
+    status: 'Ativo',
+    document: '321.654.987-22',
+    phone: '(11) 99887-7665',
+    email: 'fernanda.castro@advocacia.com',
+    vehiclePlate: 'GTW8899',
+    faceEnrolled: true,
+    avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=300',
+    accessSchedule: '24h',
+    createdAt: '2025-01-20',
+    isResponsible: true
+  }
+];
+
+export const INITIAL_ACCESS_LOGS: AccessLog[] = [
+  {
+    id: 'log_101',
+    condoId: 'condo_1',
+    residentName: 'Carlos Eduardo Silva',
+    unit: 'Bloco A - Apto 302',
+    timestamp: '15:20:12',
+    date: '31/10/2026',
+    status: 'Liberado',
+    method: 'Reconhecimento Facial',
+    gate: 'Portão Pedestre Social',
+    confidenceScore: 99.2,
+    livenessScore: 98.6,
+    photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150'
+  },
+  {
+    id: 'log_102',
+    condoId: 'condo_1',
+    residentName: 'Roberto de Oliveira',
+    unit: 'Bloco A - Apto 101',
+    timestamp: '14:45:00',
+    date: '31/10/2026',
+    status: 'Negado',
+    method: 'Reconhecimento Facial',
+    gate: 'Portão Pedestre Social',
+    reason: 'Cadastro Bloqueado pela Administração',
+    confidenceScore: 97.8,
+    livenessScore: 98.1,
+    photoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=150'
+  }
+];
+
+export const INITIAL_VISITOR_PASSES: VisitorPass[] = [
+  {
+    id: 'pass_101',
+    condoId: 'condo_1',
+    visitorName: 'Marcos Vinícius (iFood)',
+    document: '445.667.889-01',
+    unitDestination: 'Bloco A - Apto 302',
+    residentAuthorizer: 'Carlos Eduardo Silva',
+    type: 'Delivery',
+    qrCodeToken: 'PORTTO-ALPHA-DELIV-9821',
+    validUntil: 'Hoje, 16:30',
+    singleUse: true,
+    used: true,
+    status: 'Utilizado',
+    notes: 'Pedido de almoço'
+  }
+];
+
+export const INITIAL_DEVICES: HardwareDevice[] = [
+  {
+    id: 'dev_101',
+    condoId: 'condo_1',
+    name: 'Totem Facial Portaria Pedestre',
+    type: 'totem',
+    ipAddress: '192.168.10.15',
+    port: 8080,
+    status: 'online',
+    location: 'Entrada Social - Bloco A/B',
+    lastPing: 'há 10 seg',
+    pulseTimeMs: 4000
+  },
+  {
+    id: 'dev_102',
+    condoId: 'condo_1',
+    name: 'Relé IP Portão Pedestre (Fechadura Eletroímã)',
+    type: 'relay',
+    ipAddress: '192.168.10.22',
+    port: 502,
+    status: 'online',
+    location: 'Quadro de Comando Portaria',
+    lastPing: 'há 5 seg',
+    pulseTimeMs: 3500
+  }
+];

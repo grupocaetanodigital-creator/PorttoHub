@@ -245,7 +245,7 @@ export async function sincronizarDeltaTabela<T extends { id: string | number; up
         salvarCacheRam(tabela, condominioId, data);
         await salvarLoteItensLocal(tabela, data, condominioId, agora, true);
         return {
-          dadosAtualizados: data,
+          dadosAtualizados: (data as any) as T[],
           deltaCount: data.length,
           veioDoCacheLocal: false,
           timestampSync: agora

@@ -58,6 +58,9 @@ import {
 import { formatarLinkWhatsApp } from '../services/configWhatsappService';
 import { verificarPermissao } from '../services/permissoesService';
 import { supabase } from '../services/supabase';
+import { TotemValidator } from '../components/TotemValidator';
+import { storageService } from '../services/storageService';
+import { Condominium, AccessLog } from '../types';
 
 interface ControleAcessoProps {
   usuarioLogado?: any;
@@ -75,7 +78,7 @@ export default function ControleAcesso({ usuarioLogado }: ControleAcessoProps) {
   const [blacklist, setBlacklist] = useState<BloqueioSeguranca[]>([]);
 
   // Abas
-  const [abaAtiva, setAbaAtiva] = useState<'entrada' | 'presentes' | 'validador_qr' | 'passes' | 'historico' | 'blacklist'>('entrada');
+  const [abaAtiva, setAbaAtiva] = useState<'totem_facial' | 'entrada' | 'presentes' | 'validador_qr' | 'passes' | 'historico' | 'blacklist'>('totem_facial');
 
   // Filtros & Buscas
   const [termoBusca, setTermoBusca] = useState('');
@@ -168,6 +171,39 @@ export default function ControleAcesso({ usuarioLogado }: ControleAcessoProps) {
     window.addEventListener('infport:condominio_alterado', handleCondoChange);
     return () => window.removeEventListener('infport:condominio_alterado', handleCondoChange);
   }, [usuarioLogado]);
+
+  // Propriedades para o Totem Facial Inteligente com Isolamento Multi-Tenant
+  const condoObj: Condominium = useMemo(() => ({
+    id: condId || 'condo_1',
+    name: condoConfig?.nome || 'Condomínio Selecionado',
+    code: condoConfig?.nome?.substring(0, 5).toUpperCase() || 'PHUB-01',
+    address: condoConfig?.endereco || 'Portaria Principal',
+    securityLevel: 'Máximo'
+  }), [condId, condoConfig]);
+
+  const residentsForTotem = useMemo(() => {
+    return storageService.getResidentsForCondo(condId);
+  }, [condId]);
+
+  const passesForTotem = useMemo(() => {
+    return storageService.getVisitorPassesForCondo(condId);
+  }, [condId]);
+
+  const handleNewTotemLog = (log: AccessLog) => {
+    storageService.addLog(log);
+    setRegistros(prev => [{
+      id: log.id,
+      condominio_id: condId,
+      tipo: 'visitante',
+      nome: log.residentName,
+      documento: '',
+      unidade_bloco: log.unit,
+      ponto_acesso_entrada: log.gate,
+      data_hora_entrada: new Date().toISOString(),
+      status: log.status === 'Liberado' ? 'dentro' : 'bloqueado',
+      operador_entrada_nome: 'Totem Facial Biométrico'
+    } as any, ...prev]);
+  };
 
   // Carrega dados iniciais
   useEffect(() => {
@@ -585,6 +621,19 @@ export default function ControleAcesso({ usuarioLogado }: ControleAcessoProps) {
       {/* Menu Superior de Abas */}
       <div className="flex items-center gap-1 p-1 bg-slate-200/80 dark:bg-slate-850 rounded-2xl overflow-x-auto text-xs font-bold scrollbar-none">
         <button
+          onClick={() => setAbaAtiva('totem_facial')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition cursor-pointer whitespace-nowrap ${
+            abaAtiva === 'totem_facial'
+              ? 'bg-gradient-to-r from-cyan-500 to-emerald-500 text-slate-950 font-black shadow-md'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Camera className="w-4 h-4 text-cyan-400" />
+          <span>Totem Facial (Portaria Ao Vivo)</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-cyan-400 text-slate-950 font-black animate-pulse">LIVE</span>
+        </button>
+
+        <button
           onClick={() => setAbaAtiva('entrada')}
           className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition cursor-pointer whitespace-nowrap ${
             abaAtiva === 'entrada'
@@ -661,6 +710,18 @@ export default function ControleAcesso({ usuarioLogado }: ControleAcessoProps) {
           <span>Lista de Bloqueios ({blacklist.length})</span>
         </button>
       </div>
+
+      {/* ABA 0: TOTEM VALIDADOR FACIAL BIOMÉTRICO (PORTARIA AO VIVO) */}
+      {abaAtiva === 'totem_facial' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <TotemValidator
+            condo={condoObj}
+            residents={residentsForTotem}
+            visitorPasses={passesForTotem}
+            onNewLog={handleNewTotemLog}
+          />
+        </div>
+      )}
 
       {/* ABA 1: LIBERAÇÃO DE ENTRADA RÁPIDA */}
       {abaAtiva === 'entrada' && (

@@ -8,13 +8,28 @@ export type AreaType =
   | 'coworking' 
   | 'outro';
 
+export type ResidentType = 'Morador' | 'Dependente' | 'Inquilino' | 'Prestador' | 'Funcionário' | 'proprietario' | 'outro';
+export type ResidentStatus = 'Ativo' | 'Bloqueado' | 'Pendente';
+
 export interface Resident {
   id: string;
+  condoId?: string;
   name: string;
-  role: 'proprietario' | 'inquilino' | 'dependente' | 'outro';
+  unit?: string;
+  block?: string;
+  type?: ResidentType;
+  role?: 'proprietario' | 'inquilino' | 'dependente' | 'outro';
+  status?: ResidentStatus;
+  document?: string;
   phone: string;
   email: string;
-  isResponsible: boolean;
+  vehiclePlate?: string;
+  faceEnrolled?: boolean;
+  avatar?: string;
+  biometricVectorId?: string;
+  accessSchedule?: '24h' | 'Comercial' | 'Personalizado';
+  isResponsible?: boolean;
+  createdAt?: string;
 }
 
 export interface Unit {
@@ -23,6 +38,14 @@ export interface Unit {
   number: string;
   block: string;
   residents: Resident[];
+}
+
+export interface UnitSummary {
+  unitNumber: string;
+  block: string;
+  residents: Resident[];
+  hasVehicles: boolean;
+  activeStatus: boolean;
 }
 
 export interface CommonArea {
@@ -69,8 +92,17 @@ export interface Condominium {
   id: string;
   name: string;
   code: string;
+  cnpj?: string;
   address: string;
-  unitsCount: number;
+  city?: string;
+  state?: string;
+  totalUnits?: number;
+  unitsCount?: number;
+  activeResidents?: number;
+  securityLevel?: 'Alto' | 'Médio' | 'Máximo';
+  contactPhone?: string;
+  syndicName?: string;
+  createdAt?: string;
 }
 
 export interface TimeSlot {
@@ -78,4 +110,53 @@ export interface TimeSlot {
   endTime: string;
   isAvailable: boolean;
   reservation?: Reservation;
+}
+
+export type AccessStatus = 'Liberado' | 'Negado' | 'Alerta' | 'Cadastrado';
+export type AccessMethod = 'Reconhecimento Facial' | 'QR Code' | 'Tag RFID' | 'Acionamento Remoto' | 'Biometria Digital';
+
+export interface AccessLog {
+  id: string;
+  condoId: string;
+  residentName: string;
+  unit: string;
+  timestamp: string;
+  date: string;
+  status: AccessStatus;
+  method: AccessMethod;
+  gate: string;
+  reason?: string;
+  photoUrl?: string;
+  confidenceScore?: number;
+  livenessScore?: number;
+}
+
+export interface VisitorPass {
+  id: string;
+  condoId: string;
+  visitorName: string;
+  document: string;
+  unitDestination: string;
+  residentAuthorizer: string;
+  type: 'Visitante' | 'Delivery' | 'Prestador' | 'Festa / Evento';
+  qrCodeToken: string;
+  validUntil: string;
+  singleUse: boolean;
+  used: boolean;
+  status: 'Válido' | 'Expirado' | 'Utilizado';
+  notes?: string;
+}
+
+export interface HardwareDevice {
+  id: string;
+  condoId: string;
+  name: string;
+  type: 'camera' | 'relay' | 'totem' | 'turnstile';
+  ipAddress: string;
+  port: number;
+  status: 'online' | 'offline' | 'alert';
+  location: string;
+  lastPing: string;
+  pulseTimeMs?: number;
+  streamUrl?: string;
 }
