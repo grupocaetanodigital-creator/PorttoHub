@@ -1199,8 +1199,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           perfil: perfilStr,
           foto_url: fotoOperador || null,
           condominio_id: targetCondominioId,
-          ativo: ativoOperador,
-          permissoes: permissoesOperador
+          ativo: Boolean(ativoOperador)
         };
         if (senhaOperador.trim()) {
           dadosAtualizacao.senha = senhaOperador.trim();
@@ -1212,7 +1211,6 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           .eq('id', idEdicao);
 
         if (error && (
-          error.message?.includes('permissoes') ||
           error.message?.includes('nivel_acesso_custom_id') || 
           error.message?.includes('perfil') || 
           error.message?.includes('schema cache') || 
@@ -1227,7 +1225,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
             nivel_acesso: nivelNum,
             foto_url: fotoOperador || null,
             condominio_id: targetCondominioId,
-            ativo: ativoOperador
+            ativo: Boolean(ativoOperador)
           };
           if (dadosAtualizacao.senha) fallback.senha = dadosAtualizacao.senha;
           const retry = await supabase.from('operadores').update(fallback).eq('id', idEdicao);
@@ -1239,7 +1237,15 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
         // Persiste as permissões no storage/estado instantâneo do operador
         await salvarPermissoesOperador(idEdicao, permissoesOperador);
 
-        setMensagem({ tipo: 'sucesso', texto: 'Operador e permissões atualizados com sucesso!' });
+        // Atualiza estado local e cache sincronizado
+        setOperadores(prev => {
+          const atualizados = prev.map(o => o.id === idEdicao ? { ...o, ...dadosAtualizacao, ativo: Boolean(ativoOperador) } : o);
+          salvarCacheLocal('operadores', atualizados, 'global');
+          return atualizados;
+        });
+        window.dispatchEvent(new CustomEvent('operadores_atualizados'));
+
+        setMensagem({ tipo: 'sucesso', texto: 'Operador e status da conta atualizados com sucesso!' });
       } else {
         if (!senhaOperador.trim()) {
           setMensagem({ tipo: 'erro', texto: 'Informe a senha para o novo operador.' });
@@ -1256,14 +1262,12 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           perfil: perfilStr,
           foto_url: fotoOperador || null,
           condominio_id: targetCondominioId,
-          ativo: ativoOperador,
-          permissoes: permissoesOperador
+          ativo: Boolean(ativoOperador)
         };
 
         let { data: opCriado, error } = await supabase.from('operadores').insert([novoOp]).select().single();
 
         if (error && (
-          error.message?.includes('permissoes') ||
           error.message?.includes('nivel_acesso_custom_id') || 
           error.message?.includes('perfil') || 
           error.message?.includes('schema cache') || 
@@ -1278,7 +1282,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
             senha: novoOp.senha,
             nivel_acesso: novoOp.nivel_acesso,
             condominio_id: novoOp.condominio_id,
-            ativo: ativoOperador
+            ativo: Boolean(ativoOperador)
           };
           const retry = await supabase.from('operadores').insert([fallbackOp]).select().single();
           error = retry.error;
@@ -1290,6 +1294,15 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
         const opIdSalvo = opCriado?.id || novoOp.login;
         await salvarPermissoesOperador(opIdSalvo, permissoesOperador);
 
+        if (opCriado) {
+          setOperadores(prev => {
+            const atualizados = [...prev, opCriado];
+            salvarCacheLocal('operadores', atualizados, 'global');
+            return atualizados;
+          });
+          window.dispatchEvent(new CustomEvent('operadores_atualizados'));
+        }
+
         setMensagem({ tipo: 'sucesso', texto: 'Operador cadastrado e permissões configuradas com sucesso!' });
       }
 
@@ -1300,6 +1313,33 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
       setMensagem({ tipo: 'erro', texto: `Erro ao salvar operador: ${err.message}` });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const mudarStatusContaOperador = async (novoAtivo: boolean) => {
+    setAtivoOperador(novoAtivo);
+    if (idEdicao) {
+      try {
+        const { error } = await supabase
+          .from('operadores')
+          .update({ ativo: novoAtivo })
+          .eq('id', idEdicao);
+        if (error) throw error;
+
+        setOperadores(prev => {
+          const atualizados = prev.map(o => o.id === idEdicao ? { ...o, ativo: novoAtivo } : o);
+          salvarCacheLocal('operadores', atualizados, 'global');
+          return atualizados;
+        });
+        window.dispatchEvent(new CustomEvent('operadores_atualizados'));
+        setMensagem({
+          tipo: 'sucesso',
+          texto: `Status da conta alterado para: ${novoAtivo ? 'CONTA ATIVA' : 'CONTA DESATIVADA (Acesso revogado)'}.`
+        });
+        setTimeout(() => setMensagem({ tipo: '', texto: '' }), 4000);
+      } catch (err: any) {
+        setMensagem({ tipo: 'erro', texto: `Erro ao alterar status: ${err.message}` });
+      }
     }
   };
 
@@ -1333,7 +1373,12 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
         .update({ ativo: novoStatus })
         .eq('id', op.id);
       if (error) throw error;
-      setOperadores(prev => prev.map(item => item.id === op.id ? { ...item, ativo: novoStatus } : item));
+      setOperadores(prev => {
+        const atualizados = prev.map(item => item.id === op.id ? { ...item, ativo: novoStatus } : item);
+        salvarCacheLocal('operadores', atualizados, 'global');
+        return atualizados;
+      });
+      window.dispatchEvent(new CustomEvent('operadores_atualizados'));
       setMensagem({
         tipo: 'sucesso',
         texto: `Operador ${op.nome} ${novoStatus ? 'ativado' : 'desativado'} com sucesso.`
@@ -2841,32 +2886,43 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                   )}
 
                   <div className="md:col-span-2">
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                      Status da Conta / Login
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                        Status da Conta / Login
+                      </label>
+                      <span className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-md border ${
+                        ativoOperador 
+                          ? 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' 
+                          : 'bg-red-50 dark:bg-red-950/80 text-red-700 dark:text-red-300 border-red-300 dark:border-red-700'
+                      }`}>
+                        {ativoOperador ? '● Conta Ativa' : '✕ Desativada (Ex-funcionário)'}
+                      </span>
+                    </div>
                     <div className="grid grid-cols-2 gap-3">
                       <button
                         type="button"
-                        onClick={() => setAtivoOperador(true)}
+                        onClick={() => mudarStatusContaOperador(true)}
+                        title="Ativar acesso do operador"
                         className={`py-3 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition cursor-pointer border ${
                           ativoOperador
                             ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm shadow-emerald-600/30'
                             : 'bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-900'
                         }`}
                       >
-                        <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
+                        <span className={`w-2.5 h-2.5 rounded-full ${ativoOperador ? 'bg-white animate-pulse' : 'bg-emerald-500'}`} />
                         <span>Conta Ativa</span>
                       </button>
                       <button
                         type="button"
-                        onClick={() => setAtivoOperador(false)}
+                        onClick={() => mudarStatusContaOperador(false)}
+                        title="Desativar acesso e revogar login deste operador"
                         className={`py-3 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition cursor-pointer border ${
                           !ativoOperador
                             ? 'bg-red-600 text-white border-red-600 shadow-sm shadow-red-600/30'
                             : 'bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-900'
                         }`}
                       >
-                        <span className="w-2.5 h-2.5 rounded-full bg-white" />
+                        <span className={`w-2.5 h-2.5 rounded-full ${!ativoOperador ? 'bg-white' : 'bg-red-500'}`} />
                         <span>Desativada (Ex-funcionário)</span>
                       </button>
                     </div>
