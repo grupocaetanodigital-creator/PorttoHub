@@ -78,7 +78,8 @@ export default function ModalLembretesPortaria({
   const [somAtivo, setSomAtivo] = useState<boolean>(isSomHabilitado());
   const [sqlCopiado, setSqlCopiado] = useState<boolean>(false);
   const [mensagemFeedback, setMensagemFeedback] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null);
-  const [operadoresEquipe, setOperadoresEquipe] = useState<Array<{ id: string; nome: string; login?: string }>>([]);
+  const [operadoresEquipe, setOperadoresEquipe] = useState<Array<{ id: string; nome: string; login?: string; ativo?: boolean }>>([]);
+  const [operadoresInativos, setOperadoresInativos] = useState<Set<string>>(new Set());
 
   // Estado para criação de novo lembrete
   const [exibirFormNovo, setExibirFormNovo] = useState<boolean>(false);
@@ -178,11 +179,29 @@ export default function ModalLembretesPortaria({
         try {
           const { data, error } = await supabase
             .from('operadores')
-            .select('id, nome, login, condominio_id, ativo')
+            .select('id, nome, login, condominio_id, ativo, status')
             .order('nome');
 
           if (!error && data && data.length > 0) {
-            const ativos = data.filter((op: any) => op.ativo !== false);
+            // Mapeia inativos conhecidos para remoção estrita em todas as listas
+            const inativos = new Set<string>();
+            data.forEach((op: any) => {
+              const isInativo = op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0' || op.status === 'inativo' || op.status === 'desativado';
+              if (isInativo) {
+                if (op.id) inativos.add(String(op.id).toLowerCase());
+                if (op.nome) inativos.add(String(op.nome).toLowerCase().trim());
+                if (op.login) inativos.add(String(op.login).toLowerCase().trim());
+              }
+            });
+            setOperadoresInativos(inativos);
+
+            // REGRA ESTRITA: Apenas operadores ATIVOS (ativo !== false && status !== 'inativo' && status !== 'desativado')
+            const ativos = data.filter((op: any) => {
+              if (op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0') return false;
+              if (op.status === 'inativo' || op.status === 'desativado') return false;
+              return true;
+            });
+
             const filtrados = (condominioId && condominioId !== 'todos' && isUUID(condominioId))
               ? ativos.filter((op: any) => !op.condominio_id || op.condominio_id === condominioId)
               : ativos;
@@ -191,7 +210,8 @@ export default function ModalLembretesPortaria({
             const lista = base.map((o: any) => ({
               id: String(o.id),
               nome: String(o.nome || o.login || 'Operador').trim(),
-              login: o.login
+              login: o.login,
+              ativo: true
             }));
 
             if (lista.length > 0) {
@@ -201,16 +221,38 @@ export default function ModalLembretesPortaria({
           }
         } catch {}
 
-        // Fallback do cache offline
+        // Fallback do cache offline estritamente com operadores ativos
         try {
           const raw = localStorage.getItem('infport_offline_cache_global_operadores');
           if (raw) {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              const lista = parsed.filter((o: any) => o.ativo !== false).map((o: any) => ({
+              const inativos = new Set<string>();
+              parsed.forEach((op: any) => {
+                const isInativo = op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0' || op.status === 'inativo' || op.status === 'desativado';
+                if (isInativo) {
+                  if (op.id) inativos.add(String(op.id).toLowerCase());
+                  if (op.nome) inativos.add(String(op.nome).toLowerCase().trim());
+                  if (op.login) inativos.add(String(op.login).toLowerCase().trim());
+                }
+              });
+              setOperadoresInativos(inativos);
+
+              const ativos = parsed.filter((op: any) => {
+                if (op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0') return false;
+                if (op.status === 'inativo' || op.status === 'desativado') return false;
+                return true;
+              });
+
+              const filtrados = (condominioId && condominioId !== 'todos' && isUUID(condominioId))
+                ? ativos.filter((op: any) => !op.condominio_id || op.condominio_id === condominioId)
+                : ativos;
+
+              const lista = (filtrados.length > 0 ? filtrados : ativos).map((o: any) => ({
                 id: String(o.id),
                 nome: String(o.nome || o.login || 'Operador').trim(),
-                login: o.login
+                login: o.login,
+                ativo: true
               }));
               if (lista.length > 0) {
                 setOperadoresEquipe(lista);
@@ -220,21 +262,27 @@ export default function ModalLembretesPortaria({
           }
         } catch {}
 
-        setOperadoresEquipe([
-          { id: 'op-1', nome: 'Caetano (Operador)' },
-          { id: 'op-2', nome: 'Carlos Silva (Portaria)' },
-          { id: 'op-3', nome: 'Roberto Alves (Vigilância)' },
-          { id: 'op-4', nome: 'Supervisão Operacional' }
-        ]);
+        // Apenas operador atual se for ativo, sem mocks fictícios
+        if (operadorAtual?.nome && (operadorAtual as any)?.ativo !== false) {
+          setOperadoresEquipe([{
+            id: operadorAtual.id || 'op-atual',
+            nome: (operadorAtual.nome || operadorAtual.login || 'Operador').trim(),
+            login: operadorAtual.login,
+            ativo: true
+          }]);
+        } else {
+          setOperadoresEquipe([]);
+        }
       }
 
       carregarOperadores();
     }
   }, [aberto, condominioId]);
 
-  // Garante que o operador logado atual esteja na lista da equipe
+  // Garante que o operador logado atual esteja na lista da equipe apenas se estiver ativo
   useEffect(() => {
     if (operadorAtual?.nome || operadorAtual?.login) {
+      if ((operadorAtual as any)?.ativo === false || (operadorAtual as any)?.status === 'inativo') return;
       const nomeOp = (operadorAtual.nome || operadorAtual.login || 'Operador').trim();
       setOperadoresEquipe(prev => {
         const existe = prev.some(o => 
@@ -242,7 +290,7 @@ export default function ModalLembretesPortaria({
           o.nome.toLowerCase() === nomeOp.toLowerCase()
         );
         if (existe) return prev;
-        return [{ id: operadorAtual.id || 'op-atual', nome: nomeOp, login: operadorAtual.login }, ...prev];
+        return [{ id: operadorAtual.id || 'op-atual', nome: nomeOp, login: operadorAtual.login, ativo: true }, ...prev];
       });
     }
   }, [operadorAtual]);
@@ -1057,16 +1105,27 @@ NOTIFY pgrst, 'reload schema';`;
                 ? item.cientes
                 : (item.lido_por_nome ? [{ operador_nome: item.lido_por_nome, data_hora: item.lido_em || item.created_at }] : []);
 
-              const jaMarcaram = cientesLista;
+              // Filtrar estritamente apenas operadores ATIVOS em quem já marcou ciência
+              const jaMarcaram = cientesLista.filter(c => {
+                const idC = String(c.operador_id || '').toLowerCase();
+                const nomeC = String(c.operador_nome || '').toLowerCase().trim();
+                if (idC && operadoresInativos.has(idC)) return false;
+                if (nomeC && operadoresInativos.has(nomeC)) return false;
+                return true;
+              });
 
+              // Filtrar estritamente apenas operadores ATIVOS em quem ainda falta marcar ciência
               const quemFalta = operadoresEquipe.filter(op => {
+                if (op.ativo === false) return false;
+                const idOp = String(op.id).toLowerCase();
                 const nomeOp = op.nome.toLowerCase().trim();
                 const loginOp = (op.login || '').toLowerCase().trim();
-                const idOp = String(op.id);
+                if (operadoresInativos.has(idOp) || operadoresInativos.has(nomeOp)) return false;
 
                 return !jaMarcaram.some(c => {
                   const nomeC = c.operador_nome.toLowerCase().trim();
-                  if (c.operador_id && c.operador_id === idOp) return true;
+                  const idC = String(c.operador_id || '').toLowerCase();
+                  if (idC && idC === idOp) return true;
                   if (nomeC === nomeOp) return true;
                   if (loginOp && nomeC.includes(loginOp)) return true;
                   if (nomeC.includes(nomeOp) || nomeOp.includes(nomeC)) return true;
@@ -1158,7 +1217,7 @@ NOTIFY pgrst, 'reload schema';`;
                     <div className="flex items-center justify-between text-[11px] font-bold">
                       <span className="flex items-center gap-1.5 text-slate-300 font-extrabold">
                         <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
-                        Controle de Ciência da Portaria
+                        Controle de Ciência da Portaria (Operadores Ativos)
                       </span>
                       <div className="flex items-center gap-2 text-[10px]">
                         <span className="text-emerald-400 font-bold flex items-center gap-1">
