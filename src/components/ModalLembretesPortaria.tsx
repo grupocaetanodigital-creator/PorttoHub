@@ -41,7 +41,8 @@ import {
   setSomHabilitado,
   obterStatusContagem,
   pararAlarmeTrocaPlantao,
-  LembretePortaria
+  LembretePortaria,
+  CienteLembrete
 } from '../services/lembretesService';
 
 interface ModalLembretesPortariaProps {
@@ -77,6 +78,7 @@ export default function ModalLembretesPortaria({
   const [somAtivo, setSomAtivo] = useState<boolean>(isSomHabilitado());
   const [sqlCopiado, setSqlCopiado] = useState<boolean>(false);
   const [mensagemFeedback, setMensagemFeedback] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null);
+  const [operadoresEquipe, setOperadoresEquipe] = useState<Array<{ id: string; nome: string; login?: string }>>([]);
 
   // Estado para criação de novo lembrete
   const [exibirFormNovo, setExibirFormNovo] = useState<boolean>(false);
@@ -170,8 +172,80 @@ export default function ModalLembretesPortaria({
       // Para o alarme sonoro de troca de plantão ao abrir o painel de lembretes
       pararAlarmeTrocaPlantao();
       carregarDados();
+
+      // Carrega operadores da equipe do condomínio para conferência de quem já marcou e quem falta
+      async function carregarOperadores() {
+        try {
+          const { data, error } = await supabase
+            .from('operadores')
+            .select('id, nome, login, condominio_id, ativo')
+            .order('nome');
+
+          if (!error && data && data.length > 0) {
+            const ativos = data.filter((op: any) => op.ativo !== false);
+            const filtrados = (condominioId && condominioId !== 'todos' && isUUID(condominioId))
+              ? ativos.filter((op: any) => !op.condominio_id || op.condominio_id === condominioId)
+              : ativos;
+
+            const base = filtrados.length > 0 ? filtrados : ativos;
+            const lista = base.map((o: any) => ({
+              id: String(o.id),
+              nome: String(o.nome || o.login || 'Operador').trim(),
+              login: o.login
+            }));
+
+            if (lista.length > 0) {
+              setOperadoresEquipe(lista);
+              return;
+            }
+          }
+        } catch {}
+
+        // Fallback do cache offline
+        try {
+          const raw = localStorage.getItem('infport_offline_cache_global_operadores');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const lista = parsed.filter((o: any) => o.ativo !== false).map((o: any) => ({
+                id: String(o.id),
+                nome: String(o.nome || o.login || 'Operador').trim(),
+                login: o.login
+              }));
+              if (lista.length > 0) {
+                setOperadoresEquipe(lista);
+                return;
+              }
+            }
+          }
+        } catch {}
+
+        setOperadoresEquipe([
+          { id: 'op-1', nome: 'Caetano (Operador)' },
+          { id: 'op-2', nome: 'Carlos Silva (Portaria)' },
+          { id: 'op-3', nome: 'Roberto Alves (Vigilância)' },
+          { id: 'op-4', nome: 'Supervisão Operacional' }
+        ]);
+      }
+
+      carregarOperadores();
     }
   }, [aberto, condominioId]);
+
+  // Garante que o operador logado atual esteja na lista da equipe
+  useEffect(() => {
+    if (operadorAtual?.nome || operadorAtual?.login) {
+      const nomeOp = (operadorAtual.nome || operadorAtual.login || 'Operador').trim();
+      setOperadoresEquipe(prev => {
+        const existe = prev.some(o => 
+          (operadorAtual.id && o.id === operadorAtual.id) || 
+          o.nome.toLowerCase() === nomeOp.toLowerCase()
+        );
+        if (existe) return prev;
+        return [{ id: operadorAtual.id || 'op-atual', nome: nomeOp, login: operadorAtual.login }, ...prev];
+      });
+    }
+  }, [operadorAtual]);
 
   // Listener para sincronização em tempo real quando o modal está aberto
   useEffect(() => {
@@ -205,34 +279,51 @@ export default function ModalLembretesPortaria({
     setSomHabilitado(novoValor);
   };
 
-  // Marcar como ciente (para de piscar laranja e passa a piscar em azul)
+  // Marcar como ciente
   const handleMarcarLido = async (id: string) => {
-    await marcarComoLido(
+    const nomeOp = (operadorAtual?.nome || operadorAtual?.login || 'Operador').trim();
+    const res = await marcarComoLido(
       id,
       condominioId,
-      operadorAtual?.nome || operadorAtual?.login || 'Operador',
+      nomeOp,
       operadorAtual?.id
     );
+
+    const novoCiente: CienteLembrete = {
+      operador_id: operadorAtual?.id || null,
+      operador_nome: nomeOp,
+      data_hora: new Date().toISOString()
+    };
+
     setLembretes((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              lido: true,
-              lido_em: new Date().toISOString(),
-              lido_por_nome: operadorAtual?.nome || operadorAtual?.login || 'Operador'
-            }
-          : item
-      )
+      prev.map((item) => {
+        if (item.id === id) {
+          const existentes = item.cientes || [];
+          const jaExiste = existentes.some(c =>
+            (novoCiente.operador_id && c.operador_id === novoCiente.operador_id) ||
+            c.operador_nome.toLowerCase() === novoCiente.operador_nome.toLowerCase()
+          );
+          const novosCientes = res.cientes || (jaExiste ? existentes : [...existentes, novoCiente]);
+
+          return {
+            ...item,
+            lido: true,
+            lido_em: item.lido_em || new Date().toISOString(),
+            lido_por_nome: novosCientes.map(c => c.operador_nome).join(', '),
+            cientes: novosCientes
+          };
+        }
+        return item;
+      })
     );
     setMensagemFeedback({
       tipo: 'sucesso',
-      texto: 'Ciência registrada! O lembrete agora pisca em azul no alerta até que seja finalizado.'
+      texto: `Ciência confirmada por ${nomeOp}! Você foi marcado em verde na lista de ciência.`
     });
     setTimeout(() => setMensagemFeedback(null), 4000);
   };
 
-  // Finalizar lembrete (adicionar botão de finalizar, só o ADM pode baixar lembrete do ADM)
+  // Finalizar lembrete (só o ADM pode baixar lembrete do ADM)
   const handleFinalizar = async (id: string) => {
     const res = await finalizarLembrete(
       id,
@@ -262,7 +353,7 @@ export default function ModalLembretesPortaria({
     );
     setMensagemFeedback({
       tipo: 'sucesso',
-      texto: 'Lembrete finalizado com sucesso! Ele foi baixado e não piscará mais no alerta.'
+      texto: 'Lembrete finalizado com sucesso! Foi concluído e baixado.'
     });
     setTimeout(() => setMensagemFeedback(null), 4000);
   };
@@ -962,6 +1053,36 @@ NOTIFY pgrst, 'reload schema';`;
                 }
               })();
 
+              const cientesLista: CienteLembrete[] = (Array.isArray(item.cientes) && item.cientes.length > 0)
+                ? item.cientes
+                : (item.lido_por_nome ? [{ operador_nome: item.lido_por_nome, data_hora: item.lido_em || item.created_at }] : []);
+
+              const jaMarcaram = cientesLista;
+
+              const quemFalta = operadoresEquipe.filter(op => {
+                const nomeOp = op.nome.toLowerCase().trim();
+                const loginOp = (op.login || '').toLowerCase().trim();
+                const idOp = String(op.id);
+
+                return !jaMarcaram.some(c => {
+                  const nomeC = c.operador_nome.toLowerCase().trim();
+                  if (c.operador_id && c.operador_id === idOp) return true;
+                  if (nomeC === nomeOp) return true;
+                  if (loginOp && nomeC.includes(loginOp)) return true;
+                  if (nomeC.includes(nomeOp) || nomeOp.includes(nomeC)) return true;
+                  return false;
+                });
+              });
+
+              const nomeOperadorAtual = (operadorAtual?.nome || operadorAtual?.login || '').toLowerCase().trim();
+              const idOperadorAtual = operadorAtual?.id;
+              const operadorAtualJaMarcou = jaMarcaram.some(c => {
+                if (idOperadorAtual && c.operador_id === idOperadorAtual) return true;
+                if (!nomeOperadorAtual) return false;
+                const nomeC = c.operador_nome.toLowerCase().trim();
+                return nomeC === nomeOperadorAtual || nomeC.includes(nomeOperadorAtual) || nomeOperadorAtual.includes(nomeC);
+              });
+
               return (
                 <div
                   key={item.id}
@@ -1032,6 +1153,66 @@ NOTIFY pgrst, 'reload schema';`;
                     {item.mensagem}
                   </div>
 
+                  {/* CONTROLE DE CIÊNCIA DA EQUIPE: LISTA QUEM JÁ MARCOU (VERDE) E QUEM FALTA (LARANJA) */}
+                  <div className="mt-3 bg-slate-950/70 rounded-xl p-3 border border-slate-800/90 space-y-2">
+                    <div className="flex items-center justify-between text-[11px] font-bold">
+                      <span className="flex items-center gap-1.5 text-slate-300 font-extrabold">
+                        <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
+                        Controle de Ciência da Portaria
+                      </span>
+                      <div className="flex items-center gap-2 text-[10px]">
+                        <span className="text-emerald-400 font-bold flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                          {jaMarcaram.length} Ciente{jaMarcaram.length !== 1 ? 's' : ''}
+                        </span>
+                        <span className="text-slate-600">•</span>
+                        <span className="text-amber-400 font-bold flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                          {quemFalta.length} Falta{quemFalta.length !== 1 ? 'm' : ''}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      {/* QUEM JÁ MARCOU CIENTE (DESTACADO EM VERDE) */}
+                      {jaMarcaram.map((c, idx) => (
+                        <span
+                          key={`ciente-${item.id}-${idx}`}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-950/90 text-emerald-300 border border-emerald-500/60 shadow-xs"
+                          title={`Ciente confirmado em ${c.data_hora ? formatarData(c.data_hora) : 'horário não registrado'}`}
+                        >
+                          <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
+                          <span>{c.operador_nome}</span>
+                          {c.data_hora && (
+                            <span className="text-[10px] text-emerald-400/80 font-normal">
+                              ({new Date(c.data_hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })})
+                            </span>
+                          )}
+                        </span>
+                      ))}
+
+                      {/* QUEM NÃO MARCOU CIENTE / QUEM FALTA (DESTACADO EM LARANJA) */}
+                      {quemFalta.map((op, idx) => (
+                        <span
+                          key={`falta-${item.id}-${idx}`}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-950/70 text-amber-300 border border-amber-500/60 shadow-xs"
+                          title="Este operador ainda não confirmou ciência deste recado"
+                        >
+                          <Clock className="w-3.5 h-3.5 text-amber-400" />
+                          <span>{op.nome}</span>
+                          <span className="text-[10px] text-amber-400/80 font-medium">(Pendente)</span>
+                        </span>
+                      ))}
+
+                      {quemFalta.length === 0 && jaMarcaram.length > 0 && (
+                        <span className="text-[11px] font-black text-emerald-400 inline-flex items-center gap-1 ml-1 bg-emerald-950/50 px-2 py-0.5 rounded-md border border-emerald-700/40">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          100% da equipe ciente!
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
                   {/* RODAPÉ DO CARD E AÇÕES */}
                   <div className="mt-3 flex items-center justify-between gap-2 pt-2 border-t border-slate-800/80 flex-wrap">
                     <div>
@@ -1043,49 +1224,54 @@ NOTIFY pgrst, 'reload schema';`;
                             {item.finalizado_em && ` em ${formatarData(item.finalizado_em)}`}
                           </span>
                         </div>
-                      ) : naoLido ? (
+                      ) : quemFalta.length > 0 ? (
                         <span className="inline-flex items-center gap-1.5 text-xs font-black text-amber-400">
                           <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
-                          Aguardando ciência da portaria (Alerta Laranja)
+                          Aguardando ciência de {quemFalta.length} operador{quemFalta.length > 1 ? 'es' : ''} (Alerta Laranja)
                         </span>
                       ) : cienteEmAberto ? (
                         <div className="text-[11px] text-blue-300 font-bold flex items-center gap-1.5">
                           <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-ping"></span>
                           <span>
-                            Ciente por <strong>{item.lido_por_nome || 'Portaria'}</strong> • Em andamento (Pisca Azul até finalizar)
+                            Equipe ciente • Em andamento (Pisca Azul até finalizar)
                           </span>
                         </div>
                       ) : null}
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {/* BOTÃO 1: MARCAR COMO CIENTE (quando ainda não lido) */}
-                      {!item.finalizado && !item.lido && (
+                      {/* BOTÃO 1: MARCAR COMO CIENTE */}
+                      {!item.finalizado && !operadorAtualJaMarcou && (
                         <button
                           onClick={() => handleMarcarLido(item.id)}
                           className="bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-black text-xs px-3.5 py-1.5 rounded-xl shadow-md flex items-center gap-1.5 transition cursor-pointer"
-                          title="Dar ciência deste lembrete (passará a piscar em azul)"
+                          title="Confirmar sua ciência neste lembrete"
                         >
                           <Check className="w-4 h-4 stroke-[3]" />
                           <span>Marcar como ciente</span>
                         </button>
                       )}
 
-                      {/* BOTÃO 2: FINALIZAR / BAIXAR (Disponível até ser finalizado) */}
+                      {!item.finalizado && operadorAtualJaMarcou && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-500/50">
+                          <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
+                          <span>Você já deu ciência</span>
+                        </span>
+                      )}
+
+                      {/* BOTÃO 2: FINALIZAR / BAIXAR */}
                       {!item.finalizado && (
                         <>
                           {ehAdm && !ehNivel0 ? (
-                            // Se for aviso do ADM e o operador logado NÃO for Nível 0:
-                            // Não pode baixar (só o ADM pode baixar ou baixa por data limite)
+                            // Regra estrita: lembretes de ADM SÓ podem ser finalizados por ADM
                             <div className="relative group">
-                              <button
-                                disabled
-                                className="bg-slate-800 text-slate-500 border border-slate-700 font-bold text-xs px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 cursor-not-allowed opacity-80"
-                                title="Apenas o Administrador (Nível 0) pode baixar este lembrete!"
+                              <div
+                                className="bg-slate-800/90 text-slate-400 border border-red-500/40 font-bold text-xs px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 cursor-not-allowed select-none"
+                                title="Apenas o Administrador (Nível 0) pode finalizar este lembrete oficial!"
                               >
                                 <Lock className="w-3.5 h-3.5 text-red-400" />
-                                <span>Apenas ADM pode baixar</span>
-                              </button>
+                                <span className="text-red-300 font-semibold">Lembrete ADM (Só ADM finaliza)</span>
+                              </div>
                             </div>
                           ) : (
                             <button
@@ -1097,12 +1283,12 @@ NOTIFY pgrst, 'reload schema';`;
                               }`}
                               title={
                                 ehAdm
-                                  ? 'Baixar e finalizar lembrete oficial como Administrador (Nível 0)'
+                                  ? 'Finalizar e baixar lembrete oficial como Administrador (Nível 0)'
                                   : 'Finalizar e baixar recado (para o alerta no sino)'
                               }
                             >
-                              <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
-                              <span>{ehAdm ? 'Finalizar / Baixar (ADM)' : 'Finalizar'}</span>
+                              {ehAdm ? <Crown className="w-3.5 h-3.5 text-amber-300" /> : <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />}
+                              <span>{ehAdm ? 'Finalizar Lembrete ADM' : 'Finalizar'}</span>
                             </button>
                           )}
                         </>

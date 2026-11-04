@@ -2,6 +2,12 @@ import { supabase } from './supabase';
 import { registrarAtividade } from './auditoriaService';
 import { isUUID } from './condominioService';
 
+export interface CienteLembrete {
+  operador_id?: string | null;
+  operador_nome: string;
+  data_hora: string;
+}
+
 export interface LembretePortaria {
   id: string;
   condominio_id: string;
@@ -14,6 +20,7 @@ export interface LembretePortaria {
   lido_em?: string | null;
   lido_por_nome?: string | null;
   lido_por_id?: string | null;
+  cientes?: CienteLembrete[]; // Lista detalhada de todos os operadores que deram ciência
   finalizado: boolean; // Concluído / baixado
   finalizado_em?: string | null;
   finalizado_por_nome?: string | null;
@@ -206,6 +213,41 @@ export function notificarAtualizacaoLembretes(condominioId?: string): void {
 }
 
 const FINALIZADOS_REGISTRY_PREFIX = 'infport_lembretes_finalizados_reg_';
+const CIENTES_REGISTRY_PREFIX = 'infport_lembretes_cientes_reg_';
+
+/**
+ * Registro local persistente de operadores que deram ciência em cada lembrete
+ */
+export function obterCientesRegistry(condominioId: string): Record<string, CienteLembrete[]> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(`${CIENTES_REGISTRY_PREFIX}${condominioId}`);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function registrarCiente(condominioId: string, id: string, novoCiente: CienteLembrete): CienteLembrete[] {
+  if (typeof window === 'undefined') return [novoCiente];
+  try {
+    const reg = obterCientesRegistry(condominioId);
+    const lista = reg[id] || [];
+    const existe = lista.some(c =>
+      (novoCiente.operador_id && c.operador_id === novoCiente.operador_id) ||
+      c.operador_nome.toLowerCase() === novoCiente.operador_nome.toLowerCase()
+    );
+    if (!existe) {
+      lista.push(novoCiente);
+      reg[id] = lista;
+      localStorage.setItem(`${CIENTES_REGISTRY_PREFIX}${condominioId}`, JSON.stringify(reg));
+    }
+    return lista;
+  } catch (err) {
+    console.warn('Erro ao registrar ciente:', err);
+    return [novoCiente];
+  }
+}
 
 /**
  * Registro local persistente de lembretes finalizados para garantir imunidade
@@ -327,6 +369,45 @@ function normalizarLembrete(raw: any, condominioId?: string): LembretePortaria {
 
   const remetenteNome = rawRemetenteNome || raw.morador_nome || raw.operador_nome || (ehAdm ? 'Administração (Nível 0)' : 'Portaria');
 
+  // Extrai lista estruturada de quem já marcou ciente
+  const regCientes = idCondo ? obterCientesRegistry(idCondo) : {};
+  const cientesRegistrados = raw.id ? regCientes[raw.id] : undefined;
+  let cientes: CienteLembrete[] = [];
+
+  if (Array.isArray(raw.cientes) && raw.cientes.length > 0) {
+    cientes = [...raw.cientes];
+  } else if (raw.cientes_json) {
+    try {
+      const parsed = typeof raw.cientes_json === 'string' ? JSON.parse(raw.cientes_json) : raw.cientes_json;
+      if (Array.isArray(parsed)) cientes = parsed;
+    } catch {}
+  } else if (rawNomeLido) {
+    try {
+      const parsed = JSON.parse(rawNomeLido);
+      if (Array.isArray(parsed)) {
+        cientes = parsed;
+      }
+    } catch {
+      const partes = rawNomeLido.split(',').map((p: string) => p.trim()).filter(Boolean);
+      cientes = partes.map((nm: string) => ({
+        operador_nome: nm,
+        operador_id: raw.lido_por_id || null,
+        data_hora: raw.lido_em || raw.created_at || new Date().toISOString()
+      }));
+    }
+  }
+
+  // Mescla com cientes locais persistentes
+  if (Array.isArray(cientesRegistrados) && cientesRegistrados.length > 0) {
+    for (const c of cientesRegistrados) {
+      if (!cientes.some(item => (c.operador_id && item.operador_id === c.operador_id) || item.operador_nome.toLowerCase() === c.operador_nome.toLowerCase())) {
+        cientes.push(c);
+      }
+    }
+  }
+
+  const temCiencia = Boolean(raw.lido || raw.status === 'lido' || raw.status === 'concluido' || finalizado || cientes.length > 0);
+
   return {
     id: String(raw.id || `lemb-${Date.now()}`),
     condominio_id: raw.condominio_id || idCondo,
@@ -335,10 +416,11 @@ function normalizarLembrete(raw: any, condominioId?: string): LembretePortaria {
     remetente_nome: remetenteNome,
     mensagem: msg,
     tipo: tipoLimpo,
-    lido: Boolean(raw.lido || raw.status === 'lido' || raw.status === 'concluido' || finalizado),
-    lido_em: raw.lido_em || (finalizado ? (dadosReg?.finalizado_em || raw.updated_at || new Date().toISOString()) : null),
-    lido_por_nome: lidoPorNomeLimpo,
-    lido_por_id: raw.lido_por_id || null,
+    lido: temCiencia,
+    lido_em: raw.lido_em || (finalizado ? (dadosReg?.finalizado_em || raw.updated_at || new Date().toISOString()) : (cientes[0]?.data_hora || null)),
+    lido_por_nome: cientes.length > 0 ? cientes.map(c => c.operador_nome).join(', ') : lidoPorNomeLimpo,
+    lido_por_id: raw.lido_por_id || cientes[0]?.operador_id || null,
+    cientes: cientes.length > 0 ? cientes : (lidoPorNomeLimpo ? [{ operador_nome: lidoPorNomeLimpo, data_hora: raw.lido_em || raw.created_at || new Date().toISOString() }] : []),
     finalizado,
     finalizado_em: raw.finalizado_em || dadosReg?.finalizado_em || (finalizado ? (raw.updated_at || raw.data_limite || new Date().toISOString()) : null),
     finalizado_por_nome: raw.finalizado_por_nome || dadosReg?.finalizado_por_nome || (finalizado ? (lidoPorNomeLimpo || (ehAdm && raw.data_limite ? 'Auto-baixa Data Limite (ADM)' : 'Portaria')) : null),
@@ -575,20 +657,41 @@ export async function marcarComoLido(
   condominioId: string,
   operadorNome?: string,
   operadorId?: string
-): Promise<{ sucesso: boolean; erro?: string }> {
+): Promise<{ sucesso: boolean; erro?: string; cientes?: CienteLembrete[] }> {
   const agora = new Date().toISOString();
-  const nome = operadorNome || 'Operador da Portaria';
+  const nome = (operadorNome || 'Operador da Portaria').trim();
+  const novoCiente: CienteLembrete = {
+    operador_id: operadorId || null,
+    operador_nome: nome,
+    data_hora: agora
+  };
 
-  // 1. Atualiza imediatamente o cache local para resposta instantânea
+  // 1. Registra no registro local de cientes
+  const listaCientesDoLembrete = registrarCiente(condominioId, id, novoCiente);
+
+  // 2. Atualiza imediatamente o cache local para resposta instantânea
   const cache = obterLembretesCache(condominioId);
+  let cientesAtualizados: CienteLembrete[] = [];
+
   const atualizados = cache.map((item) => {
     if (item.id === id) {
+      const cientesExistentes = item.cientes || [];
+      const jaExiste = cientesExistentes.some(c =>
+        (novoCiente.operador_id && c.operador_id === novoCiente.operador_id) ||
+        c.operador_nome.toLowerCase() === novoCiente.operador_nome.toLowerCase()
+      );
+      const novosCientes = jaExiste ? cientesExistentes : [...cientesExistentes, novoCiente];
+      // Garante que o novo ciente esteja na lista
+      const cientesFinais = novosCientes.length > 0 ? novosCientes : listaCientesDoLembrete;
+      cientesAtualizados = cientesFinais;
+
       return {
         ...item,
         lido: true,
         lido_em: agora,
-        lido_por_nome: nome,
-        lido_por_id: operadorId || null
+        lido_por_nome: cientesFinais.map(c => c.operador_nome).join(', '),
+        lido_por_id: operadorId || item.lido_por_id || null,
+        cientes: cientesFinais
       };
     }
     return item;
@@ -596,14 +699,17 @@ export async function marcarComoLido(
   salvarLembretesCache(condominioId, atualizados);
   notificarAtualizacaoLembretes(condominioId);
 
-  // 2. Persiste no Supabase
+  // 3. Persiste no Supabase
   try {
+    const alvo = atualizados.find(i => i.id === id);
+    const nomesStr = (alvo?.cientes || [novoCiente]).map(c => c.operador_nome).join(', ');
+
     const { error } = await supabase
       .from('lembretes_portaria')
       .update({
         lido: true,
         lido_em: agora,
-        lido_por_nome: nome,
+        lido_por_nome: nomesStr,
         lido_por_id: operadorId || null,
         updated_at: agora
       })
@@ -617,15 +723,15 @@ export async function marcarComoLido(
       operador_id: operadorId || '',
       operador_nome: nome,
       acao: 'LEMBRETE_CIENTE',
-      descricao: `Lembrete ID ${id} marcado como ciente pelo operador ${nome} (Piscando em azul até finalizar).`,
-      detalhes: { lembreteId: id, acao: 'marcar_lido' },
+      descricao: `Lembrete ID ${id} marcado como ciente pelo operador ${nome}.`,
+      detalhes: { lembreteId: id, acao: 'marcar_lido', cientes: cientesAtualizados },
       modulo: 'lembretes_portaria',
       condominio_id: condominioId
     }).catch(() => {});
 
-    return { sucesso: true };
+    return { sucesso: true, cientes: cientesAtualizados };
   } catch {
-    return { sucesso: true };
+    return { sucesso: true, cientes: cientesAtualizados };
   }
 }
 
@@ -633,7 +739,7 @@ export async function marcarComoLido(
  * Finaliza / Baixa um lembrete
  * Quando finalizado, para de piscar no alerta e vai para o histórico
  * SE FOR LEMBRETE DO ADM (NÍVEL 0):
- * Apenas o Administrador pode finalizar, ou se a data limite tiver expirado!
+ * Apenas o Administrador pode finalizar!
  */
 export async function finalizarLembrete(
   id: string,
@@ -648,22 +754,12 @@ export async function finalizarLembrete(
   const cache = obterLembretesCache(condominioId);
   const alvo = cache.find(it => it.id === id);
 
+  // REGRA ESTRITA: Lembretes do ADM SÓ podem ser finalizados por Administrador
   if (alvo && alvo.eh_adm && !ehAdmin) {
-    // Checa se já expirou a data limite
-    if (alvo.data_limite) {
-      const expMs = new Date(alvo.data_limite).getTime();
-      if (isNaN(expMs) || expMs > Date.now()) {
-        return {
-          sucesso: false,
-          erro: 'Este lembrete é exclusivo da Administração (Nível 0). Apenas o Administrador pode baixá-lo manualmente antes da data limite.'
-        };
-      }
-    } else {
-      return {
-        sucesso: false,
-        erro: 'Este lembrete é exclusivo da Administração (Nível 0). Apenas o Administrador pode baixá-lo.'
-      };
-    }
+    return {
+      sucesso: false,
+      erro: 'Este lembrete é exclusivo da Administração (Nível 0). Apenas o Administrador tem permissão para finalizá-lo ou baixá-lo.'
+    };
   }
 
   // 1. Registra no registro persistente local de finalizados
@@ -750,15 +846,30 @@ export async function marcarTodosComoLidos(
   const cache = obterLembretesCache(condominioId);
   let total = 0;
   const atualizados = cache.map((item) => {
-    if (!item.lido) {
-      total++;
-      return {
-        ...item,
-        lido: true,
-        lido_em: agora,
-        lido_por_nome: nome,
-        lido_por_id: operadorId || null
-      };
+    if (!item.finalizado) {
+      const cientesExistentes = item.cientes || [];
+      const jaExiste = cientesExistentes.some(c =>
+        (operadorId && c.operador_id === operadorId) ||
+        c.operador_nome.toLowerCase() === nome.toLowerCase()
+      );
+      if (!jaExiste) {
+        total++;
+        const novoCienteItem: CienteLembrete = {
+          operador_id: operadorId || null,
+          operador_nome: nome,
+          data_hora: agora
+        };
+        const novosCientes = [...cientesExistentes, novoCienteItem];
+        registrarCiente(condominioId, item.id, novoCienteItem);
+        return {
+          ...item,
+          lido: true,
+          lido_em: item.lido_em || agora,
+          lido_por_nome: novosCientes.map(c => c.operador_nome).join(', '),
+          lido_por_id: item.lido_por_id || operadorId || null,
+          cientes: novosCientes
+        };
+      }
     }
     return item;
   });
