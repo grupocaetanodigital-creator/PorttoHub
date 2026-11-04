@@ -1,6 +1,6 @@
 {
-  "name": "PorttoHub - Gestão de Reservas de Condomínio",
-  "description": "Sistema multi-condomínio para reserva limpa e ágil de áreas comuns, quadras, academia e salão de jogos com busca por unidade e moradores.",
+  "name": "PorttoHub - Portaria Inteligente & Gestão Condominial",
+  "description": "Sistema multi-condomínio para reserva limpa e ágil de áreas comuns, portaria, encomendas, controle de acesso e custódia.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
