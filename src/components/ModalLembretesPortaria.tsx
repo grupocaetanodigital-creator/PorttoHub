@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   X,
   Bell,
@@ -168,121 +168,143 @@ export default function ModalLembretesPortaria({
     }
   }, [condominioId, aberto]);
 
+  // Carrega operadores da equipe do condomínio/posto para conferência de quem já marcou e quem falta
+  const carregarOperadores = useCallback(async () => {
+    const cidAlvo = (condominioId && condominioId !== 'todos' && condominioId !== 'global')
+      ? condominioId
+      : localStorage.getItem('infport_condominio_ativo_id') ||
+        localStorage.getItem('porttohub_condo_ativo_id') ||
+        (operadorAtual as any)?.condominio_id ||
+        '';
+
+    const cidNorm = String(cidAlvo || '').trim().toLowerCase();
+
+    try {
+      const { data, error } = await supabase
+        .from('operadores')
+        .select('id, nome, login, condominio_id, ativo, status')
+        .order('nome');
+
+      if (!error && data && data.length > 0) {
+        // Mapeia inativos conhecidos para remoção estrita em todas as listas
+        const inativos = new Set<string>();
+        data.forEach((op: any) => {
+          const isInativo = op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0' || op.status === 'inativo' || op.status === 'desativado';
+          if (isInativo) {
+            if (op.id) inativos.add(String(op.id).toLowerCase());
+            if (op.nome) inativos.add(String(op.nome).toLowerCase().trim());
+            if (op.login) inativos.add(String(op.login).toLowerCase().trim());
+          }
+        });
+        setOperadoresInativos(inativos);
+
+        // REGRA ESTRITA: Apenas operadores com a CONTA ATIVA vinculados a este posto (condomínio)
+        const ativosDoPosto = data.filter((op: any) => {
+          const isInativo = op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0' || op.status === 'inativo' || op.status === 'desativado';
+          if (isInativo) return false;
+
+          // Se temos o ID do condomínio/posto, o operador deve pertencer a ele
+          if (cidNorm) {
+            const opCid = String(op.condominio_id || '').trim().toLowerCase();
+            return opCid === cidNorm;
+          }
+          return true;
+        });
+
+        const lista = ativosDoPosto.map((o: any) => ({
+          id: String(o.id),
+          nome: String(o.nome || o.login || 'Operador').trim(),
+          login: o.login,
+          ativo: true
+        }));
+
+        setOperadoresEquipe(lista);
+        return;
+      }
+    } catch (errOperadores) {
+      console.warn('Erro ao carregar operadores do posto no Supabase:', errOperadores);
+    }
+
+    // Fallback do cache offline estritamente com operadores ativos do posto
+    try {
+      const raw = localStorage.getItem('infport_offline_cache_operadores_global') || localStorage.getItem('infport_offline_cache_global_operadores');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const listaRaw = Array.isArray(parsed) ? parsed : (parsed?.dados && Array.isArray(parsed.dados) ? parsed.dados : []);
+        if (listaRaw.length > 0) {
+          const inativos = new Set<string>();
+          listaRaw.forEach((op: any) => {
+            const isInativo = op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0' || op.status === 'inativo' || op.status === 'desativado';
+            if (isInativo) {
+              if (op.id) inativos.add(String(op.id).toLowerCase());
+              if (op.nome) inativos.add(String(op.nome).toLowerCase().trim());
+              if (op.login) inativos.add(String(op.login).toLowerCase().trim());
+            }
+          });
+          setOperadoresInativos(inativos);
+
+          const ativosDoPosto = listaRaw.filter((op: any) => {
+            const isInativo = op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0' || op.status === 'inativo' || op.status === 'desativado';
+            if (isInativo) return false;
+            if (cidNorm) {
+              return String(op.condominio_id || '').trim().toLowerCase() === cidNorm;
+            }
+            return true;
+          });
+
+          const lista = ativosDoPosto.map((o: any) => ({
+            id: String(o.id),
+            nome: String(o.nome || o.login || 'Operador').trim(),
+            login: o.login,
+            ativo: true
+          }));
+
+          setOperadoresEquipe(lista);
+          return;
+        }
+      }
+    } catch {}
+
+    // Apenas operador atual se for ativo e pertencer a este condomínio
+    if (operadorAtual?.nome && (operadorAtual as any)?.ativo !== false) {
+      const opCid = String((operadorAtual as any)?.condominio_id || '').trim().toLowerCase();
+      if (!cidNorm || !opCid || opCid === cidNorm) {
+        setOperadoresEquipe([{
+          id: operadorAtual.id || 'op-atual',
+          nome: (operadorAtual.nome || operadorAtual.login || 'Operador').trim(),
+          login: operadorAtual.login,
+          ativo: true
+        }]);
+        return;
+      }
+    }
+    setOperadoresEquipe([]);
+  }, [condominioId, operadorAtual]);
+
   useEffect(() => {
     if (aberto) {
       // Para o alarme sonoro de troca de plantão ao abrir o painel de lembretes
       pararAlarmeTrocaPlantao();
       carregarDados();
-
-      // Carrega operadores da equipe do condomínio para conferência de quem já marcou e quem falta
-      async function carregarOperadores() {
-        try {
-          const { data, error } = await supabase
-            .from('operadores')
-            .select('id, nome, login, condominio_id, ativo, status')
-            .order('nome');
-
-          if (!error && data && data.length > 0) {
-            // Mapeia inativos conhecidos para remoção estrita em todas as listas
-            const inativos = new Set<string>();
-            data.forEach((op: any) => {
-              const isInativo = op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0' || op.status === 'inativo' || op.status === 'desativado';
-              if (isInativo) {
-                if (op.id) inativos.add(String(op.id).toLowerCase());
-                if (op.nome) inativos.add(String(op.nome).toLowerCase().trim());
-                if (op.login) inativos.add(String(op.login).toLowerCase().trim());
-              }
-            });
-            setOperadoresInativos(inativos);
-
-            // REGRA ESTRITA: Apenas operadores ATIVOS (ativo !== false && status !== 'inativo' && status !== 'desativado')
-            const ativos = data.filter((op: any) => {
-              if (op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0') return false;
-              if (op.status === 'inativo' || op.status === 'desativado') return false;
-              return true;
-            });
-
-            const filtrados = (condominioId && condominioId !== 'todos' && isUUID(condominioId))
-              ? ativos.filter((op: any) => !op.condominio_id || op.condominio_id === condominioId)
-              : ativos;
-
-            const base = filtrados.length > 0 ? filtrados : ativos;
-            const lista = base.map((o: any) => ({
-              id: String(o.id),
-              nome: String(o.nome || o.login || 'Operador').trim(),
-              login: o.login,
-              ativo: true
-            }));
-
-            if (lista.length > 0) {
-              setOperadoresEquipe(lista);
-              return;
-            }
-          }
-        } catch {}
-
-        // Fallback do cache offline estritamente com operadores ativos
-        try {
-          const raw = localStorage.getItem('infport_offline_cache_global_operadores');
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              const inativos = new Set<string>();
-              parsed.forEach((op: any) => {
-                const isInativo = op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0' || op.status === 'inativo' || op.status === 'desativado';
-                if (isInativo) {
-                  if (op.id) inativos.add(String(op.id).toLowerCase());
-                  if (op.nome) inativos.add(String(op.nome).toLowerCase().trim());
-                  if (op.login) inativos.add(String(op.login).toLowerCase().trim());
-                }
-              });
-              setOperadoresInativos(inativos);
-
-              const ativos = parsed.filter((op: any) => {
-                if (op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0') return false;
-                if (op.status === 'inativo' || op.status === 'desativado') return false;
-                return true;
-              });
-
-              const filtrados = (condominioId && condominioId !== 'todos' && isUUID(condominioId))
-                ? ativos.filter((op: any) => !op.condominio_id || op.condominio_id === condominioId)
-                : ativos;
-
-              const lista = (filtrados.length > 0 ? filtrados : ativos).map((o: any) => ({
-                id: String(o.id),
-                nome: String(o.nome || o.login || 'Operador').trim(),
-                login: o.login,
-                ativo: true
-              }));
-              if (lista.length > 0) {
-                setOperadoresEquipe(lista);
-                return;
-              }
-            }
-          }
-        } catch {}
-
-        // Apenas operador atual se for ativo, sem mocks fictícios
-        if (operadorAtual?.nome && (operadorAtual as any)?.ativo !== false) {
-          setOperadoresEquipe([{
-            id: operadorAtual.id || 'op-atual',
-            nome: (operadorAtual.nome || operadorAtual.login || 'Operador').trim(),
-            login: operadorAtual.login,
-            ativo: true
-          }]);
-        } else {
-          setOperadoresEquipe([]);
-        }
-      }
-
       carregarOperadores();
     }
-  }, [aberto, condominioId]);
+  }, [aberto, carregarOperadores]);
 
-  // Garante que o operador logado atual esteja na lista da equipe apenas se estiver ativo
+  // Garante que o operador logado atual esteja na lista da equipe apenas se for ativo e pertencer ao condomínio
   useEffect(() => {
     if (operadorAtual?.nome || operadorAtual?.login) {
       if ((operadorAtual as any)?.ativo === false || (operadorAtual as any)?.status === 'inativo') return;
+      const cidAlvo = (condominioId && condominioId !== 'todos' && condominioId !== 'global')
+        ? condominioId
+        : localStorage.getItem('infport_condominio_ativo_id') || (operadorAtual as any)?.condominio_id || '';
+      const cidNorm = String(cidAlvo || '').trim().toLowerCase();
+      const opCid = String((operadorAtual as any)?.condominio_id || '').trim().toLowerCase();
+
+      // Não adiciona operador de outro condomínio
+      if (cidNorm && opCid && opCid !== cidNorm) {
+        return;
+      }
+
       const nomeOp = (operadorAtual.nome || operadorAtual.login || 'Operador').trim();
       setOperadoresEquipe(prev => {
         const existe = prev.some(o => 
@@ -293,21 +315,24 @@ export default function ModalLembretesPortaria({
         return [{ id: operadorAtual.id || 'op-atual', nome: nomeOp, login: operadorAtual.login, ativo: true }, ...prev];
       });
     }
-  }, [operadorAtual]);
+  }, [operadorAtual, condominioId]);
 
   // Listener para sincronização em tempo real quando o modal está aberto
   useEffect(() => {
-    if (!aberto || !condominioId) return;
+    if (!aberto) return;
 
     const handleAtualizacao = () => {
       carregarDados();
+      carregarOperadores();
     };
 
     window.addEventListener('lembretes_portaria_atualizados', handleAtualizacao);
+    window.addEventListener('operadores_atualizados', handleAtualizacao);
     return () => {
       window.removeEventListener('lembretes_portaria_atualizados', handleAtualizacao);
+      window.removeEventListener('operadores_atualizados', handleAtualizacao);
     };
-  }, [aberto, condominioId]);
+  }, [aberto, carregarOperadores]);
 
   // Tecla ESC para fechar
   useEffect(() => {
