@@ -385,10 +385,20 @@ function normalizarLembrete(raw: any, condominioId?: string): LembretePortaria {
     try {
       const parsed = JSON.parse(rawNomeLido);
       if (Array.isArray(parsed)) {
-        cientes = parsed;
+        cientes = parsed.map((item: any) => ({
+          ...item,
+          operador_nome: String(item.operador_nome || '')
+            .replace(/^\[FINALIZADO\]\s*/i, '')
+            .replace(/^\[ADM\]\s*/i, '')
+            .trim()
+        }));
       }
     } catch {
-      const partes = rawNomeLido.split(',').map((p: string) => p.trim()).filter(Boolean);
+      const limpo = rawNomeLido
+        .replace(/^\[FINALIZADO\]\s*/i, '')
+        .replace(/^\[ADM\]\s*/i, '')
+        .trim();
+      const partes = limpo.split(',').map((p: string) => p.trim()).filter(Boolean);
       cientes = partes.map((nm: string) => ({
         operador_nome: nm,
         operador_id: raw.lido_por_id || null,
@@ -530,29 +540,23 @@ export async function buscarLembretes(condominioId?: string): Promise<{
 
     let registros = Array.isArray(data) ? data : [];
 
-    // Se o filtro específico por condomínio_id retornou vazio, verifica se existem lembretes no banco
-    if (registros.length === 0 && temCondominioUuid) {
-      const { data: todosRegistros } = await supabase
-        .from('lembretes_portaria')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100);
-      if (todosRegistros && todosRegistros.length > 0) {
-        registros = todosRegistros;
-      }
+    // REGRA ESTRITA DE CONDOMÍNIO: Cada condomínio só vê seus próprios registros
+    if (temCondominioUuid) {
+      registros = registros.filter(r => r.condominio_id === condominioId);
     }
 
     const colunasNovas = Boolean(registros.length > 0 && ('finalizado' in registros[0] || 'eh_adm' in registros[0]));
     const lista = registros.map(item => normalizarLembrete(item, condominioId));
 
-    // Mesclagem segura com cache local para NUNCA reverter um item finalizado
+    // Mesclagem segura com cache local ESTRITAMENTE do condomínio atual
     const cacheLocal = obterLembretesCache(condominioId || '');
     const mapaAtual = new Map<string, LembretePortaria>();
     lista.forEach(item => mapaAtual.set(item.id, item));
 
     cacheLocal.forEach(c => {
-      // Ignora itens de demonstração antigos
+      // Ignora itens de demonstração antigos e itens de outros condomínios
       if (c.id.startsWith('demo-')) return;
+      if (temCondominioUuid && c.condominio_id && c.condominio_id !== condominioId) return;
 
       if (mapaAtual.has(c.id)) {
         const itemRemoto = mapaAtual.get(c.id)!;
@@ -572,7 +576,11 @@ export async function buscarLembretes(condominioId?: string): Promise<{
     });
 
     const listaFinal = Array.from(mapaAtual.values())
-      .filter(it => !it.id.startsWith('demo-') || lista.length === 0)
+      .filter(it => {
+        if (it.id.startsWith('demo-')) return false;
+        if (temCondominioUuid && it.condominio_id && it.condominio_id !== condominioId) return false;
+        return true;
+      })
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     if (condominioId) {

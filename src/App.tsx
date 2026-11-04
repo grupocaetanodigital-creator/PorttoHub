@@ -483,10 +483,12 @@ export default function App() {
       carregarEPreaquecerEncomendas(novoId).catch(() => {});
     }
 
-    // Dispara evento global de troca imediata para que todos os componentes (ex: Encomendas) limpem seus estados locais
+    // Dispara evento global de troca imediata para que todos os componentes (ex: Encomendas e Lembretes) limpem seus estados locais
     // antes mesmo da nova requisição ao Supabase, impedindo dados de condomínio anterior na tela
     window.dispatchEvent(new CustomEvent('infport:condominio_alterado', { detail: { novoCondominioId: novoId } }));
     window.dispatchEvent(new CustomEvent('infport_sincronizar_dados_global'));
+    window.dispatchEvent(new CustomEvent('lembretes_portaria_atualizados', { detail: { condominioId: novoId } }));
+    window.dispatchEvent(new CustomEvent('operadores_atualizados', { detail: { condominioId: novoId } }));
   };
 
   const carregarCondominiosHeader = async () => {

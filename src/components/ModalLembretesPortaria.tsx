@@ -26,7 +26,9 @@ import {
   Crown,
   Lock,
   Calendar,
-  Layers
+  Layers,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { isUUID } from '../services/condominioService';
@@ -80,6 +82,15 @@ export default function ModalLembretesPortaria({
   const [mensagemFeedback, setMensagemFeedback] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null);
   const [operadoresEquipe, setOperadoresEquipe] = useState<Array<{ id: string; nome: string; login?: string; ativo?: boolean }>>([]);
   const [operadoresInativos, setOperadoresInativos] = useState<Set<string>>(new Set());
+  // Estado para manter os operadores de cada lembrete recolhidos por padrão, abrindo sob demanda
+  const [itensCienciaExpandidos, setItensCienciaExpandidos] = useState<Record<string, boolean>>({});
+
+  const toggleExpandirCiencia = (id: string) => {
+    setItensCienciaExpandidos(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
 
   // Estado para criação de novo lembrete
   const [exibirFormNovo, setExibirFormNovo] = useState<boolean>(false);
@@ -124,7 +135,7 @@ export default function ModalLembretesPortaria({
   }, [exibirFormNovo, ehNivel0]);
 
   // Carregar lista de lembretes
-  const carregarDados = async () => {
+  const carregarDados = useCallback(async () => {
     setCarregando(true);
     try {
       const res = await buscarLembretes(condominioId || '');
@@ -135,7 +146,7 @@ export default function ModalLembretesPortaria({
     } finally {
       setCarregando(false);
     }
-  };
+  }, [condominioId]);
 
   // Carregar unidades existentes para facilitar preenchimento
   useEffect(() => {
@@ -170,26 +181,33 @@ export default function ModalLembretesPortaria({
 
   // Carrega operadores da equipe do condomínio/posto para conferência de quem já marcou e quem falta
   const carregarOperadores = useCallback(async () => {
+    // Identifica o condomínio alvo estritamente
     const cidAlvo = (condominioId && condominioId !== 'todos' && condominioId !== 'global')
       ? condominioId
-      : localStorage.getItem('infport_condominio_ativo_id') ||
-        localStorage.getItem('porttohub_condo_ativo_id') ||
-        (operadorAtual as any)?.condominio_id ||
+      : (operadorAtual as any)?.condominio_id ||
+        localStorage.getItem('infport_condominio_ativo_id') ||
         '';
 
     const cidNorm = String(cidAlvo || '').trim().toLowerCase();
 
     try {
-      const { data, error } = await supabase
+      // IMPORTANTE: Busca colunas existentes no Supabase (não existe coluna 'status', apenas 'ativo')
+      let q = supabase
         .from('operadores')
-        .select('id, nome, login, condominio_id, ativo, status')
+        .select('id, nome, login, condominio_id, ativo, perfil, nivel_acesso, funcao, cargo')
         .order('nome');
 
-      if (!error && data && data.length > 0) {
+      if (cidNorm && isUUID(cidNorm)) {
+        q = q.eq('condominio_id', cidNorm);
+      }
+
+      const { data, error } = await q;
+
+      if (!error && data) {
         // Mapeia inativos conhecidos para remoção estrita em todas as listas
         const inativos = new Set<string>();
         data.forEach((op: any) => {
-          const isInativo = op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0' || op.status === 'inativo' || op.status === 'desativado';
+          const isInativo = op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0';
           if (isInativo) {
             if (op.id) inativos.add(String(op.id).toLowerCase());
             if (op.nome) inativos.add(String(op.nome).toLowerCase().trim());
@@ -198,9 +216,9 @@ export default function ModalLembretesPortaria({
         });
         setOperadoresInativos(inativos);
 
-        // REGRA ESTRITA: Apenas operadores com a CONTA ATIVA vinculados a este posto (condomínio)
+        // REGRA ESTRITA: Apenas operadores com a CONTA ATIVA vinculados a este condomínio
         const ativosDoPosto = data.filter((op: any) => {
-          const isInativo = op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0' || op.status === 'inativo' || op.status === 'desativado';
+          const isInativo = op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0';
           if (isInativo) return false;
 
           // Se temos o ID do condomínio/posto, o operador deve pertencer a ele
@@ -234,7 +252,7 @@ export default function ModalLembretesPortaria({
         if (listaRaw.length > 0) {
           const inativos = new Set<string>();
           listaRaw.forEach((op: any) => {
-            const isInativo = op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0' || op.status === 'inativo' || op.status === 'desativado';
+            const isInativo = op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0';
             if (isInativo) {
               if (op.id) inativos.add(String(op.id).toLowerCase());
               if (op.nome) inativos.add(String(op.nome).toLowerCase().trim());
@@ -244,7 +262,7 @@ export default function ModalLembretesPortaria({
           setOperadoresInativos(inativos);
 
           const ativosDoPosto = listaRaw.filter((op: any) => {
-            const isInativo = op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0' || op.status === 'inativo' || op.status === 'desativado';
+            const isInativo = op.ativo === false || op.ativo === 'false' || op.ativo === 0 || op.ativo === '0';
             if (isInativo) return false;
             if (cidNorm) {
               return String(op.condominio_id || '').trim().toLowerCase() === cidNorm;
@@ -281,6 +299,7 @@ export default function ModalLembretesPortaria({
     setOperadoresEquipe([]);
   }, [condominioId, operadorAtual]);
 
+  // Carrega e recarrega dados quando abre o modal ou quando o condomínio selecionado muda
   useEffect(() => {
     if (aberto) {
       // Para o alarme sonoro de troca de plantão ao abrir o painel de lembretes
@@ -288,12 +307,12 @@ export default function ModalLembretesPortaria({
       carregarDados();
       carregarOperadores();
     }
-  }, [aberto, carregarOperadores]);
+  }, [aberto, condominioId, carregarDados, carregarOperadores]);
 
   // Garante que o operador logado atual esteja na lista da equipe apenas se for ativo e pertencer ao condomínio
   useEffect(() => {
     if (operadorAtual?.nome || operadorAtual?.login) {
-      if ((operadorAtual as any)?.ativo === false || (operadorAtual as any)?.status === 'inativo') return;
+      if ((operadorAtual as any)?.ativo === false) return;
       const cidAlvo = (condominioId && condominioId !== 'todos' && condominioId !== 'global')
         ? condominioId
         : localStorage.getItem('infport_condominio_ativo_id') || (operadorAtual as any)?.condominio_id || '';
@@ -321,9 +340,12 @@ export default function ModalLembretesPortaria({
   useEffect(() => {
     if (!aberto) return;
 
-    const handleAtualizacao = () => {
-      carregarDados();
-      carregarOperadores();
+    const handleAtualizacao = (e: any) => {
+      const eventoCid = e?.detail?.condominioId;
+      if (!eventoCid || eventoCid === condominioId) {
+        carregarDados();
+        carregarOperadores();
+      }
     };
 
     window.addEventListener('lembretes_portaria_atualizados', handleAtualizacao);
@@ -332,7 +354,7 @@ export default function ModalLembretesPortaria({
       window.removeEventListener('lembretes_portaria_atualizados', handleAtualizacao);
       window.removeEventListener('operadores_atualizados', handleAtualizacao);
     };
-  }, [aberto, carregarOperadores]);
+  }, [aberto, condominioId, carregarDados, carregarOperadores]);
 
   // Tecla ESC para fechar
   useEffect(() => {
@@ -466,12 +488,27 @@ export default function ModalLembretesPortaria({
     e.preventDefault();
     if (!novoUnidadeBloco.trim() || !novaMensagem.trim()) return;
 
+    const cidAlvoNovo = (condominioId && condominioId !== 'todos' && condominioId !== 'global')
+      ? condominioId
+      : (operadorAtual as any)?.condominio_id ||
+        localStorage.getItem('infport_condominio_ativo_id') ||
+        '';
+
+    if (!cidAlvoNovo || cidAlvoNovo === 'todos' || cidAlvoNovo === 'global') {
+      setMensagemFeedback({
+        tipo: 'erro',
+        texto: 'Por favor, selecione um condomínio específico no topo antes de publicar um recado.'
+      });
+      setTimeout(() => setMensagemFeedback(null), 4000);
+      return;
+    }
+
     const ehLembreteAdm = novoRemetenteTipo === 'adm';
 
     setSalvandoNovo(true);
     try {
       const res = await criarLembrete({
-        condominio_id: condominioId,
+        condominio_id: cidAlvoNovo,
         unidade_bloco: novoUnidadeBloco.trim(),
         remetente_tipo: novoRemetenteTipo,
         remetente_nome: novoRemetenteNome.trim() || (ehLembreteAdm ? 'Administração (Nível 0)' : novoRemetenteTipo === 'portaria' ? 'Portaria' : 'Morador'),
@@ -1130,14 +1167,23 @@ NOTIFY pgrst, 'reload schema';`;
                 ? item.cientes
                 : (item.lido_por_nome ? [{ operador_nome: item.lido_por_nome, data_hora: item.lido_em || item.created_at }] : []);
 
-              // Filtrar estritamente apenas operadores ATIVOS em quem já marcou ciência
-              const jaMarcaram = cientesLista.filter(c => {
-                const idC = String(c.operador_id || '').toLowerCase();
-                const nomeC = String(c.operador_nome || '').toLowerCase().trim();
-                if (idC && operadoresInativos.has(idC)) return false;
-                if (nomeC && operadoresInativos.has(nomeC)) return false;
-                return true;
-              });
+              // Filtrar estritamente apenas operadores ATIVOS em quem já marcou ciência, com nomes limpos
+              const jaMarcaram = cientesLista
+                .map(c => ({
+                  ...c,
+                  operador_nome: String(c.operador_nome || '')
+                    .replace(/^\[FINALIZADO\]\s*/i, '')
+                    .replace(/^\[ADM\]\s*/i, '')
+                    .trim()
+                }))
+                .filter(c => {
+                  const idC = String(c.operador_id || '').toLowerCase();
+                  const nomeC = String(c.operador_nome || '').toLowerCase().trim();
+                  if (!nomeC) return false;
+                  if (idC && operadoresInativos.has(idC)) return false;
+                  if (nomeC && operadoresInativos.has(nomeC)) return false;
+                  return true;
+                });
 
               // Filtrar estritamente apenas operadores ATIVOS em quem ainda falta marcar ciência
               const quemFalta = operadoresEquipe.filter(op => {
@@ -1148,12 +1194,11 @@ NOTIFY pgrst, 'reload schema';`;
                 if (operadoresInativos.has(idOp) || operadoresInativos.has(nomeOp)) return false;
 
                 return !jaMarcaram.some(c => {
-                  const nomeC = c.operador_nome.toLowerCase().trim();
+                  const nomeC = String(c.operador_nome || '').toLowerCase().trim();
                   const idC = String(c.operador_id || '').toLowerCase();
-                  if (idC && idC === idOp) return true;
-                  if (nomeC === nomeOp) return true;
-                  if (loginOp && nomeC.includes(loginOp)) return true;
-                  if (nomeC.includes(nomeOp) || nomeOp.includes(nomeC)) return true;
+                  if (idC && idOp && idC === idOp) return true;
+                  if (nomeC && nomeOp && nomeC === nomeOp) return true;
+                  if (loginOp && (nomeC === loginOp || nomeC.split(/\s+/).includes(loginOp))) return true;
                   return false;
                 });
               });
@@ -1237,65 +1282,140 @@ NOTIFY pgrst, 'reload schema';`;
                     {item.mensagem}
                   </div>
 
-                  {/* CONTROLE DE CIÊNCIA DA EQUIPE: LISTA QUEM JÁ MARCOU (VERDE) E QUEM FALTA (LARANJA) */}
-                  <div className="mt-3 bg-slate-950/70 rounded-xl p-3 border border-slate-800/90 space-y-2">
-                    <div className="flex items-center justify-between text-[11px] font-bold">
-                      <span className="flex items-center gap-1.5 text-slate-300 font-extrabold">
-                        <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
-                        Controle de Ciência da Portaria (Operadores Ativos)
-                      </span>
-                      <div className="flex items-center gap-2 text-[10px]">
-                        <span className="text-emerald-400 font-bold flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                          {jaMarcaram.length} Ciente{jaMarcaram.length !== 1 ? 's' : ''}
-                        </span>
-                        <span className="text-slate-600">•</span>
-                        <span className="text-amber-400 font-bold flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-                          {quemFalta.length} Falta{quemFalta.length !== 1 ? 'm' : ''}
-                        </span>
-                      </div>
-                    </div>
+                  {/* CONTROLE DE CIÊNCIA DA EQUIPE: RECOLHIDO POR PADRÃO, EM FORMATO DE LISTA VERTICAL QUANDO SELECIONADO */}
+                  {(() => {
+                    const expandido = Boolean(itensCienciaExpandidos[item.id]);
 
-                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                      {/* QUEM JÁ MARCOU CIENTE (DESTACADO EM VERDE) */}
-                      {jaMarcaram.map((c, idx) => (
-                        <span
-                          key={`ciente-${item.id}-${idx}`}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-950/90 text-emerald-300 border border-emerald-500/60 shadow-xs"
-                          title={`Ciente confirmado em ${c.data_hora ? formatarData(c.data_hora) : 'horário não registrado'}`}
+                    return (
+                      <div className="mt-3 bg-slate-950/70 rounded-xl p-3 border border-slate-800/90 transition-all duration-150">
+                        {/* CABEÇALHO CLICÁVEL: RESUMO E BOTÃO DE EXPANDIR / RECOLHER */}
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => toggleExpandirCiencia(item.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              toggleExpandirCiencia(item.id);
+                            }
+                          }}
+                          className="flex items-center justify-between text-[11px] font-bold cursor-pointer select-none group focus:outline-none"
                         >
-                          <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
-                          <span>{c.operador_nome}</span>
-                          {c.data_hora && (
-                            <span className="text-[10px] text-emerald-400/80 font-normal">
-                              ({new Date(c.data_hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })})
+                          <div className="flex items-center gap-1.5 text-slate-300 font-extrabold">
+                            <CheckCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            <span>Controle de Ciência da Portaria ({operadoresEquipe.length} operadores)</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px]">
+                            <span className="text-emerald-400 font-bold flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                              {jaMarcaram.length} Ciente{jaMarcaram.length !== 1 ? 's' : ''}
                             </span>
+                            <span className="text-slate-600">•</span>
+                            <span className="text-amber-400 font-bold flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                              {quemFalta.length} Falta{quemFalta.length !== 1 ? 'm' : ''}
+                            </span>
+                            <span className="ml-1 px-2 py-0.5 rounded-md bg-slate-800 text-slate-400 group-hover:text-white group-hover:bg-slate-700 flex items-center gap-1 text-[10px] font-semibold border border-slate-700/80 transition">
+                              {expandido ? (
+                                <>
+                                  <span>Recolher</span>
+                                  <ChevronUp className="w-3 h-3 text-emerald-400" />
+                                </>
+                              ) : (
+                                <>
+                                  <span>Ver Lista</span>
+                                  <ChevronDown className="w-3 h-3 text-slate-400" />
+                                </>
+                              )}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* LISTA VERTICAL DE OPERADORES: SÓ APARECE QUANDO SELECIONADO / EXPANDIDO */}
+                        <div className={expandido ? 'block pt-2.5 mt-2 border-t border-slate-800/80 space-y-2.5 animate-in fade-in duration-150' : 'hidden'}>
+                          {/* LISTA: OPERADORES QUE AINDA NÃO DERAM CIÊNCIA */}
+                          {quemFalta.length > 0 && (
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-amber-400 px-1">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-amber-400" /> Falta Dar Ciência ({quemFalta.length})
+                                </span>
+                                <span className="text-slate-500 font-medium normal-case">Aguardando confirmação</span>
+                              </div>
+                              <div className="space-y-1">
+                                {quemFalta.map((op, idx) => (
+                                  <div
+                                    key={`falta-${item.id}-${idx}`}
+                                    className="flex items-center justify-between py-1.5 px-3 rounded-lg text-xs font-semibold bg-amber-950/40 text-amber-200 border border-amber-500/30"
+                                  >
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <div className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center text-[10px] font-bold shrink-0">
+                                        {op.nome.charAt(0).toUpperCase()}
+                                      </div>
+                                      <div className="flex flex-col min-w-0">
+                                        <span className="font-bold truncate text-white">{op.nome}</span>
+                                        {op.login && op.login !== op.nome && (
+                                          <span className="text-[10px] text-amber-400/70 font-mono">@{op.login}</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-amber-300 px-2 py-0.5 rounded-full bg-amber-950/80 border border-amber-600/50 shrink-0">
+                                      Pendente
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
                           )}
-                        </span>
-                      ))}
 
-                      {/* QUEM NÃO MARCOU CIENTE / QUEM FALTA (DESTACADO EM LARANJA) */}
-                      {quemFalta.map((op, idx) => (
-                        <span
-                          key={`falta-${item.id}-${idx}`}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-950/70 text-amber-300 border border-amber-500/60 shadow-xs"
-                          title="Este operador ainda não confirmou ciência deste recado"
-                        >
-                          <Clock className="w-3.5 h-3.5 text-amber-400" />
-                          <span>{op.nome}</span>
-                          <span className="text-[10px] text-amber-400/80 font-medium">(Pendente)</span>
-                        </span>
-                      ))}
+                          {/* LISTA: OPERADORES QUE JÁ DERAM CIÊNCIA */}
+                          {jaMarcaram.length > 0 && (
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-emerald-400 px-1">
+                                <span className="flex items-center gap-1">
+                                  <Check className="w-3 h-3 text-emerald-400" /> Já Confirmaram Ciência ({jaMarcaram.length})
+                                </span>
+                                <span className="text-slate-500 font-medium normal-case">Ciência registrada</span>
+                              </div>
+                              <div className="space-y-1">
+                                {jaMarcaram.map((c, idx) => (
+                                  <div
+                                    key={`ciente-${item.id}-${idx}`}
+                                    className="flex items-center justify-between py-1.5 px-3 rounded-lg text-xs font-semibold bg-emerald-950/40 text-emerald-200 border border-emerald-500/30"
+                                  >
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center text-[10px] font-bold shrink-0">
+                                        <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                      </div>
+                                      <span className="font-bold truncate text-white">{c.operador_nome}</span>
+                                    </div>
+                                    {c.data_hora && (
+                                      <span className="text-[10px] font-medium text-emerald-400/90 shrink-0">
+                                        {formatarData(c.data_hora)}
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
 
-                      {quemFalta.length === 0 && jaMarcaram.length > 0 && (
-                        <span className="text-[11px] font-black text-emerald-400 inline-flex items-center gap-1 ml-1 bg-emerald-950/50 px-2 py-0.5 rounded-md border border-emerald-700/40">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                          100% da equipe ciente!
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                          {quemFalta.length === 0 && jaMarcaram.length > 0 && (
+                            <div className="p-2.5 rounded-lg bg-emerald-950/50 border border-emerald-600/40 text-emerald-300 text-xs font-bold flex items-center gap-2">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                              <span>100% dos operadores da portaria confirmaram ciência deste aviso!</span>
+                            </div>
+                          )}
+
+                          {quemFalta.length === 0 && jaMarcaram.length === 0 && (
+                            <div className="p-2.5 text-center text-xs text-slate-400 italic bg-slate-900/50 rounded-lg border border-slate-800">
+                              Nenhum operador ativo vinculado a este condomínio.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* RODAPÉ DO CARD E AÇÕES */}
                   <div className="mt-3 flex items-center justify-between gap-2 pt-2 border-t border-slate-800/80 flex-wrap">
