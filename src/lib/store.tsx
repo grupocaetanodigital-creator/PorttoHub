@@ -9,7 +9,11 @@ import {
   StatusProcessamento,
   DemonstrativoPagamento,
   ItemDemonstrativo,
-  StatusHolerite
+  StatusHolerite,
+  VinculoEscala,
+  EscalaOperacionalDia,
+  RegimeJornada,
+  StatusDiaEscala
 } from '../types/database';
 import {
   supabase,
@@ -18,6 +22,9 @@ import {
   SEED_ESCALAS,
   SEED_APONTAMENTOS,
   SEED_DEMONSTRATIVOS,
+  SEED_VINCULOS_ESCALA,
+  SEED_ESCALAS_OPERACIONAIS_MARCO_2026,
+  gerarGradeMensalOperacional,
   getTodayDateString
 } from './supabase';
 import {
@@ -89,6 +96,23 @@ interface TurnoCertoContextType {
   alternarStatusDemonstrativo: (id: string, novoStatus: StatusHolerite) => Promise<void>;
   excluirDemonstrativo: (id: string) => Promise<void>;
   confirmarCienteHolerite: (id: string) => Promise<void>;
+  vinculosEscala: VinculoEscala[];
+  escalasOperacionais: EscalaOperacionalDia[];
+  salvarVinculoEscala: (vinculo: VinculoEscala) => Promise<void>;
+  atualizarStatusDiaEscala: (
+    funcionarioId: string,
+    data: string,
+    novoStatus: StatusDiaEscala,
+    obs?: string,
+    motivoCobertura?: 'falta' | 'atestado' | 'ferias' | 'emergencia'
+  ) => Promise<void>;
+  convocarFolguistaFT: (
+    data: string,
+    condominioId: string,
+    funcionarioFaltanteId: string,
+    funcionarioFolguistaId: string
+  ) => Promise<void>;
+  recalcularGradeMensal: (ano: number, mes: number) => Promise<void>;
   resetToInitialData: () => void;
   syncWithSupabase: () => Promise<void>;
 }
@@ -100,7 +124,9 @@ const STORAGE_KEYS = {
   ESCALAS: 'turnocerto_escalas',
   APONTAMENTOS: 'turnocerto_apontamentos',
   REGISTROS_PONTO: 'turnocerto_registros_ponto',
-  DEMONSTRATIVOS: 'turnocerto_demonstrativos'
+  DEMONSTRATIVOS: 'turnocerto_demonstrativos',
+  VINCULOS_ESCALA: 'turnocerto_vinculos_escala',
+  ESCALAS_OPERACIONAIS: 'turnocerto_escalas_operacionais'
 };
 
 const TurnoCertoContext = createContext<TurnoCertoContextType | undefined>(undefined);
@@ -163,6 +189,25 @@ export const TurnoCertoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
     return SEED_DEMONSTRATIVOS;
   });
+
+  // Módulo de Gestão de Escalas, Turnos e Grade Mensal Operacional
+  const [vinculosEscala, setVinculosEscala] = useState<VinculoEscala[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.VINCULOS_ESCALA);
+    return saved ? JSON.parse(saved) : SEED_VINCULOS_ESCALA;
+  });
+
+  const [escalasOperacionais, setEscalasOperacionais] = useState<EscalaOperacionalDia[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.ESCALAS_OPERACIONAIS);
+    return saved ? JSON.parse(saved) : SEED_ESCALAS_OPERACIONAIS_MARCO_2026;
+  });
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.VINCULOS_ESCALA, JSON.stringify(vinculosEscala));
+  }, [vinculosEscala]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.ESCALAS_OPERACIONAIS, JSON.stringify(escalasOperacionais));
+  }, [escalasOperacionais]);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [supabaseConnected, setSupabaseConnected] = useState<boolean>(false);
@@ -904,6 +949,158 @@ export const TurnoCertoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   };
 
+  // MÓDULO GESTÃO DE ESCALAS, FOLGAS E COBERTURA DE POSTOS (FT)
+  const salvarVinculoEscala = async (vinculo: VinculoEscala) => {
+    setIsLoading(true);
+    try {
+      setVinculosEscala((prev) => {
+        const exists = prev.some((v) => v.funcionario_id === vinculo.funcionario_id);
+        if (exists) {
+          return prev.map((v) => (v.funcionario_id === vinculo.funcionario_id ? vinculo : v));
+        }
+        return [...prev, vinculo];
+      });
+
+      // Recalcula a grade do mês 03/2026 para este colaborador
+      const gradeAtualizada = gerarGradeMensalOperacional(2026, 3, [vinculo]);
+      setEscalasOperacionais((prev) => {
+        const outros = prev.filter((e) => e.funcionario_id !== vinculo.funcionario_id);
+        return [...outros, ...gradeAtualizada];
+      });
+
+      setNotification({
+        type: 'success',
+        message: `Regime ${vinculo.regime_jornada} configurado e grade mensal gerada com sucesso!`
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const atualizarStatusDiaEscala = async (
+    funcionarioId: string,
+    data: string,
+    novoStatus: StatusDiaEscala,
+    obs?: string,
+    motivoCobertura?: 'falta' | 'atestado' | 'ferias' | 'emergencia'
+  ) => {
+    setEscalasOperacionais((prev) =>
+      prev.map((e) => {
+        if (e.funcionario_id === funcionarioId && e.data === data) {
+          return {
+            ...e,
+            status: novoStatus,
+            observacao: obs !== undefined ? obs : e.observacao,
+            motivo_cobertura: motivoCobertura || e.motivo_cobertura,
+            updated_at: new Date().toISOString()
+          };
+        }
+        return e;
+      })
+    );
+
+    const func = profiles.find((p) => p.id === funcionarioId);
+    setNotification({
+      type: novoStatus === 'falta' ? 'warning' : 'info',
+      message: `Dia ${data.split('-')[2]} de ${func?.full_name?.split(' ')[0]} alterado para: [${novoStatus.toUpperCase()}].`
+    });
+  };
+
+  const convocarFolguistaFT = async (
+    data: string,
+    condominioId: string,
+    funcionarioFaltanteId: string,
+    funcionarioFolguistaId: string
+  ) => {
+    setIsLoading(true);
+    try {
+      const folguista = profiles.find((p) => p.id === funcionarioFolguistaId);
+      const faltante = profiles.find((p) => p.id === funcionarioFaltanteId);
+      const cond = condominios.find((c) => c.id === condominioId);
+
+      // 1. Atualiza escala operacional do folguista para FT (⚡) no dia
+      setEscalasOperacionais((prev) =>
+        prev.map((e) => {
+          if (e.funcionario_id === funcionarioFolguistaId && e.data === data) {
+            return {
+              ...e,
+              status: 'ft',
+              condominio_id: condominioId,
+              cobertura_de_funcionario_id: funcionarioFaltanteId,
+              cobertura_de_funcionario_nome: faltante?.full_name,
+              motivo_cobertura: 'falta',
+              valor_ft: 240.00,
+              observacao: `Assumiu cobertura de FT no ${cond?.nome || 'Posto'} substituindo ${faltante?.full_name}.`,
+              updated_at: new Date().toISOString()
+            };
+          }
+          if (e.funcionario_id === funcionarioFaltanteId && e.data === data) {
+            return {
+              ...e,
+              status: 'falta',
+              observacao: `🔴 Posto coberto por ${folguista?.full_name} via FT.`,
+              updated_at: new Date().toISOString()
+            };
+          }
+          return e;
+        })
+      );
+
+      // 2. Adiciona apontamento na folha de R$ 240,00 para o folguista
+      const novoApontamentoFT: ApontamentoFolha = {
+        id: `ft-alocada-${Date.now()}`,
+        funcionario_id: funcionarioFolguistaId,
+        data_ocorrencia: data,
+        tipo_ocorrencia: 'ft_trabalhada',
+        status_processamento: 'pagar_ft',
+        valor_calculado: 240.00,
+        observacao: `FT de cobertura no ${cond?.nome || 'Posto'} em substituição a ${faltante?.full_name}.`,
+        created_at: new Date().toISOString()
+      };
+      setApontamentos((prev) => [novoApontamentoFT, ...prev]);
+
+      // 3. Atualiza Módulo 1 escalas se a data for hoje
+      const todayStr = getTodayDateString();
+      if (data === todayStr) {
+        setEscalas((prev) =>
+          prev.map((escala) => {
+            if (escala.condominio_id === condominioId) {
+              return {
+                ...escala,
+                funcionario_id: funcionarioFolguistaId,
+                tipo_escala: 'ft_cobertura',
+                tag_ativa: 'escalado_cobertura',
+                status_posto: 'em_andamento'
+              };
+            }
+            return escala;
+          })
+        );
+      }
+
+      setNotification({
+        type: 'success',
+        message: `⚡ ${folguista?.full_name} alocado para cobrir FT no ${cond?.nome} (+R$ 240,00 na folha)!`
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const recalcularGradeMensal = async (ano: number, mes: number) => {
+    setIsLoading(true);
+    try {
+      const novaGrade = gerarGradeMensalOperacional(ano, mes, vinculosEscala);
+      setEscalasOperacionais(novaGrade);
+      setNotification({
+        type: 'info',
+        message: `Grade operacional de ${mes}/${ano} recalculada com base nos vínculos 12x36, 6x1 e 5x2.`
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const resetToInitialData = () => {
     localStorage.clear();
     setProfiles(SEED_PROFILES);
@@ -911,11 +1108,13 @@ export const TurnoCertoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setEscalas(SEED_ESCALAS);
     setApontamentos(SEED_APONTAMENTOS);
     setDemonstrativos(SEED_DEMONSTRATIVOS);
+    setVinculosEscala(SEED_VINCULOS_ESCALA);
+    setEscalasOperacionais(SEED_ESCALAS_OPERACIONAIS_MARCO_2026);
     setRegistrosPonto([]);
     setCurrentUser(SEED_PROFILES[0]);
     setNotification({
       type: 'info',
-      message: 'Dados operacionais e holerites reiniciados para o cenário de demonstração oficial.'
+      message: 'Dados operacionais, escalas e holerites reiniciados para o cenário de demonstração oficial.'
     });
   };
 
@@ -935,6 +1134,12 @@ export const TurnoCertoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         sincronizarFilaOffline,
         carregarFilaOffline,
         demonstrativos,
+        vinculosEscala,
+        escalasOperacionais,
+        salvarVinculoEscala,
+        atualizarStatusDiaEscala,
+        convocarFolguistaFT,
+        recalcularGradeMensal,
         isLoading,
         supabaseConnected,
         notification,
