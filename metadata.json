@@ -1,0 +1,11 @@
+{
+  "name": "TurnoCerto - Gestão de Postos e Escalas",
+  "description": "Plataforma de gestão operacional de postos, ponto com foto/GPS, cobertura de emergência em folga (FT) e controle financeiro de faltas.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
