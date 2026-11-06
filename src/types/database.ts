@@ -149,3 +149,59 @@ export interface DemonstrativoPagamento {
   created_at?: string;
   updated_at?: string;
 }
+
+// ============================================================================
+// MÓDULO: GESTÃO DE ESCALAS, FOLGAS E COBERTURA DE POSTOS (FT)
+// ============================================================================
+
+export type RegimeJornada = '12x36' | '6x1' | '5x2';
+
+export type TurnoTipo = 'diurno_07_19' | 'noturno_19_07' | 'comercial_08_17';
+
+export type StatusDiaEscala = 
+  | 'trabalho'   // 🟩 Trabalho regular
+  | 'folga'      // 🟦 Folga programada
+  | 'ft'         // ⚡ Folga Trabalhada (Turno Extra)
+  | 'cobertura'  // 🔄 Escalado para Cobertura
+  | 'falta'      // 🟥 Falta não justificada / Posto Vazio
+  | 'atestado'   // 📄 Atestado Médico
+  | 'ferias';    // 🟨 Férias
+
+export interface VinculoEscala {
+  id: string;
+  funcionario_id: string;
+  funcionario?: Profile | null;
+  condominio_id: string;
+  condominio?: Condominio | null;
+  regime_jornada: RegimeJornada;
+  turno_tipo: TurnoTipo;
+  data_inicio: string; // Ex: '2026-03-01' (data base para cálculo de paridade 12x36 ou ciclo 6x1/5x2)
+  dias_folga_fixa?: number[]; // [0] = Domingo, [6] = Sábado
+  paridade_12x36?: 'par' | 'impar'; // Para 12x36
+  ativo: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface EscalaOperacionalDia {
+  id: string;
+  vinculo_id?: string;
+  funcionario_id: string;
+  funcionario?: Profile | null;
+  condominio_id: string;
+  condominio?: Condominio | null;
+  data: string; // 'YYYY-MM-DD'
+  dia_mes: number; // 1 a 31
+  dia_semana: number; // 0 = Domingo, 6 = Sábado
+  status: StatusDiaEscala;
+  turno_inicio: string;
+  turno_fim: string;
+  cobertura_de_funcionario_id?: string | null;
+  cobertura_de_funcionario_nome?: string | null;
+  motivo_cobertura?: 'falta' | 'atestado' | 'ferias' | 'emergencia';
+  valor_ft?: number; // Padrão R$ 240,00 quando status === 'ft'
+  observacao?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
