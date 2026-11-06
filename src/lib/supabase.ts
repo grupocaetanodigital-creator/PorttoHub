@@ -5,7 +5,11 @@ import {
   EscalaTrabalho,
   ApontamentoFolha,
   DemonstrativoPagamento,
-  ItemDemonstrativo
+  ItemDemonstrativo,
+  VinculoEscala,
+  EscalaOperacionalDia,
+  RegimeJornada,
+  StatusDiaEscala
 } from '../types/database';
 
 export const SUPABASE_URL = 'https://cyyvubiythuzhdwbuogg.supabase.co';
@@ -65,6 +69,41 @@ CREATE TABLE IF NOT EXISTS public.escalas_trabalho (
   status_posto VARCHAR(20) CHECK (status_posto IN ('coberto', 'vazio', 'em_andamento', 'finalizado')) DEFAULT 'vazio',
   tag_ativa VARCHAR(30) CHECK (tag_ativa IN ('regular', 'intervalo', 'escalado_cobertura', 'trabalhando_folga_ft', 'falta')) DEFAULT 'regular',
   created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3.1 Tabela de Vínculos de Escala & Regime de Jornada (12x36, 6x1, 5x2)
+CREATE TABLE IF NOT EXISTS public.vinculos_escala (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  funcionario_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  condominio_id UUID NOT NULL REFERENCES public.condominios(id) ON DELETE CASCADE,
+  regime_jornada VARCHAR(20) CHECK (regime_jornada IN ('12x36', '6x1', '5x2')) NOT NULL,
+  turno_tipo VARCHAR(30) CHECK (turno_tipo IN ('diurno_07_19', 'noturno_19_07', 'comercial_08_17')) DEFAULT 'diurno_07_19',
+  data_inicio DATE NOT NULL,
+  paridade_12x36 VARCHAR(10) CHECK (paridade_12x36 IN ('par', 'impar')),
+  dias_folga_fixa INTEGER[],
+  ativo BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(funcionario_id, condominio_id)
+);
+
+-- 3.2 Tabela de Escalas Operacionais Diárias (Grade Mensal e Alocação FT)
+CREATE TABLE IF NOT EXISTS public.escalas_operacionais (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  vinculo_id UUID REFERENCES public.vinculos_escala(id) ON DELETE SET NULL,
+  funcionario_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  condominio_id UUID NOT NULL REFERENCES public.condominios(id) ON DELETE CASCADE,
+  data DATE NOT NULL,
+  status VARCHAR(20) CHECK (status IN ('trabalho', 'folga', 'ft', 'cobertura', 'falta', 'atestado', 'ferias')) NOT NULL,
+  turno_inicio TIMESTAMPTZ NOT NULL,
+  turno_fim TIMESTAMPTZ NOT NULL,
+  cobertura_de_funcionario_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  motivo_cobertura VARCHAR(30),
+  valor_ft NUMERIC(10,2) DEFAULT 0,
+  observacao TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(funcionario_id, data)
 );
 
 -- 4. Tabela de Apontamentos Financeiros (Faltas e FTs para Fechamento)
@@ -176,11 +215,15 @@ ALTER TABLE public.apontamentos_folha ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.registros_ponto ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.demonstrativos_pagamento ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.itens_demonstrativo ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.vinculos_escala ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.escalas_operacionais ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Acesso público profiles" ON public.profiles FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Acesso público condominios" ON public.condominios FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Acesso público escalas" ON public.escalas_trabalho FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Acesso público apontamentos" ON public.apontamentos_folha FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Acesso público vinculos_escala" ON public.vinculos_escala FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Acesso público escalas_operacionais" ON public.escalas_operacionais FOR ALL USING (true) WITH CHECK (true);
 
 -- RLS Rigoroso: Funcionário registra seu próprio ponto; supervisores auditam todos
 CREATE POLICY "Funcionário insere apenas seu ponto" ON public.registros_ponto 
@@ -719,3 +762,161 @@ export const SEED_DEMONSTRATIVOS: DemonstrativoPagamento[] = [
     ]
   }
 ];
+
+// ============================================================================
+// SEED: VÍNCULOS DE JORNADA DE TRABALHO (12x36, 6x1, 5x2)
+// ============================================================================
+export const SEED_VINCULOS_ESCALA: VinculoEscala[] = [
+  // 1. Carlos Eduardo Santos -> 12x36 Ímpar, Diurno 07h-19h (Morumbi Park)
+  {
+    id: 'v-carlos-12x36',
+    funcionario_id: '22222222-2222-2222-2222-222222222222',
+    condominio_id: 'c1111111-1111-1111-1111-111111111111',
+    regime_jornada: '12x36',
+    turno_tipo: 'diurno_07_19',
+    data_inicio: '2026-03-01',
+    paridade_12x36: 'impar',
+    ativo: true
+  },
+  // 2. Tiago Santos Oliveira -> 12x36 Par, Diurno 07h-19h (Morumbi Park / Folguista FT)
+  {
+    id: 'v-tiago-12x36',
+    funcionario_id: '33333333-3333-3333-3333-333333333333',
+    condominio_id: 'c1111111-1111-1111-1111-111111111111',
+    regime_jornada: '12x36',
+    turno_tipo: 'diurno_07_19',
+    data_inicio: '2026-03-01',
+    paridade_12x36: 'par',
+    ativo: true
+  },
+  // 3. Fernando Augusto Lima -> 6x1 Noturno 19h-07h, folga fixa domingo (Jardins Privilege)
+  {
+    id: 'v-fernando-6x1',
+    funcionario_id: '44444444-4444-4444-4444-444444444444',
+    condominio_id: 'c2222222-2222-2222-2222-222222222222',
+    regime_jornada: '6x1',
+    turno_tipo: 'noturno_19_07',
+    data_inicio: '2026-03-01',
+    dias_folga_fixa: [0], // Domingo
+    ativo: true
+  },
+  // 4. Lucas Mendonça Vieira -> 5x2 Comercial 08h-17h, folga sáb/dom (Berrini / Folguista FT)
+  {
+    id: 'v-lucas-5x2',
+    funcionario_id: '77777777-7777-7777-7777-777777777777',
+    condominio_id: 'c4444444-4444-4444-4444-444444444444',
+    regime_jornada: '5x2',
+    turno_tipo: 'comercial_08_17',
+    data_inicio: '2026-03-01',
+    dias_folga_fixa: [0, 6], // Sábado e Domingo
+    ativo: true
+  },
+  // 5. Antônio Ferreira -> 12x36 Ímpar, Diurno 07h-19h (Morumbi Park)
+  {
+    id: 'v-antonio-12x36',
+    funcionario_id: '66666666-6666-6666-6666-666666666666',
+    condominio_id: 'c1111111-1111-1111-1111-111111111111',
+    regime_jornada: '12x36',
+    turno_tipo: 'diurno_07_19',
+    data_inicio: '2026-03-01',
+    paridade_12x36: 'impar',
+    ativo: true
+  }
+];
+
+// Gerador algorítmico da Grade Mensal Operacional
+export function gerarGradeMensalOperacional(
+  ano: number,
+  mes: number, // 1 a 12 (ex: 3 para Março)
+  vinculos: VinculoEscala[]
+): EscalaOperacionalDia[] {
+  const diasNoMes = new Date(ano, mes, 0).getDate();
+  const grade: EscalaOperacionalDia[] = [];
+
+  for (const vinculo of vinculos) {
+    for (let dia = 1; dia <= diasNoMes; dia++) {
+      const dataStr = `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+      const dataObj = new Date(ano, mes - 1, dia);
+      const diaSemana = dataObj.getDay();
+
+      let status: StatusDiaEscala = 'trabalho';
+
+      if (vinculo.regime_jornada === '12x36') {
+        const paridade = vinculo.paridade_12x36 || 'impar';
+        const isDiaPar = dia % 2 === 0;
+        if (paridade === 'impar') {
+          status = isDiaPar ? 'folga' : 'trabalho';
+        } else {
+          status = isDiaPar ? 'trabalho' : 'folga';
+        }
+      } else if (vinculo.regime_jornada === '6x1') {
+        const folgaDia = vinculo.dias_folga_fixa && vinculo.dias_folga_fixa.length > 0 ? vinculo.dias_folga_fixa[0] : 0;
+        status = diaSemana === folgaDia ? 'folga' : 'trabalho';
+      } else if (vinculo.regime_jornada === '5x2') {
+        const folgas = vinculo.dias_folga_fixa || [0, 6];
+        status = folgas.includes(diaSemana) ? 'folga' : 'trabalho';
+      }
+
+      // Horários padrão de início e fim
+      let turnoInicio = `${dataStr}T07:00:00`;
+      let turnoFim = `${dataStr}T19:00:00`;
+      if (vinculo.turno_tipo === 'noturno_19_07') {
+        turnoInicio = `${dataStr}T19:00:00`;
+        const nextDay = new Date(ano, mes - 1, dia + 1);
+        const nextStr = `${nextDay.getFullYear()}-${String(nextDay.getMonth() + 1).padStart(2, '0')}-${String(nextDay.getDate()).padStart(2, '0')}`;
+        turnoFim = `${nextStr}T07:00:00`;
+      } else if (vinculo.turno_tipo === 'comercial_08_17') {
+        turnoInicio = `${dataStr}T08:00:00`;
+        turnoFim = `${dataStr}T17:00:00`;
+      }
+
+      // Ocorrências pré-configuradas para demonstração realista em Março 2026:
+      let motivoCobertura: any = undefined;
+      let valorFT: number | undefined = undefined;
+      let obs: string | undefined = undefined;
+
+      // 1. Antônio Ferreira está com Falta não justificada hoje (dia 6)
+      if (vinculo.funcionario_id === '66666666-6666-6666-6666-666666666666' && dia === 6) {
+        status = 'falta';
+        obs = '🔴 Posto Vazio: Ausência não justificada. Requer convocação de FT imediata.';
+      }
+
+      // 2. Carlos Eduardo tem Falta no dia 15
+      if (vinculo.funcionario_id === '22222222-2222-2222-2222-222222222222' && dia === 15) {
+        status = 'falta';
+        obs = 'Posto vago. Requer cobertura por FT.';
+      }
+
+      // 3. Fernando Augusto tem Atestado Médico no dia 22
+      if (vinculo.funcionario_id === '44444444-4444-4444-4444-444444444444' && dia === 22) {
+        status = 'atestado';
+        obs = 'Atestado médico de 1 dia deferido pela supervisão.';
+      }
+
+      grade.push({
+        id: `esc-op-${vinculo.funcionario_id}-${dataStr}`,
+        vinculo_id: vinculo.id,
+        funcionario_id: vinculo.funcionario_id,
+        condominio_id: vinculo.condominio_id,
+        data: dataStr,
+        dia_mes: dia,
+        dia_semana: diaSemana,
+        status,
+        turno_inicio: turnoInicio,
+        turno_fim: turnoFim,
+        motivo_cobertura: motivoCobertura,
+        valor_ft: valorFT,
+        observacao: obs,
+        created_at: new Date().toISOString()
+      });
+    }
+  }
+
+  return grade;
+}
+
+export const SEED_ESCALAS_OPERACIONAIS_MARCO_2026: EscalaOperacionalDia[] = gerarGradeMensalOperacional(
+  2026,
+  3,
+  SEED_VINCULOS_ESCALA
+);
