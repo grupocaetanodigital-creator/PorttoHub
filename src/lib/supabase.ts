@@ -138,12 +138,37 @@ CREATE TABLE IF NOT EXISTS public.itens_demonstrativo (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 8. Configuração do Storage para Comprovantes de Ponto
+-- 8. Configuração dos Buckets de Storage
 INSERT INTO storage.buckets (id, name, public) 
 VALUES ('pontos-comprovantes', 'pontos-comprovantes', true) 
 ON CONFLICT (id) DO NOTHING;
 
--- Políticas RLS Permissivas & Rigorosas para a Operação, Ponto e Holerites
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('avatars', 'avatars', true) 
+ON CONFLICT (id) DO NOTHING;
+
+-- Políticas de Storage para Comprovantes e Fotos
+CREATE POLICY "Leitura pública de comprovantes" ON storage.objects
+  FOR SELECT USING (bucket_id = 'pontos-comprovantes');
+
+CREATE POLICY "Upload autenticado de comprovantes" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'pontos-comprovantes');
+
+CREATE POLICY "Leitura pública de avatares" ON storage.objects
+  FOR SELECT USING (bucket_id = 'avatars');
+
+CREATE POLICY "Upload de avatares" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'avatars');
+
+-- 9. Índices de Alta Performance
+CREATE INDEX IF NOT EXISTS idx_registros_ponto_func_data ON public.registros_ponto (funcionario_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_registros_ponto_cond ON public.registros_ponto (condominio_id);
+CREATE INDEX IF NOT EXISTS idx_escalas_func_data ON public.escalas_trabalho (funcionario_id, data_escala);
+CREATE INDEX IF NOT EXISTS idx_escalas_status ON public.escalas_trabalho (status_posto, tag_ativa);
+CREATE INDEX IF NOT EXISTS idx_demonstrativos_func_mes ON public.demonstrativos_pagamento (funcionario_id, mes_referencia);
+CREATE INDEX IF NOT EXISTS idx_itens_demonstrativo_dem ON public.itens_demonstrativo (demonstrativo_id);
+
+-- 10. Políticas RLS (Row Level Security)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.condominios ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.escalas_trabalho ENABLE ROW LEVEL SECURITY;
@@ -170,6 +195,23 @@ CREATE POLICY "Funcionário vê seus pontos e supervisor vê todos" ON public.re
 
 CREATE POLICY "RH gerencia demonstrativos" ON public.demonstrativos_pagamento FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "RH gerencia itens demonstrativo" ON public.itens_demonstrativo FOR ALL USING (true) WITH CHECK (true);
+
+-- 11. Carga Inicial de Demonstração (Seeds Idempotentes)
+INSERT INTO public.profiles (id, cpf, full_name, role, avatar_url, disponivel_ft, primeiro_acesso_concluido, cargo, telefone, email)
+VALUES
+  ('11111111-1111-1111-1111-111111111111', '111.222.333-44', 'Dra. Renata Albuquerque', 'supervisor', 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&auto=format&fit=crop&q=80', false, true, 'Supervisora Operacional de Campo', '(11) 98765-4321', 'renata.supervisor@turnocerto.com.br'),
+  ('22222222-2222-2222-2222-222222222222', '222.333.444-55', 'Carlos Eduardo Santos', 'funcionario', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80', false, true, 'Porteiro Líder 12x36', '(11) 97123-1122', 'carlos.eduardo@turnocerto.com.br'),
+  ('33333333-3333-3333-3333-333333333333', '333.444.555-66', 'Tiago Santos Oliveira', 'funcionario', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&auto=format&fit=crop&q=80', true, true, 'Controlador de Acesso / Folguista', '(11) 99887-3344', 'tiago.santos@turnocerto.com.br'),
+  ('44444444-4444-4444-4444-444444444444', '444.555.666-77', 'Fernando Augusto Lima', 'funcionario', 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=300&auto=format&fit=crop&q=80', true, true, 'Rondista Noturno', '(11) 98112-9988', 'fernando.lima@turnocerto.com.br')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.condominios (id, nome, endereco, bairro, cidade, lat, lng, latitude, longitude, raio_tolerancia_metros, raio_metros, contato_emergencia, tipo_posto)
+VALUES
+  ('c1111111-1111-1111-1111-111111111111', 'Residencial Morumbi Park', 'Av. Giovanni Gronchi, 4500', 'Morumbi', 'São Paulo', -23.6190, -46.7280, -23.6190, -46.7280, 150, 50, '(11) 3744-1000 (Síndico Dr. Marcos)', 'portaria_24h'),
+  ('c2222222-2222-2222-2222-222222222222', 'Edifício Jardins Privilege', 'Alameda Lorena, 1200', 'Jardins', 'São Paulo', -23.5650, -46.6660, -23.5650, -46.6660, 100, 50, '(11) 3088-2233 (Portaria Central)', 'controle_acesso'),
+  ('c3333333-3333-3333-3333-333333333333', 'Condomínio Alpha Bella Vista', 'Alameda Rio Negro, 850', 'Alphaville', 'Barueri', -23.4980, -46.8520, -23.4980, -46.8520, 200, 60, '(11) 4195-5000 (Administradora)', 'portaria_24h'),
+  ('c4444444-4444-4444-4444-444444444444', 'Centro Empresarial Berrini', 'Av. Eng. Luís Carlos Berrini, 1700', 'Brooklin', 'São Paulo', -23.6060, -46.6950, -23.6060, -46.6950, 120, 50, '(11) 5505-8000 (Segurança)', 'recepcao')
+ON CONFLICT (id) DO NOTHING;
 `;
 
 // Initial realistic Brazilian Operational Seed Data for Condominiums & Personnel
