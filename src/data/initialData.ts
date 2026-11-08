@@ -1,366 +1,661 @@
-import { Colaborador, CondominioPosto, Holerite, TurnoPosto, User } from '../types';
+import { Condominium, CommonArea, Unit, Reservation } from '../types';
 
-export const DEFAULT_ADMIN_CREDENTIALS = {
-  login: 'caetano',
-  password: '6814871984@Lm'
-};
-
-export const INITIAL_SUPERVISOR_USER: User = {
-  id: 'sup-1',
-  name: 'Caetano',
-  username: 'caetano',
-  email: 'caetano@porttohub.com.br',
-  role: 'supervisor',
-  avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-  phone: '(11) 98765-4321',
-  cargo: 'Administrador / Gestor Geral'
-};
-
-export const INITIAL_OPERATIONAL_USER: User = {
-  id: 'colab-1',
-  name: 'Marcos Vinícius Silva',
-  cpf: '123.456.789-00',
-  matricula: 'TC-1042',
-  role: 'operacional',
-  avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-  phone: '(11) 97123-8899',
-  cargo: 'Porteiro Líder',
-  condominioId: 'condo-1'
-};
-
-export const INITIAL_CONDOS: CondominioPosto[] = [
+export const INITIAL_CONDOMINIUMS: Condominium[] = [
   {
-    id: 'condo-1',
-    nome: 'Residencial Jardins do Lago',
-    tipo: 'Residencial',
-    endereco: 'Av. das Acácias, 850 - Jardins, São Paulo - SP',
-    cidade: 'São Paulo',
-    uf: 'SP',
-    latitude: -23.5682,
-    longitude: -46.6621,
-    raioGpsMetros: 60,
-    postosRequeridosDia: 2,
-    postosRequeridosNoite: 2,
-    contatoSindico: 'Dr. Roberto Almeida',
-    telefoneSindico: '(11) 99123-4411'
+    id: 'condo-horizon',
+    name: 'Edifício Horizon Blue',
+    code: 'HORIZON',
+    address: 'Av. Lúcio Costa, 3400 - Barra da Tijuca, RJ',
+    unitsCount: 48,
   },
   {
-    id: 'condo-2',
-    nome: 'Edifício Horizon Corporate',
-    tipo: 'Comercial',
-    endereco: 'Av. Brigadeiro Faria Lima, 3477 - Itaim Bibi, São Paulo - SP',
-    cidade: 'São Paulo',
-    uf: 'SP',
-    latitude: -23.5855,
-    longitude: -46.6804,
-    raioGpsMetros: 50,
-    postosRequeridosDia: 3,
-    postosRequeridosNoite: 2,
-    contatoSindico: 'Eng. Patrícia Silveira',
-    telefoneSindico: '(11) 98844-5500'
+    id: 'condo-parque',
+    name: 'Condomínio Parque das Palmeiras',
+    code: 'PARQUE',
+    address: 'Rua Canário, 720 - Moema, São Paulo, SP',
+    unitsCount: 64,
   },
   {
-    id: 'condo-3',
-    nome: 'Residencial Villa Firenze',
-    tipo: 'Residencial',
-    endereco: 'Rua Alberto Faria, 412 - Morumbi, São Paulo - SP',
-    cidade: 'São Paulo',
-    uf: 'SP',
-    latitude: -23.5989,
-    longitude: -46.7118,
-    raioGpsMetros: 75,
-    postosRequeridosDia: 2,
-    postosRequeridosNoite: 1,
-    contatoSindico: 'Mariana Fontes',
-    telefoneSindico: '(11) 97722-1133'
+    id: 'condo-alphaview',
+    name: 'Residencial Mansões Alphaview',
+    code: 'ALPHA',
+    address: 'Alameda das Magnólias, 180 - Alphaville, Barueri, SP',
+    unitsCount: 32,
   },
-  {
-    id: 'condo-4',
-    nome: 'Condomínio Golden Park Alphaville',
-    tipo: 'Condomínio Fechado',
-    endereco: 'Al. Rio Negro, 1200 - Alphaville Industrial, Barueri - SP',
-    cidade: 'Barueri',
-    uf: 'SP',
-    latitude: -23.4981,
-    longitude: -46.8523,
-    raioGpsMetros: 100,
-    postosRequeridosDia: 4,
-    postosRequeridosNoite: 3,
-    contatoSindico: 'Celso Antunes',
-    telefoneSindico: '(11) 99344-9988'
-  }
 ];
 
-export const INITIAL_COLABORADORES: Colaborador[] = [
+export const INITIAL_AREAS: CommonArea[] = [
+  // Edifício Horizon Blue
   {
-    id: 'colab-1',
-    nome: 'Marcos Vinícius Silva',
-    cpf: '123.456.789-00',
-    matricula: 'TC-1042',
-    cargo: 'Porteiro Líder',
-    jornada: '12x36',
-    condominioId: 'condo-1',
-    fotoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-    telefone: '(11) 97123-8899',
-    ativo: true,
-    salarioBase: 2450.00,
-    dataAdmissao: '2023-04-15',
-    statusHoje: 'no_posto'
-  },
-  {
-    id: 'colab-2',
-    nome: 'Cláudio Ferreira de Souza',
-    cpf: '234.567.890-11',
-    matricula: 'TC-1088',
-    cargo: 'Controlador de Acesso',
-    jornada: '12x36',
-    condominioId: 'condo-2',
-    fotoUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
-    telefone: '(11) 98234-7711',
-    ativo: true,
-    salarioBase: 2180.00,
-    dataAdmissao: '2023-08-10',
-    statusHoje: 'em_falta',
-    motivoAfastamento: 'Falta não justificada na escala diurna'
-  },
-  {
-    id: 'colab-3',
-    nome: 'Rogério Batista dos Santos',
-    cpf: '345.678.901-22',
-    matricula: 'TC-1102',
-    cargo: 'Vigilante',
-    jornada: '12x36_noturno',
-    condominioId: 'condo-1',
-    fotoUrl: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=150&auto=format&fit=crop&q=80',
-    telefone: '(11) 99455-2233',
-    ativo: true,
-    salarioBase: 2680.00,
-    dataAdmissao: '2022-11-01',
-    statusHoje: 'no_posto'
-  },
-  {
-    id: 'colab-4',
-    nome: 'Anderson Ribeiro Alves',
-    cpf: '456.789.012-33',
-    matricula: 'TC-1135',
-    cargo: 'Porteiro',
-    jornada: '12x36',
-    condominioId: 'condo-3',
-    fotoUrl: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80',
-    telefone: '(11) 98899-3344',
-    ativo: true,
-    salarioBase: 2250.00,
-    dataAdmissao: '2024-01-20',
-    statusHoje: 'de_folga'
-  },
-  {
-    id: 'colab-5',
-    nome: 'Edvaldo Lima Pereira',
-    cpf: '567.890.123-44',
-    matricula: 'TC-1190',
-    cargo: 'Porteiro',
-    jornada: '12x36',
-    condominioId: 'condo-4',
-    fotoUrl: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80',
-    telefone: '(11) 97711-4455',
-    ativo: true,
-    salarioBase: 2250.00,
-    dataAdmissao: '2024-03-05',
-    statusHoje: 'no_posto'
-  },
-  {
-    id: 'colab-6',
-    nome: 'Fabiana Moreira Castro',
-    cpf: '678.901.234-55',
-    matricula: 'TC-1215',
-    cargo: 'Controlador de Acesso',
-    jornada: '5x2',
-    condominioId: 'condo-2',
-    fotoUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
-    telefone: '(11) 96622-7788',
-    ativo: true,
-    salarioBase: 2320.00,
-    dataAdmissao: '2023-02-14',
-    statusHoje: 'no_posto'
-  },
-  {
-    id: 'colab-7',
-    nome: 'Rodrigo Barbosa Neves',
-    cpf: '789.012.345-66',
-    matricula: 'TC-1240',
-    cargo: 'Vigilante',
-    jornada: '12x36',
-    condominioId: 'condo-1',
-    fotoUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80',
-    telefone: '(11) 95533-2211',
-    ativo: true,
-    salarioBase: 2680.00,
-    dataAdmissao: '2022-06-20',
-    statusHoje: 'afastado',
-    motivoAfastamento: 'Atestado Médico (CID M54.5 - Lombalgia Aguda)',
-    dataRetornoPrevista: '12/11/2026'
-  },
-  {
-    id: 'colab-8',
-    nome: 'Daniel Monteiro de Paula',
-    cpf: '890.123.456-77',
-    matricula: 'TC-1288',
-    cargo: 'Porteiro',
-    jornada: '6x1',
-    condominioId: 'condo-4',
-    fotoUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
-    telefone: '(11) 94411-9988',
-    ativo: true,
-    salarioBase: 2250.00,
-    dataAdmissao: '2024-02-10',
-    statusHoje: 'de_folga'
-  }
-];
-
-export const INITIAL_OCORRENCIAS = [
-  {
-    id: 'oco-1',
-    condominioId: 'condo-2',
-    dataHora: '2026-11-07 07:15',
-    autorNome: 'Carlos Mendes',
-    autorCargo: 'Supervisor Operacional',
-    titulo: 'Ausência de Porteiro na Troca de Turno',
-    descricao: 'O colaborador Cláudio Souza não compareceu ao posto às 07:00. Acionado plano de contingência e busca de cobertura FT.',
-    gravidade: 'alta' as const
-  },
-  {
-    id: 'oco-2',
-    condominioId: 'condo-1',
-    dataHora: '2026-11-07 06:58',
-    autorNome: 'Marcos Vinícius Silva',
-    autorCargo: 'Porteiro Líder',
-    titulo: 'Passagem de Serviço sem Anormalidades',
-    descricao: 'Assumido posto da portaria social e guarita. Todos os rádios HT e controle de TAGs dos moradores testados e operacionais.',
-    gravidade: 'baixa' as const
-  },
-  {
-    id: 'oco-3',
-    condominioId: 'condo-3',
-    dataHora: '2026-11-06 22:40',
-    autorNome: 'Edvaldo Lima Pereira',
-    autorCargo: 'Porteiro FT',
-    titulo: 'Manutenção no Portão da Garagem 02',
-    descricao: 'Motor do portão de visitantes apresentou lentidão. Acionada assistência técnica autorizada e síndico avisado.',
-    gravidade: 'media' as const
-  }
-];
-
-export const INITIAL_TURNOS: TurnoPosto[] = [
-  {
-    id: 'turno-1',
-    condominioId: 'condo-2',
-    postoNome: 'Portaria Social - Posto 01',
-    data: '2026-11-07',
-    periodo: 'diurno',
-    horario: '07:00 - 19:00',
-    status: 'vazio', // Demonstrates the requested 🔴 POSTO VAZIO
-    colaboradorTitularId: 'colab-2', // Cláudio Souza
-    motivoVazio: 'Falta não comunicada (Atraso superior a 50 min)',
-    horaAlerta: '07:50',
-    ftDesignada: false,
-    observacao: 'Tentativa de contato via WhatsApp sem resposta. Necessário designar FT imediatamente.'
-  },
-  {
-    id: 'turno-2',
-    condominioId: 'condo-1',
-    postoNome: 'Portaria Principal 24h',
-    data: '2026-11-07',
-    periodo: 'diurno',
-    horario: '07:00 - 19:00',
-    status: 'coberto',
-    colaboradorTitularId: 'colab-1', // Marcos Silva
-    colaboradorAtualId: 'colab-1',
-    horaAlerta: undefined,
-    ftDesignada: false,
-    observacao: 'Ponto registrado via GPS (Raio OK - 12m do posto).'
-  },
-  {
-    id: 'turno-3',
-    condominioId: 'condo-3',
-    postoNome: 'Portaria Garagem & Visitantes',
-    data: '2026-11-07',
-    periodo: 'diurno',
-    horario: '07:00 - 19:00',
-    status: 'em_ft', // Demonstrates ⚡ FTs Ativas
-    colaboradorTitularId: 'colab-4',
-    colaboradorAtualId: 'colab-5', // Edvaldo Lima cobrindo em Folga Trabalhada
-    ftDesignada: true,
-    observacao: 'FT autorizada pela supervisão (Edvaldo Lima substituindo em sua folga).'
-  },
-  {
-    id: 'turno-4',
-    condominioId: 'condo-4',
-    postoNome: 'Guarita Central 01',
-    data: '2026-11-07',
-    periodo: 'diurno',
-    horario: '07:00 - 19:00',
-    status: 'coberto',
-    colaboradorTitularId: 'colab-5',
-    colaboradorAtualId: 'colab-5',
-    ftDesignada: false,
-    observacao: 'Ponto registrado no horário normal.'
-  },
-  {
-    id: 'turno-5',
-    condominioId: 'condo-1',
-    postoNome: 'Vigilância Noturna Ronda',
-    data: '2026-11-07',
-    periodo: 'noturno',
-    horario: '19:00 - 07:00',
-    status: 'coberto',
-    colaboradorTitularId: 'colab-3', // Rogério Santos
-    colaboradorAtualId: 'colab-3',
-    ftDesignada: false,
-    observacao: 'Escala confirmada para início às 19h.'
-  }
-];
-
-export const INITIAL_HOLERITES: Holerite[] = [
-  {
-    id: 'hol-1',
-    colaboradorId: 'colab-1', // Marcos Silva
-    mesReferencia: '10/2026',
-    dataEmissao: '2026-11-05',
-    salarioBase: 2450.00,
-    itens: [
-      { id: 'item-1', codigo: '001', descricao: 'Salário Base Contratual', referencia: '220h', tipo: 'provento', valor: 2450.00 },
-      { id: 'item-2', codigo: '105', descricao: 'Gratificação de Posto (Líder)', referencia: '30%', tipo: 'provento', valor: 735.00 },
-      { id: 'item-3', codigo: '120', descricao: 'Horas Extras 50% (FT Cobertura)', referencia: '12h', tipo: 'provento', valor: 200.45 },
-      { id: 'item-4', codigo: '150', descricao: 'Auxílio Alimentação / VR', referencia: '22d', tipo: 'provento', valor: 550.00 },
-      { id: 'item-5', codigo: '501', descricao: 'INSS s/ Folha de Pagamento', referencia: '9.0%', tipo: 'desconto', valor: 286.69 },
-      { id: 'item-6', codigo: '510', descricao: 'Vale Transporte (Desconto 6%)', referencia: '6%', tipo: 'desconto', valor: 147.00 },
-      { id: 'item-7', codigo: '520', descricao: 'Adiantamento Quinzenal (Vale)', referencia: '40%', tipo: 'desconto', valor: 980.00 }
+    id: 'area-horizon-tenis',
+    condoId: 'condo-horizon',
+    name: 'Quadra de Tênis Rápida',
+    type: 'quadra',
+    startHour: '07:00',
+    endHour: '22:00',
+    slotDurationMinutes: 60,
+    capacity: 4,
+    description: 'Quadra de piso rápido com iluminação em LED profissional e arquibancada.',
+    rules: [
+      'Uso obrigatório de tênis esportivo com sola não marcante (non-marking)',
+      'Máximo de 4 atletas simultâneos por horário',
+      'Desligar refletores ao sair',
     ],
-    totalProventos: 3935.45,
-    totalDescontos: 1413.69,
-    valorLiquido: 2521.76,
-    publicado: true,
-    dataPublicacao: '2026-11-05 14:30',
-    observacoesRH: 'Competência Outubro/2026 creditada no Banco Santander.'
+    cleaningFee: 0,
+    isActive: true,
   },
   {
-    id: 'hol-2',
-    colaboradorId: 'colab-5', // Edvaldo Lima
-    mesReferencia: '10/2026',
-    dataEmissao: '2026-11-05',
-    salarioBase: 2250.00,
-    itens: [
-      { id: 'item-201', codigo: '001', descricao: 'Salário Base Contratual', referencia: '220h', tipo: 'provento', valor: 2250.00 },
-      { id: 'item-202', codigo: '121', descricao: 'Folga Trabalhada (FT Dobrada)', referencia: '24h', tipo: 'provento', valor: 409.09 },
-      { id: 'item-203', codigo: '130', descricao: 'Adicional de Assiduidade', referencia: '100%', tipo: 'provento', valor: 150.00 },
-      { id: 'item-204', codigo: '501', descricao: 'INSS s/ Folha de Pagamento', referencia: '8.5%', tipo: 'desconto', valor: 221.77 },
-      { id: 'item-205', codigo: '510', descricao: 'Vale Transporte (6%)', referencia: '6%', tipo: 'desconto', valor: 135.00 }
+    id: 'area-horizon-beach',
+    condoId: 'condo-horizon',
+    name: 'Quadra Beach Tennis & Vôlei',
+    type: 'quadra',
+    startHour: '06:00',
+    endHour: '22:00',
+    slotDurationMinutes: 60,
+    capacity: 6,
+    description: 'Quadra de areia tratada com ducha externa e iluminação noturna.',
+    rules: [
+      'Uso de ducha antes de retornar às áreas comuns do edifício',
+      'Proibido copos ou garrafas de vidro na área de areia',
     ],
-    totalProventos: 2809.09,
-    totalDescontos: 356.77,
-    valorLiquido: 2452.32,
-    publicado: true,
-    dataPublicacao: '2026-11-05 16:00',
-    observacoesRH: 'Competência Outubro/2026 com 2 FTs computadas.'
+    cleaningFee: 0,
+    isActive: true,
+  },
+  {
+    id: 'area-horizon-academia',
+    condoId: 'condo-horizon',
+    name: 'Academia & Espaço Funcional',
+    type: 'academia',
+    startHour: '06:00',
+    endHour: '23:00',
+    slotDurationMinutes: 60,
+    capacity: 12,
+    description: 'Aparelhos modernos LifeFitness, esteiras, halteres e área livre para pilates/funcional.',
+    rules: [
+      'Uso de toalha individual obrigatório',
+      'Higienizar os equipamentos com álcool 70% após o uso',
+      'Permitido apenas maiores de 14 anos ou acompanhados',
+    ],
+    cleaningFee: 0,
+    isActive: true,
+  },
+  {
+    id: 'area-horizon-jogos',
+    condoId: 'condo-horizon',
+    name: 'Salão de Jogos & Sinuca',
+    type: 'jogos',
+    startHour: '08:00',
+    endHour: '23:00',
+    slotDurationMinutes: 60,
+    capacity: 10,
+    description: 'Mesa de sinuca oficial, pebolim, mesa de cartas e tênis de mesa.',
+    rules: [
+      'Devolver tacos e bolas para o armário da portaria',
+      'Proibido apoiar copos com bebidas nas mesas de pano',
+    ],
+    cleaningFee: 0,
+    isActive: true,
+  },
+  {
+    id: 'area-horizon-churrasq',
+    condoId: 'condo-horizon',
+    name: 'Espaço Gourmet & Churrasqueira',
+    type: 'churrasqueira',
+    startHour: '10:00',
+    endHour: '22:00',
+    slotDurationMinutes: 240, // 4 horas
+    capacity: 25,
+    description: 'Churrasqueira a carvão, chopeira, refrigerador expositor e bancada gourmet.',
+    rules: [
+      'Música ambiente permitida em volume moderado',
+      'Taxa de limpeza inclui recolhimento de lixo e higienização geral',
+    ],
+    cleaningFee: 90,
+    isActive: true,
+  },
+  {
+    id: 'area-horizon-festa',
+    condoId: 'condo-horizon',
+    name: 'Salão de Festas Nobre',
+    type: 'festa',
+    startHour: '12:00',
+    endHour: '23:00',
+    slotDurationMinutes: 360, // 6 horas
+    capacity: 80,
+    description: 'Ambiente climatizado, cozinha industrial completa, mesas, cadeiras e som embutido.',
+    rules: [
+      'Horário de silêncio rigoroso após 22h conforme regimento',
+      'Vistoria obrigatória antes e após o evento na portaria',
+    ],
+    cleaningFee: 220,
+    isActive: true,
+  },
+
+  // Parque das Palmeiras
+  {
+    id: 'area-parque-poliesp',
+    condoId: 'condo-parque',
+    name: 'Quadra Poliesportiva',
+    type: 'quadra',
+    startHour: '07:00',
+    endHour: '21:00',
+    slotDurationMinutes: 60,
+    capacity: 14,
+    description: 'Quadra com marcação para Futsal, Basquete e Handebol.',
+    rules: ['Proibido chuteira com travas'],
+    cleaningFee: 0,
+    isActive: true,
+  },
+  {
+    id: 'area-parque-academia',
+    condoId: 'condo-parque',
+    name: 'Fitness Center',
+    type: 'academia',
+    startHour: '05:30',
+    endHour: '22:30',
+    slotDurationMinutes: 60,
+    capacity: 15,
+    description: 'Equipamentos de musculação e aeróbico.',
+    rules: ['Guardar anilhas e halteres nos suportes'],
+    cleaningFee: 0,
+    isActive: true,
+  },
+  {
+    id: 'area-parque-jogos',
+    condoId: 'condo-parque',
+    name: 'Espaço Teen & Jogos',
+    type: 'jogos',
+    startHour: '09:00',
+    endHour: '22:00',
+    slotDurationMinutes: 60,
+    capacity: 8,
+    description: 'Videogames PS5, mesa de ping-pong e tabuleiro.',
+    rules: ['Controles devem ser retirados e devolvidos na portaria'],
+    cleaningFee: 0,
+    isActive: true,
+  },
+
+  // Mansões Alphaview
+  {
+    id: 'area-alpha-tenis',
+    condoId: 'condo-alphaview',
+    name: 'Quadra de Tênis Saibro',
+    type: 'quadra',
+    startHour: '06:00',
+    endHour: '22:00',
+    slotDurationMinutes: 90,
+    capacity: 4,
+    description: 'Quadra de saibro tradicional com irrigação automatizada.',
+    rules: ['Passar o vassourão após a partida'],
+    cleaningFee: 0,
+    isActive: true,
+  },
+  {
+    id: 'area-alpha-jogos',
+    condoId: 'condo-alphaview',
+    name: 'Clube House & Snooker',
+    type: 'jogos',
+    startHour: '10:00',
+    endHour: '00:00',
+    slotDurationMinutes: 120,
+    capacity: 16,
+    description: 'Mesas inglesas de sinuca e bar privativo.',
+    rules: ['Apenas maiores de 18 anos'],
+    cleaningFee: 50,
+    isActive: true,
+  },
+];
+
+export const INITIAL_UNITS: Unit[] = [
+  // Edifício Horizon Blue
+  {
+    id: 'unit-h-101',
+    condoId: 'condo-horizon',
+    number: '101',
+    block: 'Bloco A',
+    residents: [
+      { id: 'res-h-101-1', name: 'Roberto Almeida', role: 'proprietario', phone: '(21) 98877-1122', email: 'roberto.almeida@gmail.com', isResponsible: true },
+      { id: 'res-h-101-2', name: 'Luciana Almeida', role: 'proprietario', phone: '(21) 98877-1123', email: 'luciana.almeida@gmail.com', isResponsible: false },
+      { id: 'res-h-101-3', name: 'Felipe Almeida', role: 'dependente', phone: '(21) 98877-1124', email: '', isResponsible: false },
+    ],
+  },
+  {
+    id: 'unit-h-102',
+    condoId: 'condo-horizon',
+    number: '102',
+    block: 'Bloco A',
+    residents: [
+      { id: 'res-h-102-1', name: 'Fernanda Montenegro Santos', role: 'proprietario', phone: '(21) 99123-4567', email: 'fernanda.santos@uol.com.br', isResponsible: true },
+      { id: 'res-h-102-2', name: 'Pedro Santos Montenegro', role: 'dependente', phone: '(21) 99123-4568', email: '', isResponsible: false },
+    ],
+  },
+  {
+    id: 'unit-h-201',
+    condoId: 'condo-horizon',
+    number: '201',
+    block: 'Bloco A',
+    residents: [
+      { id: 'res-h-201-1', name: 'Dr. Marcelo Ribeiro', role: 'inquilino', phone: '(21) 97654-3210', email: 'marcelo.ribeiro@medicina.br', isResponsible: true },
+      { id: 'res-h-201-2', name: 'Camila Ribeiro', role: 'inquilino', phone: '(21) 97654-3211', email: 'camila.ribeiro@gmail.com', isResponsible: false },
+    ],
+  },
+  {
+    id: 'unit-h-301',
+    condoId: 'condo-horizon',
+    number: '301',
+    block: 'Bloco A',
+    residents: [
+      { id: 'res-h-301-1', name: 'Juliana Paes Correia', role: 'proprietario', phone: '(21) 98111-2233', email: 'ju.correia@design.com', isResponsible: true },
+    ],
+  },
+  {
+    id: 'unit-h-402',
+    condoId: 'condo-horizon',
+    number: '402',
+    block: 'Bloco A',
+    residents: [
+      { id: 'res-h-402-1', name: 'Carlos Eduardo Silva', role: 'proprietario', phone: '(21) 98452-1920', email: 'carlos.eduardo@outlook.com', isResponsible: true },
+      { id: 'res-h-402-2', name: 'Mariana Souza Silva', role: 'proprietario', phone: '(21) 98452-1921', email: 'mariana.silva@outlook.com', isResponsible: false },
+      { id: 'res-h-402-3', name: 'Gabriel Souza Silva', role: 'dependente', phone: '(21) 98452-1922', email: 'gabriel.silva@escola.com', isResponsible: false },
+    ],
+  },
+  {
+    id: 'unit-h-501',
+    condoId: 'condo-horizon',
+    number: '501',
+    block: 'Bloco B',
+    residents: [
+      { id: 'res-h-501-1', name: 'Thiago Castro Nogueira', role: 'inquilino', phone: '(21) 99344-5566', email: 'thiago.castro@tech.io', isResponsible: true },
+      { id: 'res-h-501-2', name: 'Beatriz Lima Castro', role: 'inquilino', phone: '(21) 99344-5567', email: 'beatriz.lima@tech.io', isResponsible: false },
+    ],
+  },
+  {
+    id: 'unit-h-502',
+    condoId: 'condo-horizon',
+    number: '502',
+    block: 'Bloco B',
+    residents: [
+      { id: 'res-h-502-1', name: 'Renato Guimarães', role: 'proprietario', phone: '(21) 99881-2233', email: 'renato.guimaraes@adv.br', isResponsible: true },
+    ],
+  },
+  {
+    id: 'unit-h-601',
+    condoId: 'condo-horizon',
+    number: '601',
+    block: 'Bloco B',
+    residents: [
+      { id: 'res-h-601-1', name: 'Paulo Henrique Mendes', role: 'proprietario', phone: '(21) 99777-8899', email: 'ph.mendes@gmail.com', isResponsible: true },
+      { id: 'res-h-601-2', name: 'Clara Mendes', role: 'dependente', phone: '(21) 99777-8890', email: '', isResponsible: false },
+    ],
+  },
+  {
+    id: 'unit-h-701',
+    condoId: 'condo-horizon',
+    number: '701',
+    block: 'Cobertura',
+    residents: [
+      { id: 'res-h-701-1', name: 'Alexandre Magno Vieira', role: 'proprietario', phone: '(21) 98222-3344', email: 'alexandre.vieira@holding.com', isResponsible: true },
+      { id: 'res-h-701-2', name: 'Sofia Vieira', role: 'proprietario', phone: '(21) 98222-3345', email: 'sofia.vieira@holding.com', isResponsible: false },
+    ],
+  },
+
+  // Parque das Palmeiras
+  {
+    id: 'unit-p-101',
+    condoId: 'condo-parque',
+    number: '101',
+    block: 'Torre Jacarandá',
+    residents: [
+      { id: 'res-p-101-1', name: 'Guilherme Siqueira', role: 'proprietario', phone: '(11) 97123-0099', email: 'guilherme@sp.gov.br', isResponsible: true },
+      { id: 'res-p-101-2', name: 'Patricia Siqueira', role: 'proprietario', phone: '(11) 97123-0098', email: 'patricia@sp.gov.br', isResponsible: false },
+    ],
+  },
+  {
+    id: 'unit-p-204',
+    condoId: 'condo-parque',
+    number: '204',
+    block: 'Torre Jacarandá',
+    residents: [
+      { id: 'res-p-204-1', name: 'Rodrigo Faro de Oliveira', role: 'inquilino', phone: '(11) 98234-1122', email: 'rodrigo.faro@empresa.com', isResponsible: true },
+    ],
+  },
+  {
+    id: 'unit-p-302',
+    condoId: 'condo-parque',
+    number: '302',
+    block: 'Torre Ipê',
+    residents: [
+      { id: 'res-p-302-1', name: 'Vanessa Camargo Costa', role: 'proprietario', phone: '(11) 99432-8877', email: 'vanessa.costa@gmail.com', isResponsible: true },
+    ],
+  },
+
+  // Mansões Alphaview
+  {
+    id: 'unit-a-05',
+    condoId: 'condo-alphaview',
+    number: 'Casa 05',
+    block: 'Alameda das Magnólias',
+    residents: [
+      { id: 'res-a-05-1', name: 'Eng. Maurício Salgado', role: 'proprietario', phone: '(11) 99991-0011', email: 'salgado@engenharia.com', isResponsible: true },
+      { id: 'res-a-05-2', name: 'Helena Salgado', role: 'proprietario', phone: '(11) 99991-0012', email: 'helena@engenharia.com', isResponsible: false },
+    ],
+  },
+  {
+    id: 'unit-a-12',
+    condoId: 'condo-alphaview',
+    number: 'Casa 12',
+    block: 'Alameda dos Ipês',
+    residents: [
+      { id: 'res-a-12-1', name: 'Dr. Leonardo Castanho', role: 'proprietario', phone: '(11) 99882-3344', email: 'leonardo@castanho.com.br', isResponsible: true },
+    ],
+  },
+];
+
+// Helper to get formatted date string for relative days (today = 0, tomorrow = +1)
+function getRelativeDate(dayOffset: number = 0): string {
+  const d = new Date();
+  d.setDate(d.getDate() + dayOffset);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export const INITIAL_RESERVATIONS: Reservation[] = [
+  // Today's reservations for Edifício Horizon Blue
+  {
+    id: 'res-1001',
+    condoId: 'condo-horizon',
+    areaId: 'area-horizon-tenis',
+    unitId: 'unit-h-402',
+    unitNumber: '402',
+    unitBlock: 'Bloco A',
+    residentId: 'res-h-402-1',
+    residentName: 'Carlos Eduardo Silva',
+    residentPhone: '(21) 98452-1920',
+    date: getRelativeDate(0),
+    startTime: '08:00',
+    endTime: '09:00',
+    status: 'concluida',
+    guestCount: 2,
+    notes: 'Treino com professor particular autorizado na portaria',
+    cleaningFee: 0,
+    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+    reservationCode: 'RES-402-9841',
+  },
+  {
+    id: 'res-1002',
+    condoId: 'condo-horizon',
+    areaId: 'area-horizon-tenis',
+    unitId: 'unit-h-101',
+    unitNumber: '101',
+    unitBlock: 'Bloco A',
+    residentId: 'res-h-101-1',
+    residentName: 'Roberto Almeida',
+    residentPhone: '(21) 98877-1122',
+    date: getRelativeDate(0),
+    startTime: '10:00',
+    endTime: '11:00',
+    status: 'confirmada',
+    guestCount: 4,
+    notes: 'Partida em duplas',
+    cleaningFee: 0,
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+    reservationCode: 'RES-101-4412',
+  },
+  {
+    id: 'res-1003',
+    condoId: 'condo-horizon',
+    areaId: 'area-horizon-tenis',
+    unitId: 'unit-h-201',
+    unitNumber: '201',
+    unitBlock: 'Bloco A',
+    residentId: 'res-h-201-1',
+    residentName: 'Dr. Marcelo Ribeiro',
+    residentPhone: '(21) 97654-3210',
+    date: getRelativeDate(0),
+    startTime: '18:00',
+    endTime: '19:00',
+    status: 'confirmada',
+    guestCount: 2,
+    notes: '',
+    cleaningFee: 0,
+    createdAt: new Date(Date.now() - 43200000).toISOString(),
+    reservationCode: 'RES-201-8391',
+  },
+  {
+    id: 'res-1004',
+    condoId: 'condo-horizon',
+    areaId: 'area-horizon-jogos',
+    unitId: 'unit-h-402',
+    unitNumber: '402',
+    unitBlock: 'Bloco A',
+    residentId: 'res-h-402-3',
+    residentName: 'Gabriel Souza Silva',
+    residentPhone: '(21) 98452-1922',
+    date: getRelativeDate(0),
+    startTime: '15:00',
+    endTime: '16:00',
+    status: 'confirmada',
+    guestCount: 3,
+    notes: 'Tênis de mesa com amigos do prédio',
+    cleaningFee: 0,
+    createdAt: new Date().toISOString(),
+    reservationCode: 'RES-402-1204',
+  },
+  {
+    id: 'res-1005',
+    condoId: 'condo-horizon',
+    areaId: 'area-horizon-churrasq',
+    unitId: 'unit-h-501',
+    unitNumber: '501',
+    unitBlock: 'Bloco B',
+    residentId: 'res-h-501-1',
+    residentName: 'Thiago Castro Nogueira',
+    residentPhone: '(21) 99344-5566',
+    date: getRelativeDate(0),
+    startTime: '18:00',
+    endTime: '22:00',
+    status: 'confirmada',
+    guestCount: 15,
+    notes: 'Comemoração familiar de aniversário',
+    cleaningFee: 90,
+    createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+    reservationCode: 'RES-501-7782',
+  },
+  // Tomorrow's reservations
+  {
+    id: 'res-1006',
+    condoId: 'condo-horizon',
+    areaId: 'area-horizon-tenis',
+    unitId: 'unit-h-701',
+    unitNumber: '701',
+    unitBlock: 'Cobertura',
+    residentId: 'res-h-701-1',
+    residentName: 'Alexandre Magno Vieira',
+    residentPhone: '(21) 98222-3344',
+    date: getRelativeDate(1),
+    startTime: '09:00',
+    endTime: '10:00',
+    status: 'confirmada',
+    guestCount: 2,
+    notes: '',
+    cleaningFee: 0,
+    createdAt: new Date().toISOString(),
+    reservationCode: 'RES-701-3099',
+  },
+  {
+    id: 'res-1007',
+    condoId: 'condo-horizon',
+    areaId: 'area-horizon-beach',
+    unitId: 'unit-h-601',
+    unitNumber: '601',
+    unitBlock: 'Bloco B',
+    residentId: 'res-h-601-1',
+    residentName: 'Paulo Henrique Mendes',
+    residentPhone: '(21) 99777-8899',
+    date: getRelativeDate(1),
+    startTime: '16:00',
+    endTime: '17:00',
+    status: 'confirmada',
+    guestCount: 4,
+    notes: '',
+    cleaningFee: 0,
+    createdAt: new Date().toISOString(),
+    reservationCode: 'RES-601-9921',
+  },
+];
+
+import { Resident as BiometricResident, AccessLog, VisitorPass, HardwareDevice } from '../types';
+
+export const INITIAL_RESIDENTS: BiometricResident[] = [
+  {
+    id: 'res_101',
+    condoId: 'condo_1',
+    name: 'Carlos Eduardo Silva',
+    unit: 'Bloco A - Apto 302',
+    block: 'Bloco A',
+    type: 'Morador',
+    status: 'Ativo',
+    document: '123.456.789-00',
+    phone: '(11) 98765-4321',
+    email: 'carlos.silva@alphaville.com.br',
+    vehiclePlate: 'BRA2E19',
+    faceEnrolled: true,
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=300',
+    accessSchedule: '24h',
+    createdAt: '2025-01-15',
+    isResponsible: true
+  },
+  {
+    id: 'res_102',
+    condoId: 'condo_1',
+    name: 'Mariana Santos Ribeiro',
+    unit: 'Bloco B - Apto 104',
+    block: 'Bloco B',
+    type: 'Morador',
+    status: 'Ativo',
+    document: '987.654.321-11',
+    phone: '(11) 97654-3210',
+    email: 'mariana.ribeiro@outlook.com',
+    vehiclePlate: 'SPX9J88',
+    faceEnrolled: true,
+    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=300',
+    accessSchedule: '24h',
+    createdAt: '2025-02-01',
+    isResponsible: true
+  },
+  {
+    id: 'res_103',
+    condoId: 'condo_1',
+    name: 'Roberto de Oliveira',
+    unit: 'Bloco A - Apto 101',
+    block: 'Bloco A',
+    type: 'Prestador',
+    status: 'Bloqueado',
+    document: '456.789.123-55',
+    phone: '(11) 91234-5678',
+    email: 'roberto.oliveira@reformas.com',
+    vehiclePlate: 'ABC1234',
+    faceEnrolled: true,
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=300',
+    accessSchedule: 'Comercial',
+    createdAt: '2025-02-10',
+    isResponsible: false
+  },
+  {
+    id: 'res_201',
+    condoId: 'condo_2',
+    name: 'Fernanda Lima Castro',
+    unit: 'Torre 1 - Apto 1502',
+    block: 'Torre 1',
+    type: 'Inquilino',
+    status: 'Ativo',
+    document: '321.654.987-22',
+    phone: '(11) 99887-7665',
+    email: 'fernanda.castro@advocacia.com',
+    vehiclePlate: 'GTW8899',
+    faceEnrolled: true,
+    avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=300',
+    accessSchedule: '24h',
+    createdAt: '2025-01-20',
+    isResponsible: true
+  }
+];
+
+export const INITIAL_ACCESS_LOGS: AccessLog[] = [
+  {
+    id: 'log_101',
+    condoId: 'condo_1',
+    residentName: 'Carlos Eduardo Silva',
+    unit: 'Bloco A - Apto 302',
+    timestamp: '15:20:12',
+    date: '31/10/2026',
+    status: 'Liberado',
+    method: 'Reconhecimento Facial',
+    gate: 'Portão Pedestre Social',
+    confidenceScore: 99.2,
+    livenessScore: 98.6,
+    photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150'
+  },
+  {
+    id: 'log_102',
+    condoId: 'condo_1',
+    residentName: 'Roberto de Oliveira',
+    unit: 'Bloco A - Apto 101',
+    timestamp: '14:45:00',
+    date: '31/10/2026',
+    status: 'Negado',
+    method: 'Reconhecimento Facial',
+    gate: 'Portão Pedestre Social',
+    reason: 'Cadastro Bloqueado pela Administração',
+    confidenceScore: 97.8,
+    livenessScore: 98.1,
+    photoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=150'
+  }
+];
+
+export const INITIAL_VISITOR_PASSES: VisitorPass[] = [
+  {
+    id: 'pass_101',
+    condoId: 'condo_1',
+    visitorName: 'Marcos Vinícius (iFood)',
+    document: '445.667.889-01',
+    unitDestination: 'Bloco A - Apto 302',
+    residentAuthorizer: 'Carlos Eduardo Silva',
+    type: 'Delivery',
+    qrCodeToken: 'PORTTO-ALPHA-DELIV-9821',
+    validUntil: 'Hoje, 16:30',
+    singleUse: true,
+    used: true,
+    status: 'Utilizado',
+    notes: 'Pedido de almoço'
+  }
+];
+
+export const INITIAL_DEVICES: HardwareDevice[] = [
+  {
+    id: 'dev_101',
+    condoId: 'condo_1',
+    name: 'Totem Facial Portaria Pedestre',
+    type: 'totem',
+    ipAddress: '192.168.10.15',
+    port: 8080,
+    status: 'online',
+    location: 'Entrada Social - Bloco A/B',
+    lastPing: 'há 10 seg',
+    pulseTimeMs: 4000
+  },
+  {
+    id: 'dev_102',
+    condoId: 'condo_1',
+    name: 'Relé IP Portão Pedestre (Fechadura Eletroímã)',
+    type: 'relay',
+    ipAddress: '192.168.10.22',
+    port: 502,
+    status: 'online',
+    location: 'Quadro de Comando Portaria',
+    lastPing: 'há 5 seg',
+    pulseTimeMs: 3500
   }
 ];
