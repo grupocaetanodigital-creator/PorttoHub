@@ -1,11 +1,6 @@
 {
-  "name": "TurnoCerto - Gestão de Postos e Escalas",
-  "description": "Plataforma de gestão operacional de postos, ponto com foto/GPS, cobertura de emergência em folga (FT) e controle financeiro de faltas.",
-  "requestFramePermissions": [
-    "camera",
-    "geolocation"
-  ],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "name": "TurnoCerto - Gestão de Escalas & Postos Mobile",
+  "description": "Plataforma mobile-first para supervisores e equipes de portaria e facilities: monitoramento de postos em tempo real, cobertura de faltas (FT rápida), gestão de condomínios com geofencing, matriz de escalas e lançamento de holerite RH.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
