@@ -20,6 +20,7 @@ import ControleFonteAcessibilidade from './ControleFonteAcessibilidade';
 import { VERSAO_BUILD_ATUAL } from '../services/versaoService';
 import BotaoNotificacoesLembretes from './BotaoNotificacoesLembretes';
 import AlertaNoCondominioTopo from './AlertaNoCondominioTopo';
+import SeletorTema from './SeletorTema';
 
 interface BarraTopoMenusProps {
   moduloId: string;
@@ -153,6 +154,9 @@ export default function BarraTopoMenus({
             onAbrirPainel={onAbrirNotificacoes}
           />
         )}
+
+        {/* SELETOR RÁPIDO DE MODO ESCURO / CLARO */}
+        <SeletorTema variante="compacto" />
 
         {/* BOTÃO DE ACESSIBILIDADE (No celular fica na barra de menu inferior) */}
         <div className="hidden sm:block shrink-0" title="Controles de Acessibilidade">
