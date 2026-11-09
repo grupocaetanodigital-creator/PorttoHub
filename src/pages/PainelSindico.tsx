@@ -856,7 +856,7 @@ export default function PainelSindico({
           >
             <div className="flex items-center justify-between mb-1">
               <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
-                <span>Prestadores</span>
+                <span>Terceiros</span>
                 {metricas.prestadoresAtivos > 0 && (
                   <span className="relative flex h-2.5 w-2.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-200 opacity-90"></span>
