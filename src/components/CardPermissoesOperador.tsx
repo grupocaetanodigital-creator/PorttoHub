@@ -20,7 +20,9 @@ import {
   Settings,
   ClipboardList,
   Layers,
-  Inbox
+  Inbox,
+  Database,
+  Check
 } from 'lucide-react';
 import {
   PermissoesModulo,
@@ -63,6 +65,35 @@ export const CardPermissoesOperador: React.FC<CardPermissoesOperadorProps> = ({
 }) => {
   const [moduloAberto, setModuloAberto] = useState<string | null>(null);
   const [buscaModulo, setBuscaModulo] = useState<string>('');
+  const [sqlCopiado, setSqlCopiado] = useState(false);
+
+  const copiarSqlPermissoes = () => {
+    const sql = `-- ==============================================================================
+-- AJUSTE DE PERMISSÕES GRANULARES DE OPERADOR NO SUPABASE (PORTTOHUB)
+-- ==============================================================================
+
+-- 1. Adiciona a coluna 'permissoes' (JSONB) na tabela public.operadores
+ALTER TABLE IF EXISTS public.operadores
+  ADD COLUMN IF NOT EXISTS permissoes JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS nivel_acesso_custom_id TEXT DEFAULT 'nivel_3',
+  ADD COLUMN IF NOT EXISTS perfil TEXT DEFAULT 'operador',
+  ADD COLUMN IF NOT EXISTS foto_url TEXT,
+  ADD COLUMN IF NOT EXISTS ativo BOOLEAN DEFAULT TRUE;
+
+-- 2. Cria índice GIN para pesquisas instantâneas de permissões
+CREATE INDEX IF NOT EXISTS idx_operadores_permissoes 
+  ON public.operadores USING gin (permissoes);
+
+-- 3. Concede permissões para as roles padrão
+GRANT SELECT, INSERT, UPDATE ON public.operadores TO authenticated, anon;
+
+-- 4. Recarrega o cache do PostgREST imediatamente
+NOTIFY pgrst, 'reload schema';`;
+
+    navigator.clipboard.writeText(sql);
+    setSqlCopiado(true);
+    setTimeout(() => setSqlCopiado(false), 3000);
+  };
 
   const modulosHabilitados = contarModulosHabilitados(permissoes);
   const totalModulos = MODULOS_DEFINICAO_RBAC.length;
@@ -185,6 +216,15 @@ export const CardPermissoesOperador: React.FC<CardPermissoesOperadorProps> = ({
             >
               Bloquear Tudo
             </button>
+            <button
+              type="button"
+              onClick={copiarSqlPermissoes}
+              className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700 hover:bg-amber-100 transition cursor-pointer flex items-center gap-1 shadow-2xs"
+              title="Copiar SQL para adicionar coluna de permissões granulares no Supabase"
+            >
+              <Database className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span>{sqlCopiado ? 'SQL Copiado!' : 'Copiar SQL Supabase'}</span>
+            </button>
           </div>
         )}
       </div>
@@ -271,23 +311,54 @@ export const CardPermissoesOperador: React.FC<CardPermissoesOperadorProps> = ({
               </div>
 
               {/* Detalhes de Ações Específicas Expandidas */}
-              {estaAberto && isAtivo && (
-                <div className="p-3 pt-1 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/40 space-y-2">
+              {estaAberto && (
+                <div className="p-3 pt-2 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/40 space-y-2">
+                  {!isAtivo && (
+                    <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-300 text-[11px]">
+                      <span>⚠️ Este módulo está <strong>desativado</strong> para este operador. Ao marcar qualquer ação abaixo, o acesso ao módulo será ativado automaticamente.</span>
+                      {!somenteLeitura && (
+                        <button
+                          type="button"
+                          onClick={() => alternarVisualizacaoModulo(mod.id)}
+                          className="px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-700 text-white font-bold shrink-0 cursor-pointer text-[10px]"
+                        >
+                          Habilitar Módulo
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center justify-between">
                     <span>Ações Permitidas Dentro do Módulo:</span>
-                    <button
-                      type="button"
-                      disabled={somenteLeitura}
-                      onClick={() => {
-                        const todas = mod.acoesEspecificas.reduce((acc, a) => ({ ...acc, [a.id]: true }), {});
-                        const clone: any = { ...permissoes };
-                        clone[mod.id] = { ...modState, ...todas, visualizar: true };
-                        onChange(clone);
-                      }}
-                      className="text-emerald-600 hover:underline cursor-pointer lowercase"
-                    >
-                      Marcar todas
-                    </button>
+                    {!somenteLeitura && (
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const todas = mod.acoesEspecificas.reduce((acc, a) => ({ ...acc, [a.id]: true }), {});
+                            const clone: any = { ...permissoes };
+                            clone[mod.id] = { ...modState, ...todas, visualizar: true };
+                            onChange(clone);
+                          }}
+                          className="text-emerald-600 hover:underline cursor-pointer lowercase"
+                        >
+                          Marcar todas
+                        </button>
+                        <span className="text-slate-300 dark:text-slate-700">|</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const zeradas = mod.acoesEspecificas.reduce((acc, a) => ({ ...acc, [a.id]: false }), {});
+                            const clone: any = { ...permissoes };
+                            clone[mod.id] = { ...modState, ...zeradas };
+                            onChange(clone);
+                          }}
+                          className="text-rose-500 hover:underline cursor-pointer lowercase"
+                        >
+                          Desmarcar todas
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">

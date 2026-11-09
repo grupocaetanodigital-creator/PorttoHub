@@ -59,7 +59,7 @@ import { salvarCacheLocal, obterCacheLocal } from './services/offlineStorageServ
 import { atualizarCacheAutonomia3Horas } from './services/offlineSyncEngine';
 import { carregarEPreaquecerEncomendas, inicializarRealtimeEncomendas } from './services/encomendasService';
 import { registrarAtividade } from './services/auditoriaService';
-import { carregarNiveisAcesso, verificarPermissao } from './services/permissoesService';
+import { carregarNiveisAcesso, verificarPermissao, obterPermissoesOperador } from './services/permissoesService';
 import { isUUID } from './services/condominioService';
 import { cachedQuery, aquecerCacheCondominio } from './services/redisCacheService';
 import { 
@@ -180,9 +180,27 @@ export default function App() {
 
   useEffect(() => {
     const handleAtualizacao = () => setVersaoPermissoes(v => v + 1);
+    const handlePermissoesOperador = (e: any) => {
+      setVersaoPermissoes(v => v + 1);
+      const detail = e.detail;
+      if (detail && operador && (detail.operadorId === operador.id || detail.login === operador.login || detail.operadorId === operador.login)) {
+        setOperador((op: any) => {
+          if (!op) return op;
+          const atualizado = { ...op, permissoes: detail.permissoes };
+          (window as any).__operadorAtivo = atualizado;
+          return atualizado;
+        });
+      }
+    };
     window.addEventListener('niveis_acesso_atualizados', handleAtualizacao);
-    return () => window.removeEventListener('niveis_acesso_atualizados', handleAtualizacao);
-  }, []);
+    window.addEventListener('permissoes_operador_atualizadas', handlePermissoesOperador as EventListener);
+    window.addEventListener('operadores_atualizados', handleAtualizacao);
+    return () => {
+      window.removeEventListener('niveis_acesso_atualizados', handleAtualizacao);
+      window.removeEventListener('permissoes_operador_atualizadas', handlePermissoesOperador as EventListener);
+      window.removeEventListener('operadores_atualizados', handleAtualizacao);
+    };
+  }, [operador]);
 
   const eSupervisorGlobal = (Number(operador?.nivel_acesso) === 2 || operador?.perfil === 'supervisor') && (!operador?.condominio_id || operador?.condominio_id === 'global' || operador?.condominio_id === 'todos');
   const eSuperAdminGlobal = (operador?.login === 'admin' || operador?.perfil === 'admin_geral' || (Number(operador?.nivel_acesso) <= 1 && (!operador?.condominio_id || operador?.condominio_id === 'global' || operador?.condominio_id === 'todos')));
@@ -209,13 +227,11 @@ export default function App() {
           const sessao = JSON.parse(sessaoRaw);
           if (sessao.operadorId) {
             const targetCondo = sessao.condominioId;
-            const opCols = 'id, condominio_id, nome, login, funcao, cargo, perfil, nivel_acesso, ativo, email, turno_padrao';
-
             // Consultas em paralelo no Supabase cortam o tempo de resposta pela metade
             const [opRes, condoRes] = await Promise.all([
               supabase
                 .from('operadores')
-                .select(opCols)
+                .select('*')
                 .eq('id', sessao.operadorId)
                 .eq('ativo', true)
                 .maybeSingle(),
@@ -229,6 +245,11 @@ export default function App() {
             ]);
 
             let opData: any = opRes.data;
+            if (opData) {
+              opData.permissoes = (opData.permissoes && typeof opData.permissoes === 'object' && Object.keys(opData.permissoes).length > 0)
+                ? opData.permissoes
+                : obterPermissoesOperador(opData);
+            }
             if (!opData && sessao.login === 'admin') {
               opData = {
                 id: 'admin_master_root',
@@ -688,6 +709,12 @@ export default function App() {
         } else {
           opData = dbData;
         }
+      }
+
+      if (opData) {
+        opData.permissoes = (opData.permissoes && typeof opData.permissoes === 'object' && Object.keys(opData.permissoes).length > 0)
+          ? opData.permissoes
+          : obterPermissoesOperador(opData);
       }
 
       if (!opData) {
@@ -1472,6 +1499,7 @@ export default function App() {
                   condominioAtivo={objCondominioSelecionado || condominio || { id: condominioAtivoId, nome: 'Condomínio Ativo' }}
                   listaCondominios={listaCondominios}
                   abaInicial={moduloAtual === 'painel_sindico' || moduloAtual === 'dashboard' ? 'resumo' : moduloAtual}
+                  featureFlags={featureFlags}
                 />
               ) : (
                 <>

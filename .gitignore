@@ -6,3 +6,5 @@ coverage/
 *.log
 .env*
 !.env.example
+*.zip
+public/assets/aistudio/*.zip

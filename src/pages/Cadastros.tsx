@@ -509,7 +509,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     setSalvandoPermissoesModal(true);
     try {
       const opId = operadorPermissoesModal.id || operadorPermissoesModal.login;
-      await salvarPermissoesOperador(opId, permissoesModalState);
+      await salvarPermissoesOperador(opId, permissoesModalState, operadorPermissoesModal.login);
       
       // Atualiza na lista de operadores
       setOperadores(prev => prev.map(o => {
@@ -810,8 +810,15 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
         if (!eAdmin) {
           opData = opData.filter(op => op.condominio_id === usuarioLogado?.condominio_id);
         }
-        setOperadores(opData);
-        salvarCacheLocal('operadores', opData, !eAdmin ? (usuarioLogado?.condominio_id || 'local') : 'global');
+        // Incorpora permissões granulares salvas no objeto de cada operador
+        const opComPermissoes = opData.map(op => ({
+          ...op,
+          permissoes: (op.permissoes && typeof op.permissoes === 'object' && Object.keys(op.permissoes).length > 0)
+            ? op.permissoes
+            : obterPermissoesOperador(op)
+        }));
+        setOperadores(opComPermissoes);
+        salvarCacheLocal('operadores', opComPermissoes, !eAdmin ? (usuarioLogado?.condominio_id || 'local') : 'global');
       }
 
       // 3. Carrega moradores isolados pelo condomínio quando não for admin global
@@ -1277,6 +1284,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           perfil: perfilStr,
           foto_url: fotoOperador || null,
           condominio_id: targetCondominioId,
+          permissoes: permissoesOperador,
           ativo: Boolean(ativoOperador)
         };
         if (senhaOperador.trim()) {
@@ -1289,6 +1297,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           .eq('id', idEdicao);
 
         if (error && (
+          error.message?.includes('permissoes') ||
           error.message?.includes('nivel_acesso_custom_id') || 
           error.message?.includes('perfil') || 
           error.message?.includes('schema cache') || 
@@ -1296,7 +1305,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           (error as any).code === '42703' ||
           (error as any).code === 'PGRST204'
         )) {
-          console.warn('Fallback: salvando operador sem colunas extras de RBAC...');
+          console.warn('Fallback: salvando operador sem colunas extras de RBAC/permissoes...');
           const fallback: any = {
             nome: nomeOperador.trim(),
             login: loginOperador.trim().toLowerCase(),
@@ -1312,18 +1321,23 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
 
         if (error) throw error;
 
-        // Persiste as permissões no storage/estado instantâneo do operador
-        await salvarPermissoesOperador(idEdicao, permissoesOperador);
+        // Persiste as permissões no storage/estado instantâneo do operador (por ID e Login)
+        await salvarPermissoesOperador(idEdicao, permissoesOperador, loginOperador.trim().toLowerCase());
 
-        // Atualiza estado local e cache sincronizado
+        // Atualiza estado local e cache sincronizado preservando as permissões granulares
         setOperadores(prev => {
-          const atualizados = prev.map(o => o.id === idEdicao ? { ...o, ...dadosAtualizacao, ativo: Boolean(ativoOperador) } : o);
+          const atualizados = prev.map(o => o.id === idEdicao ? { 
+            ...o, 
+            ...dadosAtualizacao, 
+            permissoes: permissoesOperador, 
+            ativo: Boolean(ativoOperador) 
+          } : o);
           salvarCacheLocal('operadores', atualizados, 'global');
           return atualizados;
         });
         window.dispatchEvent(new CustomEvent('operadores_atualizados'));
 
-        setMensagem({ tipo: 'sucesso', texto: 'Operador e status da conta atualizados com sucesso!' });
+        setMensagem({ tipo: 'sucesso', texto: 'Operador e permissões atualizados com sucesso!' });
       } else {
         if (!senhaOperador.trim()) {
           setMensagem({ tipo: 'erro', texto: 'Informe a senha para o novo operador.' });
@@ -1340,12 +1354,14 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           perfil: perfilStr,
           foto_url: fotoOperador || null,
           condominio_id: targetCondominioId,
+          permissoes: permissoesOperador,
           ativo: Boolean(ativoOperador)
         };
 
         let { data: opCriado, error } = await supabase.from('operadores').insert([novoOp]).select().single();
 
         if (error && (
+          error.message?.includes('permissoes') ||
           error.message?.includes('nivel_acesso_custom_id') || 
           error.message?.includes('perfil') || 
           error.message?.includes('schema cache') || 
@@ -1353,7 +1369,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           (error as any).code === '42703' ||
           (error as any).code === 'PGRST204'
         )) {
-          console.warn('Fallback: cadastrando operador sem colunas extras de RBAC...');
+          console.warn('Fallback: cadastrando operador sem colunas extras de RBAC/permissoes...');
           const fallbackOp = {
             nome: novoOp.nome,
             login: novoOp.login,
@@ -1370,16 +1386,19 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
         if (error) throw error;
 
         const opIdSalvo = opCriado?.id || novoOp.login;
-        await salvarPermissoesOperador(opIdSalvo, permissoesOperador);
+        await salvarPermissoesOperador(opIdSalvo, permissoesOperador, novoOp.login);
 
-        if (opCriado) {
-          setOperadores(prev => {
-            const atualizados = [...prev, opCriado];
-            salvarCacheLocal('operadores', atualizados, 'global');
-            return atualizados;
-          });
-          window.dispatchEvent(new CustomEvent('operadores_atualizados'));
-        }
+        const opFinalParaEstado = {
+          ...(opCriado || novoOp),
+          permissoes: permissoesOperador
+        };
+
+        setOperadores(prev => {
+          const atualizados = [...prev.filter(o => o.id !== opFinalParaEstado.id), opFinalParaEstado];
+          salvarCacheLocal('operadores', atualizados, 'global');
+          return atualizados;
+        });
+        window.dispatchEvent(new CustomEvent('operadores_atualizados'));
 
         setMensagem({ tipo: 'sucesso', texto: 'Operador cadastrado e permissões configuradas com sucesso!' });
       }

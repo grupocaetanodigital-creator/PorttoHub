@@ -684,28 +684,47 @@ export function obterPermissoesPadraoNivel(nivel: string): PermissoesModulo {
 export function obterPermissoesOperador(operador: any): PermissoesModulo {
   if (!operador) return obterPermissoesPadraoNivel('nivel_3');
 
-  // 1. Se já está no objeto do operador
+  // 1. Se já está no objeto do operador (vindo diretamente do banco ou estado sincronizado)
   if (operador.permissoes && typeof operador.permissoes === 'object' && Object.keys(operador.permissoes).length > 0) {
     return JSON.parse(JSON.stringify(operador.permissoes));
   }
 
-  // 2. Se está armazenado no localStorage específico do operador
-  const opId = operador.id || operador.login;
-  if (opId) {
+  // 2. Se está armazenado no localStorage específico do operador por ID ou Login
+  const chavesIdentificadoras = [operador.id, operador.login].filter(Boolean);
+  for (const chave of chavesIdentificadoras) {
     try {
-      const salvo = localStorage.getItem(`porttohub_operador_permissoes_${opId}`);
+      const salvo = localStorage.getItem(`porttohub_operador_permissoes_${chave}`);
       if (salvo) {
         const parsed = JSON.parse(salvo);
-        if (parsed && typeof parsed === 'object') {
+        if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
           return parsed;
         }
       }
-    } catch (e) {
-      // ignore
+    } catch {
+      // continua tentando demais chaves
     }
   }
 
-  // 3. Fallback para as permissões do nível do operador
+  // 3. Tenta localizar na lista cacheada de operadores locais
+  try {
+    const rawOps = localStorage.getItem('infport_cache_global_operadores') || localStorage.getItem('infport_cache_local_operadores');
+    if (rawOps) {
+      const parsedOps = JSON.parse(rawOps);
+      if (Array.isArray(parsedOps)) {
+        const opEncontrado = parsedOps.find(o => 
+          (operador.id && o.id === operador.id) || 
+          (operador.login && o.login?.toLowerCase() === operador.login?.toLowerCase())
+        );
+        if (opEncontrado?.permissoes && typeof opEncontrado.permissoes === 'object' && Object.keys(opEncontrado.permissoes).length > 0) {
+          return JSON.parse(JSON.stringify(opEncontrado.permissoes));
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  // 4. Fallback para as permissões do nível do operador
   const nivelStr = operador.nivel_acesso_custom_id || 
                   (operador.nivel_acesso !== undefined && operador.nivel_acesso !== null ? `nivel_${operador.nivel_acesso}` : null) ||
                   (operador.perfil ? `nivel_${operador.perfil}` : 'nivel_3');
@@ -715,30 +734,77 @@ export function obterPermissoesOperador(operador: any): PermissoesModulo {
 /**
  * Salva as permissões granulares diretamente no card do operador
  */
-export async function salvarPermissoesOperador(operadorId: string, permissoes: PermissoesModulo): Promise<boolean> {
-  if (!operadorId) return false;
+export async function salvarPermissoesOperador(
+  operadorId: string, 
+  permissoes: PermissoesModulo,
+  loginOperador?: string
+): Promise<boolean> {
+  if (!operadorId && !loginOperador) return false;
+
+  const chavePrincipal = operadorId || loginOperador || '';
 
   try {
-    // 1. Salva localmente para resposta instantânea
-    localStorage.setItem(`porttohub_operador_permissoes_${operadorId}`, JSON.stringify(permissoes));
+    // 1. Salva localmente para resposta instantânea (por ID e por Login para máxima confiabilidade)
+    if (operadorId) {
+      localStorage.setItem(`porttohub_operador_permissoes_${operadorId}`, JSON.stringify(permissoes));
+    }
+    if (loginOperador) {
+      localStorage.setItem(`porttohub_operador_permissoes_${loginOperador.toLowerCase()}`, JSON.stringify(permissoes));
+    }
+
+    // 2. Atualiza no cache de operadores do localStorage se existir
+    try {
+      const chavesCache = ['infport_cache_global_operadores', 'infport_cache_local_operadores'];
+      for (const k of chavesCache) {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const ops = JSON.parse(raw);
+          if (Array.isArray(ops)) {
+            const atualizados = ops.map(o => {
+              if ((operadorId && o.id === operadorId) || (loginOperador && o.login?.toLowerCase() === loginOperador.toLowerCase())) {
+                return { ...o, permissoes };
+              }
+              return o;
+            });
+            localStorage.setItem(k, JSON.stringify(atualizados));
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
     
-    // 2. Notifica componentes e o App para atualizar operador logado se for ele
+    // 3. Notifica componentes e o App para atualizar operador logado instantaneamente se for ele
     window.dispatchEvent(new CustomEvent('permissoes_operador_atualizadas', {
-      detail: { operadorId, permissoes }
+      detail: { operadorId, login: loginOperador, permissoes }
     }));
 
-    // 3. Persiste no banco Supabase se a coluna 'permissoes' estiver disponível
+    // 4. Persiste no banco Supabase se a coluna 'permissoes' estiver disponível
     try {
-      if (isUUID(operadorId)) {
-        await supabase
+      let updateRes;
+      if (operadorId && isUUID(operadorId)) {
+        updateRes = await supabase
           .from('operadores')
           .update({ permissoes } as any)
           .eq('id', operadorId);
-      } else {
-        await supabase
+      } else if (loginOperador) {
+        updateRes = await supabase
           .from('operadores')
           .update({ permissoes } as any)
-          .eq('login', operadorId);
+          .eq('login', loginOperador.toLowerCase());
+      } else if (operadorId) {
+        updateRes = await supabase
+          .from('operadores')
+          .update({ permissoes } as any)
+          .eq('login', operadorId.toLowerCase());
+      }
+
+      if (updateRes && updateRes.error) {
+        if (updateRes.error.code === 'PGRST204' || updateRes.error.message?.includes('permissoes')) {
+          console.warn('Aviso: Coluna "permissoes" ainda não existe na tabela operadores no Supabase. Execute o script SQL no Supabase para persistência remota.');
+        } else {
+          console.warn('Persistindo permissões no Supabase:', updateRes.error.message);
+        }
       }
     } catch (errSupabase) {
       console.warn('Persistindo permissões no Supabase (fallback ativo):', errSupabase);
@@ -873,6 +939,34 @@ export function resolverAcaoEmPermissoesModulo(permissoesModulo: any, modKey: st
   if (modKey === 'historico_absoluto') {
     if (acao === 'ver_feed' || acao === 'ver_metricas' || acao === 'exportar_csv') return permissoesModulo[acao] ?? permissoesModulo.visualizar;
     if (acao === 'limpar_dados' || acao === 'excluir') return permissoesModulo.limpar_dados ?? permissoesModulo.excluir;
+  }
+
+  if (modKey === 'materiais') {
+    if (acao === 'cadastrar_equipamentos' || acao === 'criar' || acao === 'cadastrar') return permissoesModulo.cadastrar_equipamentos ?? permissoesModulo.criar;
+    if (acao === 'alterar_status') return permissoesModulo.alterar_status ?? permissoesModulo.editar ?? true;
+    if (acao === 'editar') return permissoesModulo.editar;
+    if (acao === 'excluir') return permissoesModulo.excluir;
+  }
+
+  if (modKey === 'reservas') {
+    if (acao === 'criar' || acao === 'solicitar') return permissoesModulo.criar ?? true;
+    if (acao === 'aprovar' || acao === 'recusar') return permissoesModulo.aprovar ?? permissoesModulo.editar;
+    if (acao === 'cancelar') return permissoesModulo.cancelar ?? permissoesModulo.excluir;
+    if (acao === 'gerenciar_areas') return permissoesModulo.gerenciar_areas ?? permissoesModulo.editar;
+    if (acao === 'vistoria') return permissoesModulo.vistoria ?? permissoesModulo.editar ?? true;
+  }
+
+  if (modKey === 'controle_acesso') {
+    if (acao === 'liberar_entrada' || acao === 'entrada' || acao === 'criar') return permissoesModulo.liberar_entrada ?? permissoesModulo.criar ?? true;
+    if (acao === 'registrar_saida' || acao === 'saida') return permissoesModulo.registrar_saida ?? permissoesModulo.editar ?? true;
+    if (acao === 'bloquear' || acao === 'blacklist') return permissoesModulo.bloquear ?? permissoesModulo.editar;
+    if (acao === 'gerar_passe_qr' || acao === 'passe_qr') return permissoesModulo.gerar_passe_qr ?? permissoesModulo.criar ?? true;
+    if (acao === 'configurar_portoes' || acao === 'portoes') return permissoesModulo.configurar_portoes ?? permissoesModulo.editar;
+  }
+
+  if (modKey === 'configuracoes') {
+    if (acao === 'gerenciar_niveis') return permissoesModulo.gerenciar_niveis ?? permissoesModulo.editar;
+    if (acao === 'feature_flags') return permissoesModulo.feature_flags ?? permissoesModulo.editar;
   }
 
   // 3. Fallback genérico: se for ação de criação e tiver 'criar', ou edição e tiver 'editar'

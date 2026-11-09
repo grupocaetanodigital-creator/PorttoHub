@@ -500,6 +500,7 @@ CREATE TABLE IF NOT EXISTS public.operadores (
   turno_padrao TEXT DEFAULT 'Diurno',
   nivel_acesso INTEGER DEFAULT 3,
   nivel_acesso_custom_id TEXT DEFAULT 'nivel_3',
+  permissoes JSONB DEFAULT '{}'::jsonb,
   foto_url TEXT,
   ativo BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -517,10 +518,13 @@ ALTER TABLE IF EXISTS public.operadores
   ADD COLUMN IF NOT EXISTS turno_padrao TEXT DEFAULT 'Diurno',
   ADD COLUMN IF NOT EXISTS nivel_acesso INTEGER DEFAULT 3,
   ADD COLUMN IF NOT EXISTS nivel_acesso_custom_id TEXT DEFAULT 'nivel_3',
+  ADD COLUMN IF NOT EXISTS permissoes JSONB DEFAULT '{}'::jsonb,
   ADD COLUMN IF NOT EXISTS foto_url TEXT,
   ADD COLUMN IF NOT EXISTS ativo BOOLEAN DEFAULT TRUE,
   ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_operadores_permissoes ON public.operadores USING gin (permissoes);
 
 -- 5. TABELA: entregadores
 CREATE TABLE IF NOT EXISTS public.entregadores (

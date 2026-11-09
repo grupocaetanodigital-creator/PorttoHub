@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../services/supabase';
 import { registrarAtividade } from '../services/auditoriaService';
+import { carregarModulosCondominio, isModuloAtivo } from '../services/modulosService';
 import { 
   ShieldCheck, 
   Package, 
@@ -13,27 +14,19 @@ import {
   History, 
   Search, 
   RefreshCw, 
-  Calendar, 
-  Clock, 
-  Eye, 
   Building2, 
   CheckCircle2, 
   AlertTriangle, 
   User, 
-  FileSpreadsheet, 
-  Filter, 
   Download,
   ChevronRight,
   Sparkles,
   Camera,
   MapPin,
   Wrench,
-  ClipboardList,
   Plus,
-  FileText,
-  Check,
-  MessageSquare,
-  X
+  Layers,
+  Boxes
 } from 'lucide-react';
 
 interface PainelSindicoProps {
@@ -41,23 +34,29 @@ interface PainelSindicoProps {
   condominioAtivo: any;
   listaCondominios?: any[];
   abaInicial?: string;
+  featureFlags?: Record<string, any>;
 }
 
 export default function PainelSindico({
   usuarioLogado,
   condominioAtivo,
   listaCondominios = [],
-  abaInicial = 'resumo'
+  abaInicial = 'resumo',
+  featureFlags
 }: PainelSindicoProps) {
   const [abaAtiva, setAbaAtiva] = useState<string>(abaInicial);
   const [loading, setLoading] = useState(false);
-  const [filtroPeriodo, setFiltroPeriodo] = useState<'hoje' | '7dias' | '30dias' | 'todos'>('hoje');
+  const [flagsLoading, setFlagsLoading] = useState(false);
   const [buscaTexto, setBuscaTexto] = useState('');
+  const [ultimaAtualizacao, setUltimaAtualizacao] = useState<Date>(new Date());
 
   // Identificador do condomínio selecionado
   const [condominioFiltro, setCondominioFiltro] = useState<string>(
-    condominioAtivo?.id || (listaCondominios[0]?.id || '')
+    usuarioLogado?.condominio_id || condominioAtivo?.id || (listaCondominios[0]?.id || '')
   );
+
+  // Feature Flags específicas do condomínio em visualização
+  const [flagsAtivas, setFlagsAtivas] = useState<Record<string, any>>(featureFlags || {});
 
   // Estados dos Dados para Consulta
   const [encomendas, setEncomendas] = useState<any[]>([]);
@@ -98,80 +97,213 @@ export default function PainelSindico({
 
   const [feedbackMensagem, setFeedbackMensagem] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null);
 
+  // Helper para verificar se um módulo está habilitado para o condomínio atual
+  const moduloHabilitado = (moduloKey: string): boolean => {
+    return isModuloAtivo(moduloKey, flagsAtivas);
+  };
+
   // Sincroniza condomínio se mudar na prop
   useEffect(() => {
-    if (condominioAtivo?.id) {
+    if (condominioAtivo?.id && condominioAtivo.id !== condominioFiltro) {
       setCondominioFiltro(condominioAtivo.id);
     }
   }, [condominioAtivo?.id]);
 
-  // Carrega todos os dados do condomínio para consulta
+  // Carrega as feature flags do condomínio selecionado
+  const carregarFlagsDoCondominio = async (idCondo: string) => {
+    if (!idCondo) return;
+    setFlagsLoading(true);
+    try {
+      const flags = await carregarModulosCondominio(idCondo);
+      setFlagsAtivas(flags || {});
+    } catch (e) {
+      console.warn('Erro ao carregar flags do condomínio:', e);
+      if (featureFlags) {
+        setFlagsAtivas(featureFlags);
+      }
+    } finally {
+      setFlagsLoading(false);
+    }
+  };
+
+  // Disparar carga de flags e dados quando condomínio selecionado mudar
+  useEffect(() => {
+    const idCondo = condominioFiltro || usuarioLogado?.condominio_id || condominioAtivo?.id;
+    if (idCondo) {
+      carregarFlagsDoCondominio(idCondo);
+    }
+  }, [condominioFiltro]);
+
+  // Se a aba selecionada for de um módulo que não está ativo, redireciona para 'resumo'
+  useEffect(() => {
+    if (abaAtiva === 'resumo') return;
+
+    const mapaModuloAba: Record<string, string> = {
+      encomendas: 'encomendas',
+      ocorrencias: 'ocorrencias',
+      manutencao: 'manutencao',
+      rondas: 'rondas',
+      chaves: 'chaves',
+      prestadores: 'prestadores',
+      passagens: 'passagem',
+      custodia: 'custodia',
+      materiais: 'materiais',
+      historico: 'historico_absoluto'
+    };
+
+    const moduloAlvo = mapaModuloAba[abaAtiva];
+    if (moduloAlvo && !moduloHabilitado(moduloAlvo)) {
+      setAbaAtiva('resumo');
+    }
+  }, [flagsAtivas, abaAtiva]);
+
+  // Carrega todos os dados do condomínio para consulta, SOMENTE DOS MÓDULOS HABILITADOS
   const carregarDadosSindico = async () => {
     setLoading(true);
-    const idCondo = usuarioLogado?.condominio_id || condominioAtivo?.id || condominioFiltro;
+    const idCondo = condominioFiltro || usuarioLogado?.condominio_id || condominioAtivo?.id;
 
     try {
-      // Projeções estritas de colunas para eliminar tráfego de Egress (sem fotos, base64 ou jsonb volumosos)
-      // 1. Encomendas
-      let qEnc = supabase.from('encomendas_itens').select('id, condominio_id, status, created_at, destinatario, bloco, unidade, data_recebimento, data_retirada').order('created_at', { ascending: false }).limit(60);
-      if (idCondo) qEnc = qEnc.eq('condominio_id', idCondo);
-      const { data: dataEnc } = await qEnc;
-      setEncomendas(dataEnc || []);
+      // 1. Encomendas (mod02_gestao_encomendas)
+      if (moduloHabilitado('encomendas')) {
+        let qEnc = supabase
+          .from('encomendas_itens')
+          .select('id, condominio_id, status, created_at, destinatario, morador_nome, bloco, unidade, data_recebimento, data_retirada, data_hora_retirada, codigo_barras, codigo_rastreio, local_armazenamento, retirado_por, foto_etiqueta_url, foto_etiqueta')
+          .order('created_at', { ascending: false })
+          .limit(100);
+        if (idCondo) qEnc = qEnc.eq('condominio_id', idCondo);
+        const { data: dataEnc } = await qEnc;
+        setEncomendas(dataEnc || []);
+      } else {
+        setEncomendas([]);
+      }
 
-      // 2. Ocorrências
-      let qOcorr = supabase.from('ocorrencias').select('id, condominio_id, titulo, gravidade, status, created_at, data_hora').order('created_at', { ascending: false }).limit(50);
-      if (idCondo) qOcorr = qOcorr.eq('condominio_id', idCondo);
-      const { data: dataOcorr } = await qOcorr;
-      setOcorrencias(dataOcorr || []);
+      // 2. Ocorrências (mod08_livro_ocorrencias)
+      if (moduloHabilitado('ocorrencias')) {
+        let qOcorr = supabase
+          .from('ocorrencias')
+          .select('id, condominio_id, titulo, prioridade, gravidade, status, created_at, data_hora, tipo, unidade_bloco, unidade, bloco, operador_nome, foto_url, descricao')
+          .order('created_at', { ascending: false })
+          .limit(80);
+        if (idCondo) qOcorr = qOcorr.eq('condominio_id', idCondo);
+        const { data: dataOcorr } = await qOcorr;
+        setOcorrencias(dataOcorr || []);
+      } else {
+        setOcorrencias([]);
+      }
 
-      // 3. Rondas Execução
-      let qRondas = supabase.from('rondas_execucao').select('id, condominio_id, hora_inicio, hora_fim, status, created_at').order('created_at', { ascending: false }).limit(50);
-      if (idCondo) qRondas = qRondas.eq('condominio_id', idCondo);
-      const { data: dataRondas } = await qRondas;
-      setRondas(dataRondas || []);
+      // 3. Rondas Execução (mod07_gestao_ronda)
+      if (moduloHabilitado('rondas')) {
+        let qRondas = supabase
+          .from('rondas_execucao')
+          .select('id, condominio_id, operador_id, operador_nome, status, data_inicio, data_fim, hora_inicio, hora_fim, pontos_totais, pontos_lidos, observacoes, created_at')
+          .order('created_at', { ascending: false })
+          .limit(60);
+        if (idCondo) qRondas = qRondas.eq('condominio_id', idCondo);
+        const { data: dataRondas } = await qRondas;
+        setRondas(dataRondas || []);
+      } else {
+        setRondas([]);
+      }
 
-      // 4. Chaves
-      let qChaves = supabase.from('chaves').select('id, condominio_id, codigo_chave, nome_chave, status, localizacao').order('codigo_chave', { ascending: true }).limit(50);
-      if (idCondo) qChaves = qChaves.eq('condominio_id', idCondo);
-      const { data: dataChaves } = await qChaves;
-      setChaves(dataChaves || []);
+      // 4. Chaves (mod05_quadro_chaves)
+      if (moduloHabilitado('chaves')) {
+        let qChaves = supabase
+          .from('chaves')
+          .select('id, condominio_id, codigo_chave, nome_chave, status, localizacao, setor, bloco, unidade, observacoes, created_at')
+          .order('codigo_chave', { ascending: true })
+          .limit(100);
+        if (idCondo) qChaves = qChaves.eq('condominio_id', idCondo);
+        const { data: dataChaves } = await qChaves;
+        setChaves(dataChaves || []);
+      } else {
+        setChaves([]);
+      }
 
-      // 5. Prestadores
-      let qPrest = supabase.from('prestadores').select('id, condominio_id, nome_profissional, status_acesso, created_at, perfil_acesso, unidade, bloco').order('created_at', { ascending: false }).limit(50);
-      if (idCondo) qPrest = qPrest.eq('condominio_id', idCondo);
-      const { data: dataPrest } = await qPrest;
-      setPrestadores(dataPrest || []);
+      // 5. Prestadores (mod10_prestadores_servico)
+      if (moduloHabilitado('prestadores')) {
+        let qPrest = supabase
+          .from('prestadores')
+          .select('id, condominio_id, nome_profissional, status_acesso, created_at, perfil_acesso, unidade, bloco, empresa, documento, cracha_atribuido, data_hora_entrada, data_hora_saida, foto_rosto, foto_documento')
+          .order('created_at', { ascending: false })
+          .limit(80);
+        if (idCondo) qPrest = qPrest.eq('condominio_id', idCondo);
+        const { data: dataPrest } = await qPrest;
+        setPrestadores(dataPrest || []);
+      } else {
+        setPrestadores([]);
+      }
 
-      // 6. Passagens de Posto
-      let qPass = supabase.from('passagens_posto').select('id, condominio_id, data_passagem, turno, status, created_at, operador_sainte_nome, operador_entrante_nome').order('created_at', { ascending: false }).limit(30);
-      if (idCondo) qPass = qPass.eq('condominio_id', idCondo);
-      const { data: dataPass } = await qPass;
-      setPassagens(dataPass || []);
+      // 6. Passagens de Posto (mod09_passagem_posto)
+      if (moduloHabilitado('passagem')) {
+        let qPass = supabase
+          .from('passagens_posto')
+          .select('id, condominio_id, data_passagem, turno, status, created_at, data_hora_troca, operador_sainte_nome, operador_entrante_nome, operador_sai_nome, operador_entra_nome, resumo_encomendas_retidas, resumo_chaves_retiradas, resumo_rondas_cumpridas, observacoes, pendencias')
+          .order('created_at', { ascending: false })
+          .limit(40);
+        if (idCondo) qPass = qPass.eq('condominio_id', idCondo);
+        const { data: dataPass } = await qPass;
+        setPassagens(dataPass || []);
+      } else {
+        setPassagens([]);
+      }
 
-      // 7. Custódia
-      let qCust = supabase.from('custodia').select('id, condominio_id, status, created_at, descricao, codigo_custodia, fluxo').order('created_at', { ascending: false }).limit(40);
-      if (idCondo) qCust = qCust.eq('condominio_id', idCondo);
-      const { data: dataCust } = await qCust;
-      setCustodia(dataCust || []);
+      // 7. Custódia (mod03_custodia_itens)
+      if (moduloHabilitado('custodia')) {
+        let qCust = supabase
+          .from('custodia')
+          .select('id, condominio_id, status, created_at, descricao, codigo, codigo_custodia, fluxo, origem, destino, deixado_por, recebedor_nome, data_hora_entrada, data_hora_saida, local_armazenamento, foto_url, foto_entrada_url, foto_saida_url')
+          .order('created_at', { ascending: false })
+          .limit(60);
+        if (idCondo) qCust = qCust.eq('condominio_id', idCondo);
+        const { data: dataCust } = await qCust;
+        setCustodia(dataCust || []);
+      } else {
+        setCustodia([]);
+      }
 
-      // 8. Histórico Absoluto
-      let qHist = supabase.from('historico_absoluto').select('id, condominio_id, modulo, acao, descricao, criado_em, operador_nome').order('criado_em', { ascending: false }).limit(50);
-      if (idCondo) qHist = qHist.eq('condominio_id', idCondo);
-      const { data: dataHist } = await qHist;
-      setHistorico(dataHist || []);
+      // 8. Histórico Absoluto (mod12_historico_absoluto)
+      if (moduloHabilitado('historico_absoluto')) {
+        let qHist = supabase
+          .from('historico_absoluto')
+          .select('id, condominio_id, modulo, acao, descricao, criado_em, operador_nome')
+          .order('criado_em', { ascending: false })
+          .limit(80);
+        if (idCondo) qHist = qHist.eq('condominio_id', idCondo);
+        const { data: dataHist } = await qHist;
+        setHistorico(dataHist || []);
+      } else {
+        setHistorico([]);
+      }
 
-      // 9. Materiais
-      let qMat = supabase.from('materiais_posto').select('id, condominio_id, nome, quantidade, status, categoria').order('nome', { ascending: true }).limit(50);
-      if (idCondo) qMat = qMat.eq('condominio_id', idCondo);
-      const { data: dataMat } = await qMat;
-      setMateriais(dataMat || []);
+      // 9. Materiais (mod04_materiais_posto)
+      if (moduloHabilitado('materiais')) {
+        let qMat = supabase
+          .from('materiais_posto')
+          .select('id, condominio_id, nome, quantidade, status, estado, categoria, condicao, observacao')
+          .order('nome', { ascending: true })
+          .limit(80);
+        if (idCondo) qMat = qMat.eq('condominio_id', idCondo);
+        const { data: dataMat } = await qMat;
+        setMateriais(dataMat || []);
+      } else {
+        setMateriais([]);
+      }
 
-      // 10. Manutenções
-      let qMan = supabase.from('chamados_manutencao').select('id, condominio_id, titulo, status, prioridade, created_at, setor').order('created_at', { ascending: false }).limit(40);
-      if (idCondo) qMan = qMan.eq('condominio_id', idCondo);
-      const { data: dataMan } = await qMan;
-      setManutencoes(dataMan || []);
+      // 10. Manutenções (mod06_gestao_manutencao)
+      if (moduloHabilitado('manutencao')) {
+        let qMan = supabase
+          .from('chamados_manutencao')
+          .select('id, condominio_id, titulo, status, prioridade, created_at, setor, localizacao, categoria, descricao, foto_antes_url, foto_depois_url, operador_abertura')
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (idCondo) qMan = qMan.eq('condominio_id', idCondo);
+        const { data: dataMan } = await qMan;
+        setManutencoes(dataMan || []);
+      } else {
+        setManutencoes([]);
+      }
 
+      setUltimaAtualizacao(new Date());
     } catch (err: any) {
       console.warn('Erro ao carregar dados do síndico:', err.message);
     } finally {
@@ -185,8 +317,7 @@ export default function PainelSindico({
     const handleSync = () => carregarDadosSindico();
     window.addEventListener('infport_sincronizar_dados_global', handleSync);
 
-    // Canal Realtime do Síndico com NOME ESTÁTICO e escuta direcionada
-    const idCondo = usuarioLogado?.condominio_id || condominioAtivo?.id || condominioFiltro || 'global';
+    const idCondo = condominioFiltro || usuarioLogado?.condominio_id || condominioAtivo?.id || 'global';
     const canal = supabase
       .channel(`sindico_realtime_${idCondo}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ocorrencias' }, () => {
@@ -195,37 +326,91 @@ export default function PainelSindico({
       .on('postgres_changes', { event: '*', schema: 'public', table: 'chamados_manutencao' }, () => {
         carregarDadosSindico();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'encomendas_itens' }, () => {
+        carregarDadosSindico();
+      })
       .subscribe();
 
     return () => {
       window.removeEventListener('infport_sincronizar_dados_global', handleSync);
       supabase.removeChannel(canal);
     };
-  }, [condominioFiltro]);
+  }, [condominioFiltro, flagsAtivas]);
 
-  // Cálculos de Indicadores Executivos
+  // Cálculos de Indicadores Executivos com tratamento de sinônimos e normalização de maiúsculas/minúsculas
   const metricas = useMemo(() => {
     const hojeStr = new Date().toISOString().slice(0, 10);
 
-    const retidas = encomendas.filter(e => e.status !== 'entregue').length;
-    const entreguesHoje = encomendas.filter(e => e.status === 'entregue' && e.data_hora_retirada?.startsWith(hojeStr)).length;
+    // Encomendas: status pode vir como 'entregue', 'ENTREGUE', 'retido', 'RETIDO', etc.
+    const retidas = encomendas.filter(e => {
+      const s = String(e.status || '').toUpperCase();
+      return s !== 'ENTREGUE' && s !== 'CANCELADO' && s !== 'DEVOLVIDO';
+    }).length;
+
+    const entreguesHoje = encomendas.filter(e => {
+      const s = String(e.status || '').toUpperCase();
+      const dtRetirada = String(e.data_hora_retirada || e.data_retirada || '');
+      const dtCriado = String(e.created_at || '');
+      return s === 'ENTREGUE' && (dtRetirada.startsWith(hojeStr) || (!dtRetirada && dtCriado.startsWith(hojeStr)));
+    }).length;
     
-    const chavesRetiradas = chaves.filter(c => c.status === 'RETIRADA').length;
-    const chavesDisponiveis = chaves.filter(c => c.status !== 'RETIRADA').length;
+    // Chaves: status 'RETIRADA', 'EM_USO', 'Disponível', etc.
+    const chavesRetiradas = chaves.filter(c => {
+      const s = String(c.status || '').toUpperCase();
+      return s === 'RETIRADA' || s === 'EM_USO' || s === 'FORA' || s === 'EM USO';
+    }).length;
+    const chavesDisponiveis = chaves.filter(c => {
+      const s = String(c.status || '').toUpperCase();
+      return s !== 'RETIRADA' && s !== 'EM_USO' && s !== 'FORA' && s !== 'EM USO';
+    }).length;
 
-    const prestadoresAtivos = prestadores.filter(p => p.status_acesso === 'AUTORIZADO' || p.status_acesso === 'EM_ANDAMENTO').length;
+    // Prestadores presentes agora (status AUTORIZADO/EM_ANDAMENTO e sem data_hora_saida)
+    const prestadoresAtivos = prestadores.filter(p => {
+      const s = String(p.status_acesso || '').toUpperCase();
+      const dentro = s === 'AUTORIZADO' || s === 'EM_ANDAMENTO' || s === 'DENTRO' || s === 'PRESENTE';
+      return dentro && !p.data_hora_saida;
+    }).length;
     
-    const rondasHoje = rondas.filter(r => r.created_at?.startsWith(hojeStr));
-    const rondasConcluidas = rondasHoje.filter(r => r.status === 'FINALIZADA').length;
+    // Rondas hoje
+    const rondasHoje = rondas.filter(r => {
+      const dt = String(r.data_inicio || r.hora_inicio || r.created_at || '');
+      return dt.startsWith(hojeStr);
+    });
+    const rondasConcluidas = rondasHoje.filter(r => {
+      const s = String(r.status || '').toUpperCase();
+      return s === 'FINALIZADA' || s === 'CONCLUIDA' || Boolean(r.data_fim || r.hora_fim);
+    }).length;
 
-    const ocorrenciasHoje = ocorrencias.filter(o => o.created_at?.startsWith(hojeStr)).length;
-    const ocorrenciasUrgentes = ocorrencias.filter(o => o.prioridade === 'Urgente' || o.prioridade === 'Alta').length;
+    // Ocorrências hoje e prioritárias
+    const ocorrenciasHoje = ocorrencias.filter(o => {
+      const dt = String(o.created_at || o.data_hora || '');
+      return dt.startsWith(hojeStr);
+    }).length;
 
-    const custodiaAtiva = custodia.filter(c => c.status === 'GUARDADO').length;
+    const ocorrenciasUrgentes = ocorrencias.filter(o => {
+      const prio = String(o.prioridade || o.gravidade || '').toUpperCase();
+      const st = String(o.status || '').toUpperCase();
+      const isUrgente = prio.includes('URG') || prio.includes('ALT') || prio.includes('CRIT');
+      return isUrgente && st !== 'RESOLVIDO' && st !== 'CONCLUIDO';
+    }).length;
 
-    const materiaisAvaria = materiais.filter(m => m.estado !== 'Perfeito').length;
+    // Custódia ativa
+    const custodiaAtiva = custodia.filter(c => {
+      const s = String(c.status || '').toUpperCase();
+      return s === 'GUARDADO' || s === 'RETIDO' || s === 'EM_CUSTODIA' || s === 'PENDENTE';
+    }).length;
 
-    const manutencoesAbertas = manutencoes.filter(m => m.status === 'Aberto' || m.status === 'Em Andamento').length;
+    // Materiais com avaria ou manutenção
+    const materiaisAvaria = materiais.filter(m => {
+      const est = String(m.estado || m.status || m.condicao || '').toUpperCase();
+      return est.includes('AVARIA') || est.includes('MANUT') || est.includes('DEFEIT') || est.includes('RUIM') || est.includes('DANIFICADO');
+    }).length;
+
+    // Manutenções OS abertas
+    const manutencoesAbertas = manutencoes.filter(m => {
+      const st = String(m.status || '').toUpperCase();
+      return st === 'ABERTO' || st === 'EM_ANDAMENTO' || st === 'EM ANDAMENTO' || st === 'PENDENTE';
+    }).length;
 
     return {
       retidas,
@@ -243,6 +428,12 @@ export default function PainelSindico({
     };
   }, [encomendas, chaves, prestadores, rondas, ocorrencias, custodia, materiais, manutencoes]);
 
+  // Contagem de módulos ativos no condomínio
+  const modulosAtivosCount = useMemo(() => {
+    const lista = ['encomendas', 'chaves', 'rondas', 'prestadores', 'passagem', 'ocorrencias', 'custodia', 'materiais', 'manutencao', 'historico_absoluto'];
+    return lista.filter(k => moduloHabilitado(k)).length;
+  }, [flagsAtivas]);
+
   // Registro de nova ocorrência direta pelo Síndico
   const salvarNovaOcorrencia = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -250,7 +441,7 @@ export default function PainelSindico({
       setFeedbackMensagem({ tipo: 'erro', texto: 'Preencha o título e a descrição da ocorrência.' });
       return;
     }
-    const idCondo = usuarioLogado?.condominio_id || condominioAtivo?.id || condominioFiltro;
+    const idCondo = condominioFiltro || usuarioLogado?.condominio_id || condominioAtivo?.id;
     if (!idCondo) {
       setFeedbackMensagem({ tipo: 'erro', texto: 'Nenhum condomínio ativo selecionado.' });
       return;
@@ -263,6 +454,7 @@ export default function PainelSindico({
         descricao: formOcorrencia.descricao.trim(),
         tipo: formOcorrencia.tipo,
         prioridade: formOcorrencia.prioridade,
+        gravidade: formOcorrencia.prioridade,
         status: 'Pendente',
         foto_url: formOcorrencia.foto_url.trim() || null,
         operador_nome: `Síndico: ${usuarioLogado?.nome || usuarioLogado?.login || 'Administração'}`,
@@ -299,7 +491,7 @@ export default function PainelSindico({
       setFeedbackMensagem({ tipo: 'erro', texto: 'Preencha o título e a localização da manutenção.' });
       return;
     }
-    const idCondo = usuarioLogado?.condominio_id || condominioAtivo?.id || condominioFiltro;
+    const idCondo = condominioFiltro || usuarioLogado?.condominio_id || condominioAtivo?.id;
     if (!idCondo) {
       setFeedbackMensagem({ tipo: 'erro', texto: 'Nenhum condomínio ativo selecionado.' });
       return;
@@ -378,311 +570,430 @@ export default function PainelSindico({
         <div className="absolute right-0 top-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
         
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/30 shadow-inner">
                 <ShieldCheck className="w-6 h-6" />
               </span>
               <div>
                 <h1 className="text-xl sm:text-2xl font-black tracking-tight flex items-center gap-2">
                   Portal de Auditoria do Síndico
                 </h1>
+                <p className="text-xs text-slate-300">
+                  Visão executiva em tempo real com dados restritos aos módulos habilitados para este condomínio.
+                </p>
               </div>
             </div>
 
             <div className="flex items-center gap-3 pt-1 text-xs text-slate-300 flex-wrap">
-              <span className="flex items-center gap-1.5 font-bold text-emerald-300">
-                <Building2 className="w-4 h-4 text-emerald-400" />
-                {condoNomeAtual}
+              {/* Seletor de Condomínio se houver múltiplos */}
+              {listaCondominios.length > 1 ? (
+                <div className="flex items-center gap-1.5 bg-slate-800/80 backdrop-blur px-3 py-1.5 rounded-xl border border-emerald-500/30">
+                  <Building2 className="w-4 h-4 text-emerald-400" />
+                  <select
+                    value={condominioFiltro}
+                    onChange={(e) => setCondominioFiltro(e.target.value)}
+                    className="bg-transparent text-emerald-300 font-bold focus:outline-none cursor-pointer"
+                  >
+                    {listaCondominios.map((c) => (
+                      <option key={c.id} value={c.id} className="bg-slate-900 text-white">
+                        {c.nome}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <span className="flex items-center gap-1.5 font-bold text-emerald-300 bg-slate-800/60 px-3 py-1.5 rounded-xl border border-emerald-500/30">
+                  <Building2 className="w-4 h-4 text-emerald-400" />
+                  {condoNomeAtual}
+                </span>
+              )}
+
+              {/* Tag de módulos habilitados */}
+              <span className="flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 px-3 py-1.5 rounded-xl border border-emerald-500/40 font-bold">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                {modulosAtivosCount} Módulos Habilitados
+              </span>
+
+              {/* Timestamp de última atualização */}
+              <span className="text-[11px] text-slate-400">
+                Sincronizado: {ultimaAtualizacao.toLocaleTimeString('pt-BR')}
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap justify-end">
+            {moduloHabilitado('ocorrencias') && (
+              <button
+                onClick={() => setModalNovaOcorrencia(true)}
+                className="px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-md shadow-rose-900/50 cursor-pointer active:scale-95"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Ocorrência</span>
+              </button>
+            )}
+
+            {moduloHabilitado('manutencao') && (
+              <button
+                onClick={() => setModalNovaManutencao(true)}
+                className="px-3.5 py-2 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-md shadow-orange-900/50 cursor-pointer active:scale-95"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Chamado OS</span>
+              </button>
+            )}
+
             <button
               onClick={carregarDadosSindico}
-              disabled={loading}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs rounded-xl transition flex items-center gap-2 shadow-lg shadow-emerald-950/50 cursor-pointer active:scale-95 disabled:opacity-50"
+              disabled={loading || flagsLoading}
+              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl transition flex items-center gap-2 shadow-lg shadow-emerald-950/50 cursor-pointer active:scale-95 disabled:opacity-50"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              <span>{loading ? 'Atualizando...' : 'Atualizar Dados'}</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${loading || flagsLoading ? 'animate-spin' : ''}`} />
+              <span>{loading || flagsLoading ? 'Atualizando...' : 'Atualizar'}</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* CARDS DE INDICADORES EXECUTIVOS */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
+      {/* CARDS DE INDICADORES EXECUTIVOS - RESTRITOS AOS MÓDULOS HABILITADOS */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
         {/* Encomendas Retidas */}
-        <div 
-          onClick={() => setAbaAtiva('encomendas')}
-          className={`p-3.5 rounded-2xl border transition cursor-pointer ${
-            abaAtiva === 'encomendas' 
-              ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-600/30' 
-              : 'bg-white text-slate-800 border-slate-200 hover:border-blue-400'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">Encomendas</span>
-            <Package className="w-4 h-4 text-blue-500" />
+        {moduloHabilitado('encomendas') && (
+          <div 
+            onClick={() => setAbaAtiva('encomendas')}
+            className={`p-3.5 rounded-2xl border transition cursor-pointer select-none ${
+              abaAtiva === 'encomendas' 
+                ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-600/30 ring-2 ring-blue-400' 
+                : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 shadow-2xs'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">Encomendas</span>
+              <Package className={`w-4 h-4 ${abaAtiva === 'encomendas' ? 'text-white' : 'text-blue-500'}`} />
+            </div>
+            <div className="text-2xl font-black">{metricas.retidas}</div>
+            <div className="text-[10px] opacity-75 mt-0.5">
+              Retidas ({metricas.entreguesHoje} baixadas hoje)
+            </div>
           </div>
-          <div className="text-2xl font-black">{metricas.retidas}</div>
-          <div className="text-[10px] opacity-75 mt-0.5">
-            Retidas na portaria ({metricas.entreguesHoje} entregues hoje)
-          </div>
-        </div>
+        )}
 
-        {/* Chaves Fora */}
-        <div 
-          onClick={() => setAbaAtiva('chaves')}
-          className={`p-3.5 rounded-2xl border transition cursor-pointer ${
-            abaAtiva === 'chaves' 
-              ? 'bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-600/30' 
-              : 'bg-white text-slate-800 border-slate-200 hover:border-indigo-400'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">Chaves em Uso</span>
-            <Key className="w-4 h-4 text-indigo-500" />
+        {/* Chaves Fora / Claviculário */}
+        {moduloHabilitado('chaves') && (
+          <div 
+            onClick={() => setAbaAtiva('chaves')}
+            className={`p-3.5 rounded-2xl border transition cursor-pointer select-none ${
+              abaAtiva === 'chaves' 
+                ? 'bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-600/30 ring-2 ring-indigo-400' 
+                : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500 shadow-2xs'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">Chaves em Uso</span>
+              <Key className={`w-4 h-4 ${abaAtiva === 'chaves' ? 'text-white' : 'text-indigo-500'}`} />
+            </div>
+            <div className="text-2xl font-black">{metricas.chavesRetiradas}</div>
+            <div className="text-[10px] opacity-75 mt-0.5">
+              Fora do armário ({metricas.chavesDisponiveis} disponíveis)
+            </div>
           </div>
-          <div className="text-2xl font-black">{metricas.chavesRetiradas}</div>
-          <div className="text-[10px] opacity-75 mt-0.5">
-            Fora do claviculário ({metricas.chavesDisponiveis} disponíveis)
-          </div>
-        </div>
+        )}
 
         {/* Rondas Hoje */}
-        <div 
-          onClick={() => setAbaAtiva('rondas')}
-          className={`p-3.5 rounded-2xl border transition cursor-pointer ${
-            abaAtiva === 'rondas' 
-              ? 'bg-slate-800 text-white border-slate-700 shadow-lg' 
-              : 'bg-white text-slate-800 border-slate-200 hover:border-slate-400'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">Rondas Hoje</span>
-            <QrCode className="w-4 h-4 text-slate-600" />
+        {moduloHabilitado('rondas') && (
+          <div 
+            onClick={() => setAbaAtiva('rondas')}
+            className={`p-3.5 rounded-2xl border transition cursor-pointer select-none ${
+              abaAtiva === 'rondas' 
+                ? 'bg-slate-800 text-white border-slate-700 shadow-lg ring-2 ring-slate-400' 
+                : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-800 hover:border-slate-400 dark:hover:border-slate-600 shadow-2xs'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">Rondas Hoje</span>
+              <QrCode className={`w-4 h-4 ${abaAtiva === 'rondas' ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`} />
+            </div>
+            <div className="text-2xl font-black">{metricas.rondasConcluidas}</div>
+            <div className="text-[10px] opacity-75 mt-0.5">
+              Concluídas ({metricas.totalRondasHoje} iniciadas hoje)
+            </div>
           </div>
-          <div className="text-2xl font-black">{metricas.rondasConcluidas}</div>
-          <div className="text-[10px] opacity-75 mt-0.5">
-            Cumpridas ({metricas.totalRondasHoje} total executadas)
-          </div>
-        </div>
+        )}
 
         {/* Prestadores no Condomínio */}
-        <div 
-          onClick={() => setAbaAtiva('prestadores')}
-          className={`p-3.5 rounded-2xl border transition cursor-pointer ${
-            abaAtiva === 'prestadores' 
-              ? 'bg-amber-600 text-white border-amber-500 shadow-lg shadow-amber-600/30' 
-              : 'bg-white text-slate-800 border-slate-200 hover:border-amber-400'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">Prestadores</span>
-            <HardHat className="w-4 h-4 text-amber-500" />
+        {moduloHabilitado('prestadores') && (
+          <div 
+            onClick={() => setAbaAtiva('prestadores')}
+            className={`p-3.5 rounded-2xl border transition cursor-pointer select-none ${
+              abaAtiva === 'prestadores' 
+                ? 'bg-amber-600 text-white border-amber-500 shadow-lg shadow-amber-600/30 ring-2 ring-amber-400' 
+                : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-800 hover:border-amber-400 dark:hover:border-amber-500 shadow-2xs'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">Prestadores</span>
+              <HardHat className={`w-4 h-4 ${abaAtiva === 'prestadores' ? 'text-white' : 'text-amber-500'}`} />
+            </div>
+            <div className="text-2xl font-black">{metricas.prestadoresAtivos}</div>
+            <div className="text-[10px] opacity-75 mt-0.5">
+              Presentes no condomínio agora
+            </div>
           </div>
-          <div className="text-2xl font-black">{metricas.prestadoresAtivos}</div>
-          <div className="text-[10px] opacity-75 mt-0.5">
-            Presentes no condomínio agora
-          </div>
-        </div>
+        )}
 
         {/* Ocorrências */}
-        <div 
-          onClick={() => setAbaAtiva('ocorrencias')}
-          className={`p-3.5 rounded-2xl border transition cursor-pointer ${
-            abaAtiva === 'ocorrencias' 
-              ? 'bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-600/30' 
-              : 'bg-white text-slate-800 border-slate-200 hover:border-rose-400'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">Ocorrências</span>
-            <BookOpen className="w-4 h-4 text-rose-500" />
+        {moduloHabilitado('ocorrencias') && (
+          <div 
+            onClick={() => setAbaAtiva('ocorrencias')}
+            className={`p-3.5 rounded-2xl border transition cursor-pointer select-none ${
+              abaAtiva === 'ocorrencias' 
+                ? 'bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-600/30 ring-2 ring-rose-400' 
+                : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-800 hover:border-rose-400 dark:hover:border-rose-500 shadow-2xs'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">Ocorrências</span>
+              <BookOpen className={`w-4 h-4 ${abaAtiva === 'ocorrencias' ? 'text-white' : 'text-rose-500'}`} />
+            </div>
+            <div className="text-2xl font-black">{metricas.ocorrenciasHoje}</div>
+            <div className="text-[10px] opacity-75 mt-0.5">
+              Registradas hoje ({metricas.ocorrenciasUrgentes} prioritárias)
+            </div>
           </div>
-          <div className="text-2xl font-black">{metricas.ocorrenciasHoje}</div>
-          <div className="text-[10px] opacity-75 mt-0.5">
-            Registradas hoje ({metricas.ocorrenciasUrgentes} prioritárias)
-          </div>
-        </div>
+        )}
 
         {/* Custódia */}
-        <div 
-          onClick={() => setAbaAtiva('custodia')}
-          className={`p-3.5 rounded-2xl border transition cursor-pointer ${
-            abaAtiva === 'custodia' 
-              ? 'bg-emerald-700 text-white border-emerald-600 shadow-lg shadow-emerald-700/30' 
-              : 'bg-white text-slate-800 border-slate-200 hover:border-emerald-400'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">Custódia</span>
-            <PackageCheck className="w-4 h-4 text-emerald-600" />
+        {moduloHabilitado('custodia') && (
+          <div 
+            onClick={() => setAbaAtiva('custodia')}
+            className={`p-3.5 rounded-2xl border transition cursor-pointer select-none ${
+              abaAtiva === 'custodia' 
+                ? 'bg-emerald-700 text-white border-emerald-600 shadow-lg shadow-emerald-700/30 ring-2 ring-emerald-400' 
+                : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-800 hover:border-emerald-400 dark:hover:border-emerald-500 shadow-2xs'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">Custódia</span>
+              <PackageCheck className={`w-4 h-4 ${abaAtiva === 'custodia' ? 'text-white' : 'text-emerald-500'}`} />
+            </div>
+            <div className="text-2xl font-black">{metricas.custodiaAtiva}</div>
+            <div className="text-[10px] opacity-75 mt-0.5">
+              Itens guardados na guarita
+            </div>
           </div>
-          <div className="text-2xl font-black">{metricas.custodiaAtiva}</div>
-          <div className="text-[10px] opacity-75 mt-0.5">
-            Itens guardados na guarita
-          </div>
-        </div>
+        )}
 
         {/* Manutenções OS */}
-        <div 
-          onClick={() => setAbaAtiva('manutencao')}
-          className={`p-3.5 rounded-2xl border transition cursor-pointer ${
-            abaAtiva === 'manutencao' 
-              ? 'bg-orange-600 text-white border-orange-500 shadow-lg shadow-orange-600/30' 
-              : 'bg-white text-slate-800 border-slate-200 hover:border-orange-400'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">Manutenções</span>
-            <Wrench className="w-4 h-4 text-orange-500" />
+        {moduloHabilitado('manutencao') && (
+          <div 
+            onClick={() => setAbaAtiva('manutencao')}
+            className={`p-3.5 rounded-2xl border transition cursor-pointer select-none ${
+              abaAtiva === 'manutencao' 
+                ? 'bg-orange-600 text-white border-orange-500 shadow-lg shadow-orange-600/30 ring-2 ring-orange-400' 
+                : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-800 hover:border-orange-400 dark:hover:border-orange-500 shadow-2xs'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">Manutenções</span>
+              <Wrench className={`w-4 h-4 ${abaAtiva === 'manutencao' ? 'text-white' : 'text-orange-500'}`} />
+            </div>
+            <div className="text-2xl font-black">{metricas.manutencoesAbertas}</div>
+            <div className="text-[10px] opacity-75 mt-0.5">
+              Chamados em aberto ({manutencoes.length} total)
+            </div>
           </div>
-          <div className="text-2xl font-black">{metricas.manutencoesAbertas}</div>
-          <div className="text-[10px] opacity-75 mt-0.5">
-            Chamados OS em aberto ({manutencoes.length} total)
+        )}
+
+        {/* Materiais do Posto */}
+        {moduloHabilitado('materiais') && (
+          <div 
+            onClick={() => setAbaAtiva('materiais')}
+            className={`p-3.5 rounded-2xl border transition cursor-pointer select-none ${
+              abaAtiva === 'materiais' 
+                ? 'bg-teal-600 text-white border-teal-500 shadow-lg ring-2 ring-teal-400' 
+                : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-800 hover:border-teal-400 shadow-2xs'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">Materiais</span>
+              <Boxes className={`w-4 h-4 ${abaAtiva === 'materiais' ? 'text-white' : 'text-teal-500'}`} />
+            </div>
+            <div className="text-2xl font-black">{materiais.length}</div>
+            <div className="text-[10px] opacity-75 mt-0.5">
+              {metricas.materiaisAvaria > 0 ? `${metricas.materiaisAvaria} com avaria/atenção` : 'Todos em ordem'}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* FEEDBACK DE AÇÃO DO SÍNDICO */}
       {feedbackMensagem && (
         <div className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 text-xs font-bold transition ${
           feedbackMensagem.tipo === 'sucesso' 
-            ? 'bg-emerald-50 text-emerald-900 border-emerald-300' 
-            : 'bg-rose-50 text-rose-900 border-rose-300'
+            ? 'bg-emerald-50 text-emerald-900 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-700' 
+            : 'bg-rose-50 text-rose-900 border-rose-300 dark:bg-rose-950/40 dark:text-rose-200 dark:border-rose-700'
         }`}>
           <div className="flex items-center gap-2">
-            {feedbackMensagem.tipo === 'sucesso' ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertTriangle className="w-4 h-4 text-rose-600" />}
+            {feedbackMensagem.tipo === 'sucesso' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> : <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400" />}
             <span>{feedbackMensagem.texto}</span>
           </div>
-          <button onClick={() => setFeedbackMensagem(null)} className="text-slate-400 hover:text-slate-700">✕</button>
+          <button onClick={() => setFeedbackMensagem(null)} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">✕</button>
         </div>
       )}
 
-      {/* BARRA DE NAVEGAÇÃO DE ABAS DE CONSULTA */}
-      <div className="flex items-center gap-1.5 border-b border-slate-200 pb-2 overflow-x-auto">
+      {/* BARRA DE NAVEGAÇÃO DE ABAS - SOMENTE MÓDULOS HABILITADOS */}
+      <div className="flex items-center gap-1.5 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto">
         <button
           onClick={() => setAbaAtiva('resumo')}
           className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
             abaAtiva === 'resumo' 
-              ? 'bg-slate-900 text-white shadow-sm' 
-              : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
+              ? 'bg-slate-900 text-white shadow-sm dark:bg-emerald-600' 
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
           }`}
         >
           <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
           <span>Visão Geral do Posto</span>
         </button>
 
-        <button
-          onClick={() => setAbaAtiva('encomendas')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
-            abaAtiva === 'encomendas' 
-              ? 'bg-blue-600 text-white shadow-sm' 
-              : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
-          }`}
-        >
-          <Package className="w-3.5 h-3.5" />
-          <span>Encomendas ({encomendas.length})</span>
-        </button>
+        {moduloHabilitado('encomendas') && (
+          <button
+            onClick={() => setAbaAtiva('encomendas')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
+              abaAtiva === 'encomendas' 
+                ? 'bg-blue-600 text-white shadow-sm' 
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
+          >
+            <Package className="w-3.5 h-3.5" />
+            <span>Encomendas ({encomendas.length})</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setAbaAtiva('ocorrencias')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
-            abaAtiva === 'ocorrencias' 
-              ? 'bg-rose-600 text-white shadow-sm' 
-              : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
-          }`}
-        >
-          <BookOpen className="w-3.5 h-3.5" />
-          <span>Ocorrências ({ocorrencias.length})</span>
-        </button>
+        {moduloHabilitado('ocorrencias') && (
+          <button
+            onClick={() => setAbaAtiva('ocorrencias')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
+              abaAtiva === 'ocorrencias' 
+                ? 'bg-rose-600 text-white shadow-sm' 
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>Ocorrências ({ocorrencias.length})</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setAbaAtiva('manutencao')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
-            abaAtiva === 'manutencao' 
-              ? 'bg-orange-600 text-white shadow-sm' 
-              : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
-          }`}
-        >
-          <Wrench className="w-3.5 h-3.5" />
-          <span>Manutenções OS ({manutencoes.length})</span>
-        </button>
+        {moduloHabilitado('manutencao') && (
+          <button
+            onClick={() => setAbaAtiva('manutencao')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
+              abaAtiva === 'manutencao' 
+                ? 'bg-orange-600 text-white shadow-sm' 
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
+          >
+            <Wrench className="w-3.5 h-3.5" />
+            <span>Manutenções OS ({manutencoes.length})</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setAbaAtiva('rondas')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
-            abaAtiva === 'rondas' 
-              ? 'bg-slate-800 text-white shadow-sm' 
-              : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
-          }`}
-        >
-          <QrCode className="w-3.5 h-3.5" />
-          <span>Rondas ({rondas.length})</span>
-        </button>
+        {moduloHabilitado('rondas') && (
+          <button
+            onClick={() => setAbaAtiva('rondas')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
+              abaAtiva === 'rondas' 
+                ? 'bg-slate-800 text-white shadow-sm' 
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
+          >
+            <QrCode className="w-3.5 h-3.5" />
+            <span>Rondas ({rondas.length})</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setAbaAtiva('chaves')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
-            abaAtiva === 'chaves' 
-              ? 'bg-indigo-600 text-white shadow-sm' 
-              : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
-          }`}
-        >
-          <Key className="w-3.5 h-3.5" />
-          <span>Claviculário ({chaves.length})</span>
-        </button>
+        {moduloHabilitado('chaves') && (
+          <button
+            onClick={() => setAbaAtiva('chaves')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
+              abaAtiva === 'chaves' 
+                ? 'bg-indigo-600 text-white shadow-sm' 
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
+          >
+            <Key className="w-3.5 h-3.5" />
+            <span>Claviculário ({chaves.length})</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setAbaAtiva('prestadores')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
-            abaAtiva === 'prestadores' 
-              ? 'bg-amber-600 text-white shadow-sm' 
-              : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
-          }`}
-        >
-          <HardHat className="w-3.5 h-3.5" />
-          <span>Prestadores ({prestadores.length})</span>
-        </button>
+        {moduloHabilitado('prestadores') && (
+          <button
+            onClick={() => setAbaAtiva('prestadores')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
+              abaAtiva === 'prestadores' 
+                ? 'bg-amber-600 text-white shadow-sm' 
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
+          >
+            <HardHat className="w-3.5 h-3.5" />
+            <span>Prestadores ({prestadores.length})</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setAbaAtiva('passagens')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
-            abaAtiva === 'passagens' 
-              ? 'bg-cyan-700 text-white shadow-sm' 
-              : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
-          }`}
-        >
-          <Repeat className="w-3.5 h-3.5" />
-          <span>Trocas de Turno ({passagens.length})</span>
-        </button>
+        {moduloHabilitado('passagem') && (
+          <button
+            onClick={() => setAbaAtiva('passagens')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
+              abaAtiva === 'passagens' 
+                ? 'bg-cyan-700 text-white shadow-sm' 
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
+          >
+            <Repeat className="w-3.5 h-3.5" />
+            <span>Trocas de Turno ({passagens.length})</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setAbaAtiva('custodia')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
-            abaAtiva === 'custodia' 
-              ? 'bg-emerald-700 text-white shadow-sm' 
-              : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
-          }`}
-        >
-          <PackageCheck className="w-3.5 h-3.5" />
-          <span>Custódia ({custodia.length})</span>
-        </button>
+        {moduloHabilitado('custodia') && (
+          <button
+            onClick={() => setAbaAtiva('custodia')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
+              abaAtiva === 'custodia' 
+                ? 'bg-emerald-700 text-white shadow-sm' 
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
+          >
+            <PackageCheck className="w-3.5 h-3.5" />
+            <span>Custódia ({custodia.length})</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setAbaAtiva('historico')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
-            abaAtiva === 'historico' 
-              ? 'bg-indigo-900 text-white shadow-sm' 
-              : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
-          }`}
-        >
-          <History className="w-3.5 h-3.5" />
-          <span>Trilha de Auditoria</span>
-        </button>
+        {moduloHabilitado('materiais') && (
+          <button
+            onClick={() => setAbaAtiva('materiais')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
+              abaAtiva === 'materiais' 
+                ? 'bg-teal-700 text-white shadow-sm' 
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
+          >
+            <Boxes className="w-3.5 h-3.5" />
+            <span>Materiais ({materiais.length})</span>
+          </button>
+        )}
+
+        {moduloHabilitado('historico_absoluto') && (
+          <button
+            onClick={() => setAbaAtiva('historico')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
+              abaAtiva === 'historico' 
+                ? 'bg-indigo-900 text-white shadow-sm' 
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
+          >
+            <History className="w-3.5 h-3.5" />
+            <span>Trilha de Auditoria</span>
+          </button>
+        )}
       </div>
 
       {/* CONTEÚDO DA ABA SELECIONADA */}
@@ -690,116 +1001,208 @@ export default function PainelSindico({
       {/* 1. VISÃO GERAL EXECUTIVA */}
       {abaAtiva === 'resumo' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Card: Últimas Ocorrências com Alerta */}
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
-            <div className="flex items-center justify-between border-b pb-2">
-              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-rose-500" />
-                Últimas Ocorrências Registradas
-              </h3>
-              <button 
-                onClick={() => setAbaAtiva('ocorrencias')} 
-                className="text-xs font-bold text-rose-600 hover:underline flex items-center gap-0.5 cursor-pointer"
-              >
-                Ver Todas <ChevronRight className="w-3 h-3" />
-              </button>
-            </div>
-
-            {ocorrencias.length === 0 ? (
-              <p className="text-xs text-slate-400 py-6 text-center">Nenhuma ocorrência registrada no período.</p>
-            ) : (
-              <div className="space-y-2">
-                {ocorrencias.slice(0, 4).map((oc) => (
-                  <div key={oc.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-1">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-slate-900">{oc.titulo}</span>
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        oc.prioridade === 'Urgente' || oc.prioridade === 'Alta' 
-                          ? 'bg-rose-100 text-rose-700' 
-                          : 'bg-slate-200 text-slate-700'
-                      }`}>
-                        {oc.prioridade || 'Normal'}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-600 line-clamp-2">{oc.descricao}</p>
-                    <div className="text-[10px] text-slate-400 flex items-center gap-2 pt-0.5">
-                      <span>🕒 {new Date(oc.created_at).toLocaleString('pt-BR')}</span>
-                      {oc.unidade && <span>• Unidade: {oc.bloco ? `${oc.bloco} - ` : ''}{oc.unidade}</span>}
-                    </div>
-                  </div>
-                ))}
+          
+          {/* Card: Ocorrências Recentes (somente se habilitado) */}
+          {moduloHabilitado('ocorrencias') && (
+            <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-3">
+              <div className="flex items-center justify-between border-b dark:border-slate-800 pb-2">
+                <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-rose-500" />
+                  Últimas Ocorrências Registradas
+                </h3>
+                <button 
+                  onClick={() => setAbaAtiva('ocorrencias')} 
+                  className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                >
+                  Ver Todas <ChevronRight className="w-3 h-3" />
+                </button>
               </div>
-            )}
-          </div>
 
-          {/* Card: Últimas Passagens de Posto (Troca de Plantão) */}
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
-            <div className="flex items-center justify-between border-b pb-2">
-              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                <Repeat className="w-4 h-4 text-cyan-600" />
-                Histórico de Passagem de Posto
-              </h3>
-              <button 
-                onClick={() => setAbaAtiva('passagens')} 
-                className="text-xs font-bold text-cyan-600 hover:underline flex items-center gap-0.5 cursor-pointer"
-              >
-                Ver Todas <ChevronRight className="w-3 h-3" />
-              </button>
+              {ocorrencias.length === 0 ? (
+                <p className="text-xs text-slate-400 py-6 text-center">Nenhuma ocorrência registrada no período.</p>
+              ) : (
+                <div className="space-y-2">
+                  {ocorrencias.slice(0, 4).map((oc) => (
+                    <div key={oc.id} className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-900 dark:text-white">{oc.titulo}</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          oc.prioridade === 'Urgente' || oc.prioridade === 'Alta' || oc.gravidade === 'Alta'
+                            ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' 
+                            : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+                        }`}>
+                          {oc.prioridade || oc.gravidade || 'Normal'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">{oc.descricao}</p>
+                      <div className="text-[10px] text-slate-400 flex items-center gap-2 pt-0.5">
+                        <span>🕒 {new Date(oc.created_at).toLocaleString('pt-BR')}</span>
+                        {oc.unidade && <span>• Unidade: {oc.bloco ? `${oc.bloco} - ` : ''}{oc.unidade}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
+          )}
 
-            {passagens.length === 0 ? (
-              <p className="text-xs text-slate-400 py-6 text-center">Nenhuma troca de turno registrada ainda.</p>
-            ) : (
-              <div className="space-y-2">
-                {passagens.slice(0, 3).map((p) => (
-                  <div key={p.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-slate-800">
-                        Turno: {p.turno || 'Diurno/Noturno'}
-                      </span>
-                      <span className="text-slate-500 font-mono text-[11px]">
-                        {new Date(p.created_at || p.data_hora_troca).toLocaleString('pt-BR')}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-600 grid grid-cols-2 gap-2 bg-white p-2 rounded-lg border border-slate-100">
-                      <div><span className="text-slate-400">Saiu:</span> <strong>{p.operador_sai_nome}</strong></div>
-                      <div><span className="text-slate-400">Entrou:</span> <strong>{p.operador_entra_nome}</strong></div>
-                    </div>
-                    <div className="flex items-center gap-3 text-[10px] text-slate-500">
-                      <span>📦 Retidas: {p.resumo_encomendas_retidas ?? 0}</span>
-                      <span>🔑 Chaves Fora: {p.resumo_chaves_retiradas ?? 0}</span>
-                      <span>🛡️ Rondas: {p.resumo_rondas_cumpridas ?? 0}</span>
-                    </div>
-                  </div>
-                ))}
+          {/* Card: Passagens de Posto (somente se habilitado) */}
+          {moduloHabilitado('passagem') && (
+            <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-3">
+              <div className="flex items-center justify-between border-b dark:border-slate-800 pb-2">
+                <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                  <Repeat className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+                  Histórico de Passagem de Posto
+                </h3>
+                <button 
+                  onClick={() => setAbaAtiva('passagens')} 
+                  className="text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                >
+                  Ver Todas <ChevronRight className="w-3 h-3" />
+                </button>
               </div>
-            )}
-          </div>
+
+              {passagens.length === 0 ? (
+                <p className="text-xs text-slate-400 py-6 text-center">Nenhuma troca de turno registrada ainda.</p>
+              ) : (
+                <div className="space-y-2">
+                  {passagens.slice(0, 3).map((p) => (
+                    <div key={p.id} className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-800 dark:text-slate-200">
+                          Turno: {p.turno || 'Diurno/Noturno'}
+                        </span>
+                        <span className="text-slate-500 font-mono text-[11px]">
+                          {new Date(p.created_at || p.data_hora_troca).toLocaleString('pt-BR')}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-600 dark:text-slate-300 grid grid-cols-2 gap-2 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
+                        <div><span className="text-slate-400">Saiu:</span> <strong>{p.operador_sai_nome || p.operador_sainte_nome || 'Operador'}</strong></div>
+                        <div><span className="text-slate-400">Entrou:</span> <strong>{p.operador_entra_nome || p.operador_entrante_nome || 'Operador'}</strong></div>
+                      </div>
+                      <div className="flex items-center gap-3 text-[10px] text-slate-500">
+                        <span>📦 Retidas: {p.resumo_encomendas_retidas ?? 0}</span>
+                        <span>🔑 Chaves Fora: {p.resumo_chaves_retiradas ?? 0}</span>
+                        <span>🛡️ Rondas: {p.resumo_rondas_cumpridas ?? 0}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Card: Encomendas Pendentes de Retirada (somente se habilitado) */}
+          {moduloHabilitado('encomendas') && (
+            <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-3">
+              <div className="flex items-center justify-between border-b dark:border-slate-800 pb-2">
+                <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                  <Package className="w-4 h-4 text-blue-500" />
+                  Encomendas na Guarita ({metricas.retidas} aguardando morador)
+                </h3>
+                <button 
+                  onClick={() => setAbaAtiva('encomendas')} 
+                  className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                >
+                  Ver Todas <ChevronRight className="w-3 h-3" />
+                </button>
+              </div>
+
+              {encomendas.filter(e => String(e.status || '').toUpperCase() !== 'ENTREGUE').length === 0 ? (
+                <p className="text-xs text-slate-400 py-6 text-center">Nenhum pacote retido na portaria no momento.</p>
+              ) : (
+                <div className="space-y-2">
+                  {encomendas.filter(e => String(e.status || '').toUpperCase() !== 'ENTREGUE').slice(0, 4).map((enc) => (
+                    <div key={enc.id} className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+                      <div>
+                        <div className="font-bold text-slate-900 dark:text-white">
+                          Unidade {enc.bloco ? `${enc.bloco} - ` : ''}{enc.unidade}
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          {enc.destinatario || enc.morador_nome || 'Morador'} • {enc.codigo_barras || enc.codigo_rastreio || 'Sem código'}
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        {new Date(enc.created_at).toLocaleDateString('pt-BR')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Card: Manutenções Abertas (somente se habilitado) */}
+          {moduloHabilitado('manutencao') && (
+            <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-3">
+              <div className="flex items-center justify-between border-b dark:border-slate-800 pb-2">
+                <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                  <Wrench className="w-4 h-4 text-orange-500" />
+                  Ordens de Serviço em Aberto ({metricas.manutencoesAbertas})
+                </h3>
+                <button 
+                  onClick={() => setAbaAtiva('manutencao')} 
+                  className="text-xs font-bold text-orange-600 dark:text-orange-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                >
+                  Ver Todas <ChevronRight className="w-3 h-3" />
+                </button>
+              </div>
+
+              {manutencoes.filter(m => String(m.status || '').toUpperCase() !== 'CONCLUIDO').length === 0 ? (
+                <p className="text-xs text-slate-400 py-6 text-center">Nenhum chamado de manutenção em aberto.</p>
+              ) : (
+                <div className="space-y-2">
+                  {manutencoes.filter(m => String(m.status || '').toUpperCase() !== 'CONCLUIDO').slice(0, 4).map((man) => (
+                    <div key={man.id} className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-900 dark:text-white">{man.titulo}</span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300">
+                          {man.prioridade || 'Média'}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                        <MapPin className="w-3 h-3" /> {man.localizacao}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Mensagem caso todos os módulos de widgets estejam desativados */}
+          {!moduloHabilitado('ocorrencias') && !moduloHabilitado('passagem') && !moduloHabilitado('encomendas') && !moduloHabilitado('manutencao') && (
+            <div className="col-span-full py-12 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-2">
+              <Layers className="w-10 h-10 text-slate-400 mx-auto" />
+              <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm">Nenhum módulo operacional detalhado está ativo</h3>
+              <p className="text-xs text-slate-500">
+                Os módulos para este condomínio foram restritos pelo administrador. Selecione outra aba na barra acima para visualizar dados específicos.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
-      {/* 2. ABA: ENCOMENDAS (SOMENTE LEITURA) */}
-      {abaAtiva === 'encomendas' && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-2xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+      {/* 2. ABA: ENCOMENDAS */}
+      {abaAtiva === 'encomendas' && moduloHabilitado('encomendas') && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-4 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b dark:border-slate-800 pb-3">
             <div>
-              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
                 <Package className="w-5 h-5 text-blue-600" />
                 Consulta de Encomendas & Entregas
               </h3>
               <p className="text-xs text-slate-500">
-                Visualização de todos os pacotes retidos e baixados na portaria.
+                Visualização oficial de todos os pacotes retidos e baixados na portaria deste condomínio.
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => exportarRelatorioCsv('encomendas_sindico', encomendas)}
-                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" /> Exportar Planilha
-              </button>
-            </div>
+            <button
+              onClick={() => exportarRelatorioCsv('encomendas_sindico', encomendas)}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+            >
+              <Download className="w-3.5 h-3.5" /> Exportar Planilha
+            </button>
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
@@ -810,14 +1213,14 @@ export default function PainelSindico({
                 placeholder="Buscar por morador, unidade, bloco ou código de barras..."
                 value={buscaTexto}
                 onChange={(e) => setBuscaTexto(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-900 dark:text-white"
               />
             </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-700">
-              <thead className="bg-slate-100 text-slate-600 font-bold uppercase text-[10px] border-b">
+            <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+              <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase text-[10px] border-b dark:border-slate-700">
                 <tr>
                   <th className="p-2.5">Status</th>
                   <th className="p-2.5">Unidade/Bloco</th>
@@ -829,83 +1232,89 @@ export default function PainelSindico({
                   <th className="p-2.5 text-center">Foto</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {encomendas
                   .filter(e => {
                     if (!buscaTexto) return true;
                     const txt = buscaTexto.toLowerCase();
                     return (
-                      e.unidade?.toLowerCase().includes(txt) ||
-                      e.bloco?.toLowerCase().includes(txt) ||
-                      e.codigo_barras?.toLowerCase().includes(txt) ||
-                      e.retirado_por?.toLowerCase().includes(txt)
+                      String(e.unidade || '').toLowerCase().includes(txt) ||
+                      String(e.bloco || '').toLowerCase().includes(txt) ||
+                      String(e.codigo_barras || '').toLowerCase().includes(txt) ||
+                      String(e.codigo_rastreio || '').toLowerCase().includes(txt) ||
+                      String(e.destinatario || '').toLowerCase().includes(txt) ||
+                      String(e.morador_nome || '').toLowerCase().includes(txt) ||
+                      String(e.retirado_por || '').toLowerCase().includes(txt)
                     );
                   })
-                  .map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50">
-                      <td className="p-2.5">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          item.status === 'entregue' 
-                            ? 'bg-emerald-100 text-emerald-800' 
-                            : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {item.status === 'entregue' ? 'Entregue' : 'Retido na Portaria'}
-                        </span>
-                      </td>
-                      <td className="p-2.5 font-bold">
-                        {item.bloco ? `${item.bloco} - ` : ''}{item.unidade}
-                      </td>
-                      <td className="p-2.5">
-                        {item.morador_nome || 'Morador'}
-                      </td>
-                      <td className="p-2.5 font-mono text-[11px] text-slate-600">
-                        {item.codigo_barras || '—'}
-                      </td>
-                      <td className="p-2.5">
-                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-bold">
-                          {item.local_armazenamento || 'Bancada'}
-                        </span>
-                      </td>
-                      <td className="p-2.5 text-slate-500">
-                        {new Date(item.created_at).toLocaleString('pt-BR')}
-                      </td>
-                      <td className="p-2.5">
-                        {item.status === 'entregue' ? (
-                          <div>
-                            <span className="font-bold text-slate-800">{item.retirado_por || 'Morador'}</span>
-                            <div className="text-[10px] text-slate-400">
-                              {item.data_hora_retirada ? new Date(item.data_hora_retirada).toLocaleString('pt-BR') : ''}
+                  .map((item) => {
+                    const isEntregue = String(item.status || '').toUpperCase() === 'ENTREGUE';
+                    return (
+                      <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                        <td className="p-2.5">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            isEntregue 
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
+                              : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                          }`}>
+                            {isEntregue ? 'Entregue' : 'Retido na Portaria'}
+                          </span>
+                        </td>
+                        <td className="p-2.5 font-bold">
+                          {item.bloco ? `${item.bloco} - ` : ''}{item.unidade}
+                        </td>
+                        <td className="p-2.5">
+                          {item.destinatario || item.morador_nome || 'Morador'}
+                        </td>
+                        <td className="p-2.5 font-mono text-[11px] text-slate-600 dark:text-slate-400">
+                          {item.codigo_barras || item.codigo_rastreio || '—'}
+                        </td>
+                        <td className="p-2.5">
+                          <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-bold">
+                            {item.local_armazenamento || 'Bancada'}
+                          </span>
+                        </td>
+                        <td className="p-2.5 text-slate-500">
+                          {new Date(item.created_at).toLocaleString('pt-BR')}
+                        </td>
+                        <td className="p-2.5">
+                          {isEntregue ? (
+                            <div>
+                              <span className="font-bold text-slate-800 dark:text-slate-200">{item.retirado_por || 'Morador'}</span>
+                              <div className="text-[10px] text-slate-400">
+                                {item.data_hora_retirada || item.data_retirada ? new Date(item.data_hora_retirada || item.data_retirada).toLocaleString('pt-BR') : ''}
+                              </div>
                             </div>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400">Aguardando retirada</span>
-                        )}
-                      </td>
-                      <td className="p-2.5 text-center">
-                        {item.foto_etiqueta_url ? (
-                          <button
-                            onClick={() => setItemVisualizando({ titulo: `Foto do Pacote - Unidade ${item.unidade}`, dados: item, tipo: 'foto' })}
-                            className="p-1 hover:bg-slate-200 rounded text-blue-600 cursor-pointer"
-                            title="Ver foto do pacote"
-                          >
-                            <Camera className="w-4 h-4" />
-                          </button>
-                        ) : '—'}
-                      </td>
-                    </tr>
-                  ))}
+                          ) : (
+                            <span className="text-slate-400">Aguardando retirada</span>
+                          )}
+                        </td>
+                        <td className="p-2.5 text-center">
+                          {item.foto_etiqueta_url || item.foto_etiqueta ? (
+                            <button
+                              onClick={() => setItemVisualizando({ titulo: `Foto do Pacote - Unidade ${item.unidade}`, dados: { foto_url: item.foto_etiqueta_url || item.foto_etiqueta }, tipo: 'foto' })}
+                              className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-blue-600 dark:text-blue-400 cursor-pointer"
+                              title="Ver foto do pacote"
+                            >
+                              <Camera className="w-4 h-4" />
+                            </button>
+                          ) : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      {/* 3. ABA: OCORRÊNCIAS (LIVRO NEGRO DIGITAL) */}
-      {abaAtiva === 'ocorrencias' && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-2xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+      {/* 3. ABA: OCORRÊNCIAS */}
+      {abaAtiva === 'ocorrencias' && moduloHabilitado('ocorrencias') && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-4 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b dark:border-slate-800 pb-3">
             <div>
-              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
                 <BookOpen className="w-5 h-5 text-rose-600" />
                 Livro Digital de Ocorrências
               </h3>
@@ -924,7 +1333,7 @@ export default function PainelSindico({
 
               <button
                 onClick={() => exportarRelatorioCsv('ocorrencias_sindico', ocorrencias)}
-                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
               >
                 <Download className="w-3.5 h-3.5" /> Exportar Planilha
               </button>
@@ -932,7 +1341,7 @@ export default function PainelSindico({
           </div>
 
           {ocorrencias.length === 0 ? (
-            <div className="text-center py-10 border-2 border-dashed border-slate-200 rounded-xl space-y-2">
+            <div className="text-center py-10 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
               <BookOpen className="w-8 h-8 text-slate-400 mx-auto" />
               <p className="text-xs text-slate-500">Nenhuma ocorrência registrada para este condomínio.</p>
               <button
@@ -945,44 +1354,34 @@ export default function PainelSindico({
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {ocorrencias.map((oc) => (
-                <div key={oc.id} className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <div key={oc.id} className="p-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-900 text-sm">{oc.titulo}</span>
+                    <span className="font-bold text-slate-900 dark:text-white text-sm">{oc.titulo}</span>
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      oc.prioridade === 'Urgente' || oc.prioridade === 'Alta' 
-                        ? 'bg-rose-100 text-rose-700 border border-rose-200' 
-                        : 'bg-slate-200 text-slate-700'
+                      oc.prioridade === 'Urgente' || oc.prioridade === 'Alta' || oc.gravidade === 'Alta'
+                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-300' 
+                        : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
                     }`}>
-                      {oc.prioridade || 'Normal'}
+                      {oc.prioridade || oc.gravidade || 'Média'}
                     </span>
                   </div>
 
-                  <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
+                  <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
                     {oc.descricao}
                   </p>
 
                   {oc.foto_url && (
                     <button
-                      onClick={() => setItemVisualizando({ titulo: oc.titulo, dados: oc, tipo: 'foto' })}
-                      className="text-[11px] text-rose-700 hover:text-rose-800 font-bold flex items-center gap-1 underline cursor-pointer"
+                      onClick={() => setItemVisualizando({ titulo: `Evidência: ${oc.titulo}`, dados: { foto_url: oc.foto_url }, tipo: 'foto' })}
+                      className="text-[10px] text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1 hover:underline cursor-pointer pt-1"
                     >
-                      <Camera className="w-3.5 h-3.5" /> Ver Foto Anexada
+                      <Camera className="w-3 h-3" /> Ver Foto em Alta Resolução
                     </button>
                   )}
 
-                  <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500 flex-wrap gap-2">
-                    <div className="flex items-center gap-2">
-                      <span>🕒 {new Date(oc.created_at).toLocaleString('pt-BR')}</span>
-                      {(oc.operador_nome || oc.registrado_por) && (
-                        <span>• Por: <strong>{oc.operador_nome || oc.registrado_por}</strong></span>
-                      )}
-                    </div>
-
-                    {(oc.unidade || oc.unidade_bloco) && (
-                      <span className="font-bold text-slate-700">
-                        Unidade: {oc.unidade_bloco || `${oc.bloco ? `${oc.bloco} - ` : ''}${oc.unidade}`}
-                      </span>
-                    )}
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between text-[10px] text-slate-500">
+                    <span>{new Date(oc.created_at || oc.data_hora).toLocaleString('pt-BR')}</span>
+                    <span>Registrado por: <strong>{oc.operador_nome || 'Portaria'}</strong></span>
                   </div>
                 </div>
               ))}
@@ -991,12 +1390,12 @@ export default function PainelSindico({
         </div>
       )}
 
-      {/* ABA: MANUTENÇÃO & ORDENS DE SERVIÇO (SÍNDICO) */}
-      {abaAtiva === 'manutencao' && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-2xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+      {/* 4. ABA: MANUTENÇÕES OS */}
+      {abaAtiva === 'manutencao' && moduloHabilitado('manutencao') && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-4 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b dark:border-slate-800 pb-3">
             <div>
-              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
                 <Wrench className="w-5 h-5 text-orange-600" />
                 Gestão de Manutenção & Ordens de Serviço (OS)
               </h3>
@@ -1015,7 +1414,7 @@ export default function PainelSindico({
 
               <button
                 onClick={() => exportarRelatorioCsv('manutencoes_sindico', manutencoes)}
-                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
               >
                 <Download className="w-3.5 h-3.5" /> Exportar Planilha
               </button>
@@ -1023,7 +1422,7 @@ export default function PainelSindico({
           </div>
 
           {manutencoes.length === 0 ? (
-            <div className="text-center py-10 border-2 border-dashed border-slate-200 rounded-xl space-y-2">
+            <div className="text-center py-10 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
               <Wrench className="w-8 h-8 text-slate-400 mx-auto" />
               <p className="text-xs text-slate-500">Nenhum chamado de manutenção registrado.</p>
               <button
@@ -1036,17 +1435,17 @@ export default function PainelSindico({
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {manutencoes.map((m) => {
-                const concluido = m.status === 'Concluído';
+                const concluido = String(m.status || '').toUpperCase() === 'CONCLUIDO';
                 return (
                   <div key={m.id} className={`p-4 rounded-xl border space-y-2 transition ${
-                    concluido ? 'bg-emerald-50/40 border-emerald-200' : 'bg-white border-slate-200 shadow-2xs'
+                    concluido ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800' : 'bg-white dark:bg-slate-800/60 border-slate-200 dark:border-slate-800 shadow-2xs'
                   }`}>
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <span className="text-[10px] font-bold text-orange-600 uppercase bg-orange-50 px-2 py-0.5 rounded border border-orange-200">
+                        <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 rounded border border-orange-200 dark:border-orange-800">
                           {m.categoria || 'Geral'}
                         </span>
-                        <h4 className="font-bold text-slate-900 text-sm mt-1">{m.titulo}</h4>
+                        <h4 className="font-bold text-slate-900 dark:text-white text-sm mt-1">{m.titulo}</h4>
                         <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                           <MapPin className="w-3 h-3 text-slate-400" /> {m.localizacao}
                         </span>
@@ -1054,14 +1453,14 @@ export default function PainelSindico({
 
                       <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase ${
                         concluido 
-                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
-                          : 'bg-amber-100 text-amber-800 border border-amber-300 animate-pulse'
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300' 
+                          : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300'
                       }`}>
                         {m.status || 'Aberto'}
                       </span>
                     </div>
 
-                    <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">
+                    <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
                       {m.descricao}
                     </p>
 
@@ -1069,7 +1468,7 @@ export default function PainelSindico({
                       {m.foto_antes_url && (
                         <button
                           onClick={() => setItemVisualizando({ titulo: `Antes: ${m.titulo}`, dados: { foto_url: m.foto_antes_url }, tipo: 'foto' })}
-                          className="text-[10px] text-blue-700 hover:text-blue-800 font-bold flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 cursor-pointer"
+                          className="text-[10px] text-blue-700 dark:text-blue-300 hover:text-blue-800 font-bold flex items-center gap-1 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800 cursor-pointer"
                         >
                           <Camera className="w-3 h-3" /> Foto Antes
                         </button>
@@ -1077,14 +1476,14 @@ export default function PainelSindico({
                       {m.foto_depois_url && (
                         <button
                           onClick={() => setItemVisualizando({ titulo: `Depois: ${m.titulo}`, dados: { foto_url: m.foto_depois_url }, tipo: 'foto' })}
-                          className="text-[10px] text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 cursor-pointer"
+                          className="text-[10px] text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 font-bold flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 cursor-pointer"
                         >
                           <CheckCircle2 className="w-3 h-3" /> Foto Depois
                         </button>
                       )}
                     </div>
 
-                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px] text-slate-500">
                       <span>Criado: {new Date(m.created_at).toLocaleDateString('pt-BR')}</span>
                       <span>Por: <strong>{m.operador_abertura || 'Portaria'}</strong></span>
                     </div>
@@ -1096,13 +1495,13 @@ export default function PainelSindico({
         </div>
       )}
 
-      {/* 4. ABA: RONDAS PATRIMONIAIS */}
-      {abaAtiva === 'rondas' && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-2xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+      {/* 5. ABA: RONDAS */}
+      {abaAtiva === 'rondas' && moduloHabilitado('rondas') && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-4 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b dark:border-slate-800 pb-3">
             <div>
-              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-                <QrCode className="w-5 h-5 text-slate-800" />
+              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
+                <QrCode className="w-5 h-5 text-slate-800 dark:text-slate-200" />
                 Auditoria de Rondas Patrimoniais
               </h3>
               <p className="text-xs text-slate-500">
@@ -1112,15 +1511,15 @@ export default function PainelSindico({
 
             <button
               onClick={() => exportarRelatorioCsv('rondas_sindico', rondas)}
-              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
             >
               <Download className="w-3.5 h-3.5" /> Exportar Planilha
             </button>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-700">
-              <thead className="bg-slate-100 text-slate-600 font-bold uppercase text-[10px] border-b">
+            <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+              <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase text-[10px] border-b dark:border-slate-700">
                 <tr>
                   <th className="p-2.5">Status</th>
                   <th className="p-2.5">Operador / Vigilante</th>
@@ -1130,43 +1529,46 @@ export default function PainelSindico({
                   <th className="p-2.5">Observações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {rondas.map((r) => (
-                  <tr key={r.id} className="hover:bg-slate-50">
-                    <td className="p-2.5">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        r.status === 'FINALIZADA' 
-                          ? 'bg-emerald-100 text-emerald-800' 
-                          : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {r.status === 'FINALIZADA' ? 'Concluída' : 'Em Andamento'}
-                      </span>
-                    </td>
-                    <td className="p-2.5 font-bold">{r.operador_nome}</td>
-                    <td className="p-2.5 text-slate-500">
-                      {new Date(r.horario_inicio || r.created_at).toLocaleString('pt-BR')}
-                    </td>
-                    <td className="p-2.5 text-slate-500">
-                      {r.horario_fim ? new Date(r.horario_fim).toLocaleString('pt-BR') : '—'}
-                    </td>
-                    <td className="p-2.5 font-mono font-bold text-slate-800">
-                      {r.pontos_concluidos ?? 0} / {r.pontos_esperados ?? 0}
-                    </td>
-                    <td className="p-2.5 text-slate-500">{r.observacao_geral || 'Sem observações'}</td>
-                  </tr>
-                ))}
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {rondas.map((r) => {
+                  const isConcluida = String(r.status || '').toUpperCase() === 'FINALIZADA' || String(r.status || '').toUpperCase() === 'CONCLUIDA' || Boolean(r.data_fim || r.hora_fim);
+                  return (
+                    <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                      <td className="p-2.5">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          isConcluida 
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
+                            : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                        }`}>
+                          {isConcluida ? 'Concluída' : 'Em Andamento'}
+                        </span>
+                      </td>
+                      <td className="p-2.5 font-bold">{r.operador_nome || 'Vigilante'}</td>
+                      <td className="p-2.5 text-slate-500">
+                        {new Date(r.data_inicio || r.hora_inicio || r.created_at).toLocaleString('pt-BR')}
+                      </td>
+                      <td className="p-2.5 text-slate-500">
+                        {r.data_fim || r.hora_fim ? new Date(r.data_fim || r.hora_fim).toLocaleString('pt-BR') : '—'}
+                      </td>
+                      <td className="p-2.5 font-mono font-bold text-slate-800 dark:text-slate-200">
+                        {r.pontos_lidos ?? 0} / {r.pontos_totais ?? 0}
+                      </td>
+                      <td className="p-2.5 text-slate-500">{r.observacoes || 'Sem observações'}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      {/* 5. ABA: CLAVICULÁRIO / CHAVES */}
-      {abaAtiva === 'chaves' && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-2xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+      {/* 6. ABA: CLAVICULÁRIO / CHAVES */}
+      {abaAtiva === 'chaves' && moduloHabilitado('chaves') && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-4 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b dark:border-slate-800 pb-3">
             <div>
-              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
                 <Key className="w-5 h-5 text-indigo-600" />
                 Consulta de Claviculário Digital
               </h3>
@@ -1177,63 +1579,63 @@ export default function PainelSindico({
 
             <button
               onClick={() => exportarRelatorioCsv('chaves_sindico', chaves)}
-              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
             >
               <Download className="w-3.5 h-3.5" /> Exportar Planilha
             </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            {chaves.map((ch) => (
-              <div 
-                key={ch.id} 
-                className={`p-3.5 rounded-xl border space-y-2 transition ${
-                  ch.status === 'RETIRADA' 
-                    ? 'bg-amber-50/70 border-amber-300' 
-                    : 'bg-slate-50 border-slate-200'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-mono font-bold text-xs bg-slate-900 text-white px-2 py-0.5 rounded">
-                    Chave {ch.codigo_chave}
-                  </span>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                    ch.status === 'RETIRADA' 
-                      ? 'bg-amber-200 text-amber-900' 
-                      : 'bg-emerald-100 text-emerald-800'
-                  }`}>
-                    {ch.status === 'RETIRADA' ? 'Em Uso (Retirada)' : 'No Claviculário'}
-                  </span>
-                </div>
-
-                <div className="font-bold text-slate-900 text-xs sm:text-sm">
-                  {ch.identificacao_sala}
-                </div>
-                <div className="text-[11px] text-slate-500">
-                  Setor: {ch.setor || 'Área Comum'}
-                </div>
-
-                {ch.status === 'RETIRADA' && (
-                  <div className="pt-2 border-t border-amber-200 text-xs space-y-0.5 text-amber-950">
-                    <div><strong>Posse:</strong> {ch.posse_atual || 'Não informado'}</div>
-                    {ch.contato_posse && <div><strong>Contato:</strong> {ch.contato_posse}</div>}
-                    <div className="text-[10px] text-amber-800">
-                      Retirada às: {ch.retirado_as ? new Date(ch.retirado_as).toLocaleString('pt-BR') : '—'}
-                    </div>
+            {chaves.map((ch) => {
+              const st = String(ch.status || '').toUpperCase();
+              const isRetirada = st === 'RETIRADA' || st === 'EM_USO' || st === 'FORA' || st === 'EM USO';
+              return (
+                <div 
+                  key={ch.id} 
+                  className={`p-3.5 rounded-xl border space-y-2 transition ${
+                    isRetirada 
+                      ? 'bg-amber-50/70 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800' 
+                      : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-xs bg-slate-900 dark:bg-slate-700 text-white px-2 py-0.5 rounded">
+                      Chave {ch.codigo_chave}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      isRetirada 
+                        ? 'bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-200' 
+                        : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                    }`}>
+                      {isRetirada ? 'Em Uso (Retirada)' : 'No Claviculário'}
+                    </span>
                   </div>
-                )}
-              </div>
-            ))}
+
+                  <div className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm">
+                    {ch.nome_chave || ch.identificacao_sala || 'Chave do Posto'}
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    Setor: {ch.setor || ch.localizacao || 'Área Comum'}
+                  </div>
+
+                  {ch.observacoes && (
+                    <p className="text-[11px] text-slate-500 line-clamp-2">
+                      {ch.observacoes}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* 6. ABA: PRESTADORES & OBRAS */}
-      {abaAtiva === 'prestadores' && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-2xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+      {/* 7. ABA: PRESTADORES & OBRAS */}
+      {abaAtiva === 'prestadores' && moduloHabilitado('prestadores') && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-4 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b dark:border-slate-800 pb-3">
             <div>
-              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
                 <HardHat className="w-5 h-5 text-amber-600" />
                 Consulta de Prestadores de Serviço & Obras
               </h3>
@@ -1244,15 +1646,15 @@ export default function PainelSindico({
 
             <button
               onClick={() => exportarRelatorioCsv('prestadores_sindico', prestadores)}
-              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
             >
               <Download className="w-3.5 h-3.5" /> Exportar Planilha
             </button>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-700">
-              <thead className="bg-slate-100 text-slate-600 font-bold uppercase text-[10px] border-b">
+            <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+              <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase text-[10px] border-b dark:border-slate-700">
                 <tr>
                   <th className="p-2.5">Status</th>
                   <th className="p-2.5">Profissional / Empresa</th>
@@ -1264,59 +1666,269 @@ export default function PainelSindico({
                   <th className="p-2.5 text-center">Foto</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {prestadores.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50">
-                    <td className="p-2.5">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        p.status_acesso === 'AUTORIZADO' || p.status_acesso === 'EM_ANDAMENTO' 
-                          ? 'bg-amber-100 text-amber-900' 
-                          : 'bg-slate-100 text-slate-600'
-                      }`}>
-                        {p.status_acesso === 'AUTORIZADO' || p.status_acesso === 'EM_ANDAMENTO' 
-                          ? 'Dentro do Condomínio' 
-                          : 'Finalizado'}
-                      </span>
-                    </td>
-                    <td className="p-2.5">
-                      <div className="font-bold text-slate-900">{p.nome_profissional}</div>
-                      <div className="text-[10px] text-slate-400">{p.empresa || 'Autônomo'}</div>
-                    </td>
-                    <td className="p-2.5 font-mono text-slate-600">{p.documento}</td>
-                    <td className="p-2.5 font-bold text-amber-700">{p.cracha_atribuido || '—'}</td>
-                    <td className="p-2.5 font-bold">
-                      {p.unidade ? `${p.bloco ? `${p.bloco} - ` : ''}${p.unidade}` : 'Área Comum'}
-                    </td>
-                    <td className="p-2.5 text-slate-500">
-                      {p.data_hora_entrada ? new Date(p.data_hora_entrada).toLocaleString('pt-BR') : '—'}
-                    </td>
-                    <td className="p-2.5 text-slate-500">
-                      {p.data_hora_saida ? new Date(p.data_hora_saida).toLocaleString('pt-BR') : 'No local'}
-                    </td>
-                    <td className="p-2.5 text-center">
-                      {p.foto_documento || p.foto_rosto ? (
-                        <button
-                          onClick={() => setItemVisualizando({ 
-                            titulo: `Foto de ${p.nome_profissional}`, 
-                            dados: { foto_url: p.foto_rosto || p.foto_documento }, 
-                            tipo: 'foto' 
-                          })}
-                          className="p-1 hover:bg-slate-200 rounded text-amber-600 cursor-pointer"
-                        >
-                          <Camera className="w-4 h-4" />
-                        </button>
-                      ) : '—'}
-                    </td>
-                  </tr>
-                ))}
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {prestadores.map((p) => {
+                  const s = String(p.status_acesso || '').toUpperCase();
+                  const noLocal = (s === 'AUTORIZADO' || s === 'EM_ANDAMENTO' || s === 'DENTRO' || s === 'PRESENTE') && !p.data_hora_saida;
+                  return (
+                    <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                      <td className="p-2.5">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          noLocal 
+                            ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300' 
+                            : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                        }`}>
+                          {noLocal ? 'Dentro do Condomínio' : 'Finalizado'}
+                        </span>
+                      </td>
+                      <td className="p-2.5">
+                        <div className="font-bold text-slate-900 dark:text-white">{p.nome_profissional}</div>
+                        <div className="text-[10px] text-slate-400">{p.empresa || 'Autônomo'}</div>
+                      </td>
+                      <td className="p-2.5 font-mono text-slate-600 dark:text-slate-400">{p.documento || '—'}</td>
+                      <td className="p-2.5 font-bold text-amber-700 dark:text-amber-400">{p.cracha_atribuido || '—'}</td>
+                      <td className="p-2.5 font-bold">
+                        {p.unidade ? `${p.bloco ? `${p.bloco} - ` : ''}${p.unidade}` : 'Área Comum'}
+                      </td>
+                      <td className="p-2.5 text-slate-500">
+                        {p.data_hora_entrada ? new Date(p.data_hora_entrada).toLocaleString('pt-BR') : '—'}
+                      </td>
+                      <td className="p-2.5 text-slate-500">
+                        {p.data_hora_saida ? new Date(p.data_hora_saida).toLocaleString('pt-BR') : 'No local'}
+                      </td>
+                      <td className="p-2.5 text-center">
+                        {p.foto_documento || p.foto_rosto ? (
+                          <button
+                            onClick={() => setItemVisualizando({ 
+                              titulo: `Foto de ${p.nome_profissional}`, 
+                              dados: { foto_url: p.foto_rosto || p.foto_documento }, 
+                              tipo: 'foto' 
+                            })}
+                            className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-amber-600 dark:text-amber-400 cursor-pointer"
+                          >
+                            <Camera className="w-4 h-4" />
+                          </button>
+                        ) : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      {/* 7. ABA: HISTÓRICO ABSOLUTO & AUDITORIA TOTAL */}
-      {abaAtiva === 'historico' && (
+      {/* 8. ABA: TROCAS DE TURNO / PASSAGENS DE POSTO */}
+      {abaAtiva === 'passagens' && moduloHabilitado('passagem') && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-4 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b dark:border-slate-800 pb-3">
+            <div>
+              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
+                <Repeat className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
+                Auditoria de Trocas de Turno (Passagem de Posto)
+              </h3>
+              <p className="text-xs text-slate-500">
+                Histórico auditado de entrega e recebimento da portaria entre plantonistas.
+              </p>
+            </div>
+
+            <button
+              onClick={() => exportarRelatorioCsv('passagens_posto_sindico', passagens)}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+            >
+              <Download className="w-3.5 h-3.5" /> Exportar Planilha
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {passagens.map((p) => (
+              <div key={p.id} className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-xs border-b dark:border-slate-700 pb-2">
+                  <span className="font-bold text-slate-900 dark:text-white">
+                    Turno: {p.turno || 'Diurno/Noturno'}
+                  </span>
+                  <span className="text-slate-500 font-mono text-[11px]">
+                    {new Date(p.created_at || p.data_hora_troca).toLocaleString('pt-BR')}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                  <div>
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Operador Sainte</span>
+                    <strong className="text-slate-800 dark:text-slate-200">{p.operador_sai_nome || p.operador_sainte_nome || 'Operador'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Operador Entrante</span>
+                    <strong className="text-slate-800 dark:text-slate-200">{p.operador_entra_nome || p.operador_entrante_nome || 'Operador'}</strong>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 pt-1">
+                  <span>📦 Retidas: <strong>{p.resumo_encomendas_retidas ?? 0}</strong></span>
+                  <span>🔑 Chaves Fora: <strong>{p.resumo_chaves_retiradas ?? 0}</strong></span>
+                  <span>🛡️ Rondas: <strong>{p.resumo_rondas_cumpridas ?? 0}</strong></span>
+                </div>
+
+                {p.observacoes && (
+                  <p className="text-[11px] text-slate-500 italic bg-amber-50 dark:bg-amber-950/20 p-2 rounded border border-amber-200 dark:border-amber-800">
+                    "{p.observacoes}"
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 9. ABA: CUSTÓDIA */}
+      {abaAtiva === 'custodia' && moduloHabilitado('custodia') && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-4 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b dark:border-slate-800 pb-3">
+            <div>
+              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
+                <PackageCheck className="w-5 h-5 text-emerald-600" />
+                Consulta de Itens sob Custódia
+              </h3>
+              <p className="text-xs text-slate-500">
+                Itens, documentos, chaves e encomendas temporariamente retidos na guarita.
+              </p>
+            </div>
+
+            <button
+              onClick={() => exportarRelatorioCsv('custodia_sindico', custodia)}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+            >
+              <Download className="w-3.5 h-3.5" /> Exportar Planilha
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+              <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase text-[10px] border-b dark:border-slate-700">
+                <tr>
+                  <th className="p-2.5">Status</th>
+                  <th className="p-2.5">Código</th>
+                  <th className="p-2.5">Descrição</th>
+                  <th className="p-2.5">Origem / Deixado Por</th>
+                  <th className="p-2.5">Destinatário</th>
+                  <th className="p-2.5">Entrada</th>
+                  <th className="p-2.5">Local</th>
+                  <th className="p-2.5 text-center">Foto</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {custodia.map((c) => {
+                  const st = String(c.status || '').toUpperCase();
+                  const isGuardado = st === 'GUARDADO' || st === 'RETIDO' || st === 'EM_CUSTODIA';
+                  return (
+                    <tr key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                      <td className="p-2.5">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          isGuardado
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                            : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                        }`}>
+                          {isGuardado ? 'Guardado' : 'Entregue'}
+                        </span>
+                      </td>
+                      <td className="p-2.5 font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                        {c.codigo_custodia || c.codigo || '—'}
+                      </td>
+                      <td className="p-2.5 font-bold text-slate-900 dark:text-white">
+                        {c.descricao}
+                      </td>
+                      <td className="p-2.5">
+                        {c.origem || c.deixado_por || 'Não informado'}
+                      </td>
+                      <td className="p-2.5">
+                        {c.destino || c.destinatario || 'Morador'}
+                      </td>
+                      <td className="p-2.5 text-slate-500">
+                        {new Date(c.data_hora_entrada || c.created_at).toLocaleString('pt-BR')}
+                      </td>
+                      <td className="p-2.5 text-slate-500">
+                        {c.local_armazenamento || 'Bancada'}
+                      </td>
+                      <td className="p-2.5 text-center">
+                        {c.foto_entrada_url || c.foto_url ? (
+                          <button
+                            onClick={() => setItemVisualizando({ titulo: `Foto do Item: ${c.descricao}`, dados: { foto_url: c.foto_entrada_url || c.foto_url }, tipo: 'foto' })}
+                            className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-emerald-600 dark:text-emerald-400 cursor-pointer"
+                          >
+                            <Camera className="w-4 h-4" />
+                          </button>
+                        ) : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 10. ABA: MATERIAIS */}
+      {abaAtiva === 'materiais' && moduloHabilitado('materiais') && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-4 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b dark:border-slate-800 pb-3">
+            <div>
+              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
+                <Boxes className="w-5 h-5 text-teal-600" />
+                Inventário de Materiais do Posto
+              </h3>
+              <p className="text-xs text-slate-500">
+                Rádios comunicadores, lanternas, coletes, cones e demais equipamentos em carga no condomínio.
+              </p>
+            </div>
+
+            <button
+              onClick={() => exportarRelatorioCsv('materiais_posto_sindico', materiais)}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+            >
+              <Download className="w-3.5 h-3.5" /> Exportar Planilha
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {materiais.map((m) => {
+              const est = String(m.estado || m.status || m.condicao || '').toUpperCase();
+              const temAvaria = est.includes('AVARIA') || est.includes('MANUT') || est.includes('DEFEIT') || est.includes('RUIM');
+              return (
+                <div key={m.id} className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-950 px-2 py-0.5 rounded">
+                      {m.categoria || 'Geral'}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      temAvaria 
+                        ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300' 
+                        : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                    }`}>
+                      {m.estado || m.status || 'Perfeito'}
+                    </span>
+                  </div>
+
+                  <h4 className="font-bold text-slate-900 dark:text-white text-sm">{m.nome}</h4>
+                  <div className="text-xs text-slate-500">
+                    Quantidade em Posto: <strong className="text-slate-800 dark:text-slate-200">{m.quantidade ?? 1} un</strong>
+                  </div>
+
+                  {m.observacao && (
+                    <p className="text-[11px] text-slate-500 border-t dark:border-slate-700 pt-1">
+                      {m.observacao}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 11. ABA: HISTÓRICO ABSOLUTO */}
+      {abaAtiva === 'historico' && moduloHabilitado('historico_absoluto') && (
         <div className="bg-slate-900 text-white rounded-2xl border border-slate-800 p-4 sm:p-5 space-y-4 shadow-xl">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
             <div>
