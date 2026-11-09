@@ -796,65 +796,9 @@ export default function PainelSindico({
                 </p>
               </div>
             </div>
-
-            <div className="flex items-center gap-3 pt-1 text-xs text-slate-300 flex-wrap">
-              {/* Seletor de Condomínio se houver múltiplos */}
-              {listaCondominios.length > 1 ? (
-                <div className="flex items-center gap-1.5 bg-slate-800/80 backdrop-blur px-3 py-1.5 rounded-xl border border-emerald-500/30">
-                  <Building2 className="w-4 h-4 text-emerald-400" />
-                  <select
-                    value={condominioFiltro}
-                    onChange={(e) => setCondominioFiltro(e.target.value)}
-                    className="bg-transparent text-emerald-300 font-bold focus:outline-none cursor-pointer"
-                  >
-                    {listaCondominios.map((c) => (
-                      <option key={c.id} value={c.id} className="bg-slate-900 text-white">
-                        {c.nome}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <span className="flex items-center gap-1.5 font-bold text-emerald-300 bg-slate-800/60 px-3 py-1.5 rounded-xl border border-emerald-500/30">
-                  <Building2 className="w-4 h-4 text-emerald-400" />
-                  {condoNomeAtual}
-                </span>
-              )}
-
-              {/* Tag de módulos habilitados */}
-              <span className="flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 px-3 py-1.5 rounded-xl border border-emerald-500/40 font-bold">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                {modulosAtivosCount} Módulos Habilitados
-              </span>
-
-              {/* Timestamp de última atualização */}
-              <span className="text-[11px] text-slate-400">
-                Sincronizado: {ultimaAtualizacao.toLocaleTimeString('pt-BR')}
-              </span>
-            </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap justify-end">
-            {moduloHabilitado('ocorrencias') && (
-              <button
-                onClick={() => setModalNovaOcorrencia(true)}
-                className="px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-md shadow-rose-900/50 cursor-pointer active:scale-95"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>+ Ocorrência</span>
-              </button>
-            )}
-
-            {moduloHabilitado('manutencao') && (
-              <button
-                onClick={() => setModalNovaManutencao(true)}
-                className="px-3.5 py-2 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-md shadow-orange-900/50 cursor-pointer active:scale-95"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>+ Chamado OS</span>
-              </button>
-            )}
-
             <SeletorTema variante="compacto" />
 
             <button
