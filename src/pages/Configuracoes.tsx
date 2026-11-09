@@ -1069,6 +1069,34 @@ export default function Configuracoes({ usuarioLogado, onConfigSalva }: Configur
     setTimeout(() => setCopiadoSql(false), 3000);
   };
 
+  const nivelNum = Number(usuarioLogado?.nivel_acesso ?? usuarioLogado?.nivel ?? 3);
+  const ehNivel0 = Boolean(
+    usuarioLogado?.eSuperAdminGlobal ||
+    usuarioLogado?.login?.toLowerCase() === 'admin' ||
+    usuarioLogado?.perfil?.toLowerCase() === 'admin' ||
+    usuarioLogado?.perfil?.toLowerCase() === 'admin_geral' ||
+    nivelNum === 0 ||
+    usuarioLogado?.nivel_acesso === 0 ||
+    usuarioLogado?.nivel_acesso === '0' ||
+    usuarioLogado?.nivel_acesso_custom_id === 'nivel_0'
+  );
+
+  if (!ehNivel0) {
+    return (
+      <div className="max-w-xl mx-auto p-6 bg-white dark:bg-slate-900 rounded-2xl border border-rose-200 dark:border-rose-900/50 shadow-sm text-center space-y-4 my-8">
+        <div className="w-16 h-16 mx-auto rounded-full bg-rose-100 dark:bg-rose-950/70 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+          <ShieldAlert className="w-8 h-8" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+          Acesso Exclusivo para Nível 0 (Administrador)
+        </h2>
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          O módulo de Configurações é restrito exclusivamente ao Administrador Geral (Nível 0). Seu perfil de acesso atual não possui permissão para visualizar ou alterar estas diretrizes.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3 relative pb-6">
       <div className="bg-slate-900 text-white p-2.5 sm:p-3 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 shadow-2xs border border-slate-800">

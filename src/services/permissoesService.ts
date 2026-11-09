@@ -369,7 +369,7 @@ export const NIVEIS_PADRAO: NivelAcessoItem[] = [
       cadastros: { visualizar: true, criar: true, editar: true, excluir: false, moradores: true, visualizar_moradores: true, cadastrar_morador: true, editar_morador: true, excluir_morador: false, gerenciar_veiculos: true, vincular_tags: true, status_acesso_morador: true, exportar_moradores: true, visualizar_operadores: true, operadores: true, editar_operadores: true, alterar_senha_operador: true, excluir_operadores: false, configurar_condominio: true, condominios: false, gerenciar_niveis: false },
       moradores: { visualizar: true, criar: true, editar: true, excluir: false, adicionar: true },
       historico_absoluto: { visualizar: true, criar: false, editar: false, excluir: false, ver_feed: true, ver_metricas: true, exportar_csv: true, limpar_dados: false },
-      configuracoes: { visualizar: true, criar: false, editar: false, excluir: false, gerenciar_niveis: false, feature_flags: false },
+      configuracoes: { visualizar: false, criar: false, editar: false, excluir: false, gerenciar_niveis: false, feature_flags: false },
       bancada: { visualizar: true, criar: true, editar: true, excluir: false, lancar: true, baixa: true, zerar: true, historico: true },
       reservas: { visualizar: true, criar: true, editar: true, excluir: false, aprovar: true, cancelar: true, gerenciar_areas: true, vistoria: true },
       controle_acesso: { visualizar: true, criar: true, editar: true, excluir: false, liberar_entrada: true, registrar_saida: true, bloquear: true, gerar_passe_qr: true, configurar_portoes: true }
@@ -1049,6 +1049,19 @@ export function verificarPermissao(
   let modKey = String(modulo).toLowerCase();
   if (modKey === 'prestadores') modKey = 'autorizados';
   if (modKey === 'passagem') modKey = 'passagem_posto';
+
+  // REGRA ESTRITA DE SEGURANÇA: Módulo de Configurações é EXCLUSIVO para o Nível 0 de acesso (ADM Geral)
+  if (modKey === 'configuracoes') {
+    const ehNivel0 = Boolean(
+      operador.eSuperAdminGlobal ||
+      operador.login === 'admin' ||
+      perfilStr === 'admin' ||
+      perfilStr === 'admin_geral' ||
+      nivelNum === 0 ||
+      idNivel === 'nivel_0'
+    );
+    return ehNivel0;
+  }
 
   // REGRA ESTRITA RBAC: Perfil de Síndico (Nível 4)
   // Síndico visualiza e acessa os módulos ativos em seu login; não edita nem lança nada, EXCETO em ocorrências (onde pode criar e resolver)

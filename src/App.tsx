@@ -399,10 +399,8 @@ export default function App() {
 
   const mudarModulo = (novoModulo: string, substituir = false) => {
     let modDestino = novoModulo;
-    if (eSindico) {
-      if (modDestino === 'configuracoes' && !podeAcessarConfiguracoes) {
-        modDestino = 'painel_sindico';
-      }
+    if (modDestino === 'configuracoes' && !podeAcessarConfiguracoes) {
+      modDestino = eSindico ? 'painel_sindico' : 'dashboard';
     }
 
     if (modDestino === moduloAtual) return;
@@ -930,8 +928,20 @@ export default function App() {
     listaCondominios: listaCondominios
   } : null;
 
+  // Regra de segurança: O menu e módulo de Configurações é EXCLUSIVO para o Nível 0 de acesso (ADM Geral)
+  const ehNivel0Adm = Boolean(
+    eSuperAdminGlobal ||
+    operador?.login?.toLowerCase() === 'admin' ||
+    operador?.perfil?.toLowerCase() === 'admin' ||
+    operador?.perfil?.toLowerCase() === 'admin_geral' ||
+    Number(operador?.nivel_acesso) === 0 ||
+    operador?.nivel_acesso === 0 ||
+    operador?.nivel_acesso === '0' ||
+    (operador as any)?.nivel_acesso_custom_id === 'nivel_0'
+  );
+
   const podeAcessarConfiguracoes = Boolean(
-    !eSindico && (eAdmin || operador?.perfil === 'master' || operador?.nivel_acesso === 1 || verificarPermissao(operadorContextoGlobal, 'configuracoes', 'visualizar'))
+    !eSindico && ehNivel0Adm
   );
   const podeAcessarCadastros = Boolean(
     eAdmin || operador?.perfil === 'master' || operador?.nivel_acesso === 1 || verificarPermissao(operadorContextoGlobal, 'cadastros', 'visualizar')
