@@ -1,151 +1,77 @@
 @import "tailwindcss";
-@custom-variant dark (&:where(.dark, .dark *));
 
-@layer base {
-  body {
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  }
-  
-  html.dark body {
-    background-color: #020617;
-    color: #f8fafc;
-  }
-  
-  html.light body {
-    background-color: #f8fafc;
-    color: #0f172a;
-  }
-  
-  .font-mono, .tabular-nums {
-    font-family: 'JetBrains Mono', monospace;
-    font-variant-numeric: tabular-nums;
-  }
+@custom-variant dark (&:where(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
 
-  /* ==============================================================================
-     REGRA SUPREMA DE USABILIDADE: Todo e qualquer campo editável deve ter
-     FUNDO BRANCO (#ffffff) e FONTE PRETA (#000000), em qualquer módulo, tela ou modal.
-     ============================================================================== */
-  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="color"]),
-  select,
-  textarea,
-  [contenteditable="true"] {
-    background-color: #ffffff !important;
-    background: #ffffff !important;
-    color: #000000 !important;
-    -webkit-text-fill-color: #000000 !important;
-    border-color: #cbd5e1 !important;
-  }
+/* =========================================================================
+   REGRA INEGOCIÁVEL DE ACESSIBILIDADE E ALTO CONTRASTE (PORTTOHUB):
+   EM TODO E QUALQUER CAMPO DIGITÁVEL (INPUT, TEXTAREA, SELECT):
+   - FUNDO OBRIGATORIAMENTE BRANCO (#ffffff)
+   - FONTE/TEXTO OBRIGATORIAMENTE PRETA (#000000 / #0f172a)
+   Mesmo em Modo Escuro ou Modo Claro.
+   ========================================================================= */
+input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="range"]):not([type="color"]),
+textarea,
+select {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: #cbd5e1;
+}
 
-  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="color"]):focus,
-  select:focus,
-  textarea:focus {
-    background-color: #ffffff !important;
-    background: #ffffff !important;
-    color: #000000 !important;
-    -webkit-text-fill-color: #000000 !important;
-    outline: none !important;
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4) !important;
-  }
+/* Modo escuro: mantém rigorosamente fundo branco e texto preto com borda nítida */
+.dark input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="range"]):not([type="color"]),
+.dark textarea,
+.dark select,
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="range"]):not([type="color"]),
+[data-theme="dark"] textarea,
+[data-theme="dark"] select {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: #94a3b8 !important;
+}
 
-  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="color"])::placeholder,
-  textarea::placeholder {
-    color: #475569 !important;
-    -webkit-text-fill-color: #475569 !important;
-    opacity: 1 !important;
-  }
+/* Placeholders de alta legibilidade cinza escuro */
+input::placeholder,
+textarea::placeholder,
+.dark input::placeholder,
+.dark textarea::placeholder,
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder {
+  color: #475569 !important;
+  opacity: 1 !important;
+}
 
-  /* Blindagem irrestrita mesmo sob classes .dark, html.dark ou temas customizados */
-  html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="color"]),
-  html.dark select,
-  html.dark textarea,
-  html.dark [contenteditable="true"],
-  .dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="color"]),
-  .dark select,
-  .dark textarea,
-  .dark [contenteditable="true"] {
-    background-color: #ffffff !important;
-    background: #ffffff !important;
-    color: #000000 !important;
-    -webkit-text-fill-color: #000000 !important;
-    border-color: #cbd5e1 !important;
-  }
+/* Opções de menus dropdown/select sempre brancas com texto preto */
+select option {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
 
-  html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="color"])::placeholder,
-  html.dark textarea::placeholder,
-  .dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="color"])::placeholder,
-  .dark textarea::placeholder {
-    color: #475569 !important;
-    -webkit-text-fill-color: #475569 !important;
-    opacity: 1 !important;
+@keyframes pulseOrangeCard {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7), 0 10px 20px -3px rgba(249, 115, 22, 0.3);
+    border-color: #f97316;
   }
-
-  /* Opções de menus dropdown/select sempre brancas com texto preto */
-  select option,
-  .dark select option,
-  html.dark select option {
-    background-color: #ffffff !important;
-    background: #ffffff !important;
-    color: #000000 !important;
+  50% {
+    box-shadow: 0 0 0 8px rgba(249, 115, 22, 0.25), 0 20px 25px -5px rgba(249, 115, 22, 0.5);
+    border-color: #fb923c;
   }
 }
 
-/* Custom subtle scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 9999px;
-}
-.dark ::-webkit-scrollbar-thumb {
-  background: #334155;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
-}
-
-/* Print styles for Portaria daily sheet */
-@media print {
-  header, nav, .no-print {
-    display: none !important;
+@keyframes pulseRedCard {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7), 0 10px 20px -3px rgba(239, 68, 68, 0.3);
+    border-color: #ef4444;
   }
-  body {
-    background: white !important;
-    color: black !important;
-  }
-  .print-only {
-    display: block !important;
+  50% {
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0.25), 0 20px 25px -5px rgba(239, 68, 68, 0.5);
+    border-color: #f87171;
   }
 }
 
-/* Samsung A03 & PWA Standalone Fullscreen Viewport & Safe Area Rules */
-html, body {
-  min-height: 100%;
-  min-height: -webkit-fill-available;
-  min-height: 100dvh;
-  overscroll-behavior-y: none;
-  -webkit-tap-highlight-color: transparent;
+.card-piscar-laranja {
+  animation: pulseOrangeCard 1.6s infinite ease-in-out;
 }
 
-:root {
-  --sat: env(safe-area-inset-top, 0px);
-  --sar: env(safe-area-inset-right, 0px);
-  --sab: env(safe-area-inset-bottom, 0px);
-  --sal: env(safe-area-inset-left, 0px);
+.card-piscar-vermelho {
+  animation: pulseRedCard 1.5s infinite ease-in-out;
 }
-
-.standalone-safe-top {
-  padding-top: max(env(safe-area-inset-top, 0px), 8px);
-}
-
-.standalone-safe-bottom {
-  padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px);
-}
-
