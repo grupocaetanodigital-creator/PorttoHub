@@ -65,7 +65,11 @@ const formatarHorarioDesde = (dataIso?: string): string => {
   try {
     const d = new Date(dataIso);
     if (isNaN(d.getTime())) return '';
-    return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    return new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(d);
   } catch {
     return '';
   }
@@ -385,53 +389,63 @@ export default function PainelSindico({
         setPrestadores([]);
       }
 
-      // 6. Porteiro no Turno no Momento (Plantão Vigente na Portaria)
+      // 6. Porteiro que assumiu o posto na Troca de Turno (tabela passagens_posto)
       try {
-        let qPass = supabase
+        let passagensQuery = supabase
           .from('passagens_posto')
-          .select('id, condominio_id, data_passagem, turno, status, created_at, data_hora_troca, operador_sainte_nome, operador_entrante_nome, operador_sai_nome, operador_entra_nome')
-          .order('created_at', { ascending: false })
-          .limit(1);
-        if (idCondo) qPass = qPass.eq('condominio_id', idCondo);
-        const { data: dataPass } = await qPass;
+          .select('id, codigo, condominio_id, operador_entrante_nome, operador_sainte_nome, created_at, data_hora, status')
+          .order('created_at', { ascending: false });
+
+        if (idCondo && idCondo !== 'todos' && idCondo !== 'global') {
+          passagensQuery = passagensQuery.eq('condominio_id', idCondo);
+        }
+
+        let { data: dataPass } = await passagensQuery.limit(1);
+
+        // Se filtrou por condomínio e não encontrou registro específico, busca a última troca de turno geral no banco
+        if ((!dataPass || dataPass.length === 0) && idCondo && idCondo !== 'todos' && idCondo !== 'global') {
+          const { data: dataPassGeral } = await supabase
+            .from('passagens_posto')
+            .select('id, codigo, condominio_id, operador_entrante_nome, operador_sainte_nome, created_at, data_hora, status')
+            .order('created_at', { ascending: false })
+            .limit(1);
+          if (dataPassGeral && dataPassGeral.length > 0) {
+            dataPass = dataPassGeral;
+          }
+        }
 
         if (dataPass && dataPass.length > 0) {
           const ult = dataPass[0];
-          const nomeEntrante = ult.operador_entrante_nome || ult.operador_entra_nome || ult.operador_sainte_nome;
+          // Quem assumiu o posto na troca de turno é o operador_entrante_nome
+          const nomeEntrante = ult.operador_entrante_nome?.trim() || ult.operador_sainte_nome?.trim();
           if (nomeEntrante) {
+            let turnoNome = 'Plantão Ativo';
+            try {
+              const dataReg = new Date(ult.created_at || ult.data_hora);
+              const horaBrasil = Number(
+                new Intl.DateTimeFormat('pt-BR', {
+                  timeZone: 'America/Sao_Paulo',
+                  hour: 'numeric',
+                  hour12: false
+                }).format(dataReg)
+              );
+              turnoNome = (horaBrasil >= 6 && horaBrasil < 18) ? 'Turno Diurno' : 'Turno Noturno';
+            } catch {}
+
             setPorteiroTurnoAtual({
               nome: nomeEntrante,
-              turno: ult.turno || 'Plantão Ativo',
-              desde: ult.created_at || ult.data_hora_troca
-            });
-          }
-        } else {
-          // Fallback: operador ativo em cache local ou operador ativo do condomínio
-          const ultimoLocal = typeof window !== 'undefined' ? localStorage.getItem('infport_ultimo_operador_nome') : null;
-          if (ultimoLocal && !ultimoLocal.toLowerCase().includes('síndico') && !ultimoLocal.toLowerCase().includes('sindico') && ultimoLocal.toLowerCase() !== 'admin') {
-            setPorteiroTurnoAtual({
-              nome: ultimoLocal,
-              turno: 'Plantão Atual'
+              turno: turnoNome,
+              desde: ult.created_at || ult.data_hora
             });
           } else {
-            const { data: opList } = await supabase
-              .from('operadores')
-              .select('id, nome, login, turno, turno_padrao, ativo, perfil, nivel_acesso')
-              .eq('condominio_id', idCondo)
-              .eq('ativo', true)
-              .limit(1);
-            if (opList && opList.length > 0) {
-              setPorteiroTurnoAtual({
-                nome: opList[0].nome || opList[0].login,
-                turno: opList[0].turno_padrao || opList[0].turno || 'Turno Vigente'
-              });
-            } else {
-              setPorteiroTurnoAtual(null);
-            }
+            setPorteiroTurnoAtual(null);
           }
+        } else {
+          setPorteiroTurnoAtual(null);
         }
       } catch (errOp) {
-        console.warn('[PainelSindico] Falha ao carregar porteiro no turno:', errOp);
+        console.warn('[PainelSindico] Falha ao carregar porteiro que assumiu na troca de turno:', errOp);
+        setPorteiroTurnoAtual(null);
       }
 
       // 7. Custódia (mod03_custodia_itens) - HISTÓRICO COMPLETO
@@ -870,7 +884,7 @@ export default function PainelSindico({
                 {porteiroTurnoAtual?.desde && (
                   <span className="text-[11px] text-slate-400 flex items-center gap-1">
                     <Clock className="w-3 h-3 text-emerald-400 shrink-0" />
-                    <span>No posto desde:</span>
+                    <span>Assumiu o posto às:</span>
                     <strong className="text-slate-200">{formatarHorarioDesde(porteiroTurnoAtual.desde)}</strong>
                   </span>
                 )}
