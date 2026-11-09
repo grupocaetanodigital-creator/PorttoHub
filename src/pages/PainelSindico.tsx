@@ -53,6 +53,24 @@ export const isEncomendaRetida = (item: any): boolean => {
   return !isEncomendaRetirada(item);
 };
 
+export interface PorteiroTurnoAtual {
+  nome: string;
+  turno?: string;
+  desde?: string;
+  cargo?: string;
+}
+
+const formatarHorarioDesde = (dataIso?: string): string => {
+  if (!dataIso) return '';
+  try {
+    const d = new Date(dataIso);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+};
+
 interface PainelSindicoProps {
   usuarioLogado: any;
   condominioAtivo: any;
@@ -90,7 +108,7 @@ export default function PainelSindico({
   const [chaves, setChaves] = useState<any[]>([]);
   const [chavesMovimentacoes, setChavesMovimentacoes] = useState<any[]>([]);
   const [prestadores, setPrestadores] = useState<any[]>([]);
-  const [passagens, setPassagens] = useState<any[]>([]);
+  const [porteiroTurnoAtual, setPorteiroTurnoAtual] = useState<PorteiroTurnoAtual | null>(null);
   const [custodia, setCustodia] = useState<any[]>([]);
   const [historico, setHistorico] = useState<any[]>([]);
   const [materiais, setMateriais] = useState<any[]>([]);
@@ -180,11 +198,15 @@ export default function PainelSindico({
       rondas: 'rondas',
       chaves: 'chaves',
       prestadores: 'prestadores',
-      passagens: 'passagem',
       custodia: 'custodia',
       materiais: 'materiais',
       historico: 'historico_absoluto'
     };
+
+    if (abaAtiva === 'passagens') {
+      setAbaAtiva('resumo');
+      return;
+    }
 
     const moduloAlvo = mapaModuloAba[abaAtiva];
     if (moduloAlvo && !moduloHabilitado(moduloAlvo)) {
@@ -363,17 +385,53 @@ export default function PainelSindico({
         setPrestadores([]);
       }
 
-      // 6. Passagens de Posto (mod09_passagem_posto)
-      if (moduloHabilitado('passagem')) {
+      // 6. Porteiro no Turno no Momento (Plantão Vigente na Portaria)
+      try {
         let qPass = supabase
           .from('passagens_posto')
-          .select('id, condominio_id, data_passagem, turno, status, created_at, data_hora_troca, operador_sainte_nome, operador_entrante_nome, operador_sai_nome, operador_entra_nome, resumo_encomendas_retidas, resumo_chaves_retiradas, resumo_rondas_cumpridas, observacoes, pendencias')
-          .order('created_at', { ascending: false });
+          .select('id, condominio_id, data_passagem, turno, status, created_at, data_hora_troca, operador_sainte_nome, operador_entrante_nome, operador_sai_nome, operador_entra_nome')
+          .order('created_at', { ascending: false })
+          .limit(1);
         if (idCondo) qPass = qPass.eq('condominio_id', idCondo);
         const { data: dataPass } = await qPass;
-        setPassagens(dataPass || []);
-      } else {
-        setPassagens([]);
+
+        if (dataPass && dataPass.length > 0) {
+          const ult = dataPass[0];
+          const nomeEntrante = ult.operador_entrante_nome || ult.operador_entra_nome || ult.operador_sainte_nome;
+          if (nomeEntrante) {
+            setPorteiroTurnoAtual({
+              nome: nomeEntrante,
+              turno: ult.turno || 'Plantão Ativo',
+              desde: ult.created_at || ult.data_hora_troca
+            });
+          }
+        } else {
+          // Fallback: operador ativo em cache local ou operador ativo do condomínio
+          const ultimoLocal = typeof window !== 'undefined' ? localStorage.getItem('infport_ultimo_operador_nome') : null;
+          if (ultimoLocal && !ultimoLocal.toLowerCase().includes('síndico') && !ultimoLocal.toLowerCase().includes('sindico') && ultimoLocal.toLowerCase() !== 'admin') {
+            setPorteiroTurnoAtual({
+              nome: ultimoLocal,
+              turno: 'Plantão Atual'
+            });
+          } else {
+            const { data: opList } = await supabase
+              .from('operadores')
+              .select('id, nome, login, turno, turno_padrao, ativo, perfil, nivel_acesso')
+              .eq('condominio_id', idCondo)
+              .eq('ativo', true)
+              .limit(1);
+            if (opList && opList.length > 0) {
+              setPorteiroTurnoAtual({
+                nome: opList[0].nome || opList[0].login,
+                turno: opList[0].turno_padrao || opList[0].turno || 'Turno Vigente'
+              });
+            } else {
+              setPorteiroTurnoAtual(null);
+            }
+          }
+        }
+      } catch (errOp) {
+        console.warn('[PainelSindico] Falha ao carregar porteiro no turno:', errOp);
       }
 
       // 7. Custódia (mod03_custodia_itens) - HISTÓRICO COMPLETO
@@ -780,14 +838,44 @@ export default function PainelSindico({
       <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 border-2 border-emerald-500/40 rounded-2xl sm:rounded-3xl p-3 sm:p-4 text-white shadow-2xl relative overflow-hidden">
         <div className="absolute right-0 top-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
         
-        <div className="relative z-10 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <span className="p-2 sm:p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl sm:rounded-2xl border border-emerald-500/30 shadow-inner shrink-0">
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start sm:items-center gap-2.5 sm:gap-3 min-w-0">
+            <span className="p-2 sm:p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl sm:rounded-2xl border border-emerald-500/30 shadow-inner shrink-0 mt-0.5 sm:mt-0">
               <ShieldCheck className="w-5 h-5 sm:w-6 sm:h-6" />
             </span>
-            <h1 className="text-base sm:text-lg md:text-xl font-black tracking-tight truncate">
-              Portal de Auditoria
-            </h1>
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-lg md:text-xl font-black tracking-tight truncate">
+                Portal de Auditoria
+              </h1>
+
+              {/* Informação do Porteiro no Turno no Momento */}
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-semibold shadow-2xs">
+                  <span className="relative flex h-2 w-2 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-80"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                  </span>
+                  <span className="text-slate-300 text-[11px]">Porteiro no Turno:</span>
+                  <strong className="text-white font-bold truncate max-w-[200px] sm:max-w-[320px]">
+                    {porteiroTurnoAtual?.nome || 'Nenhum plantonista registrado'}
+                  </strong>
+                </div>
+
+                {porteiroTurnoAtual?.turno && (
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-800/80 text-emerald-400 border border-emerald-500/30">
+                    {porteiroTurnoAtual.turno}
+                  </span>
+                )}
+
+                {porteiroTurnoAtual?.desde && (
+                  <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-emerald-400 shrink-0" />
+                    <span>No posto desde:</span>
+                    <strong className="text-slate-200">{formatarHorarioDesde(porteiroTurnoAtual.desde)}</strong>
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -1194,20 +1282,6 @@ export default function PainelSindico({
           </button>
         )}
 
-        {moduloHabilitado('passagem') && (
-          <button
-            onClick={() => setAbaAtiva('passagens')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
-              abaAtiva === 'passagens' 
-                ? 'bg-cyan-700 text-white shadow-sm' 
-                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
-            }`}
-          >
-            <Repeat className="w-3.5 h-3.5" />
-            <span>Trocas de Turno ({passagens.length})</span>
-          </button>
-        )}
-
         {moduloHabilitado('custodia') && (
           <button
             onClick={() => setAbaAtiva('custodia')}
@@ -1301,51 +1375,7 @@ export default function PainelSindico({
             </div>
           )}
 
-          {/* Card: Passagens de Posto (somente se habilitado) */}
-          {moduloHabilitado('passagem') && (
-            <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-3">
-              <div className="flex items-center justify-between border-b dark:border-slate-800 pb-2">
-                <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                  <Repeat className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
-                  Histórico de Passagem de Posto
-                </h3>
-                <button 
-                  onClick={() => setAbaAtiva('passagens')} 
-                  className="text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-0.5 cursor-pointer"
-                >
-                  Ver Todas <ChevronRight className="w-3 h-3" />
-                </button>
-              </div>
 
-              {passagens.length === 0 ? (
-                <p className="text-xs text-slate-400 py-6 text-center">Nenhuma troca de turno registrada ainda.</p>
-              ) : (
-                <div className="space-y-2">
-                  {passagens.slice(0, 3).map((p) => (
-                    <div key={p.id} className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-slate-800 dark:text-slate-200">
-                          Turno: {p.turno || 'Diurno/Noturno'}
-                        </span>
-                        <span className="text-slate-500 font-mono text-[11px]">
-                          {new Date(p.created_at || p.data_hora_troca).toLocaleString('pt-BR')}
-                        </span>
-                      </div>
-                      <div className="text-xs text-slate-600 dark:text-slate-300 grid grid-cols-2 gap-2 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
-                        <div><span className="text-slate-400">Saiu:</span> <strong>{p.operador_sai_nome || p.operador_sainte_nome || 'Operador'}</strong></div>
-                        <div><span className="text-slate-400">Entrou:</span> <strong>{p.operador_entra_nome || p.operador_entrante_nome || 'Operador'}</strong></div>
-                      </div>
-                      <div className="flex items-center gap-3 text-[10px] text-slate-500">
-                        <span>📦 Retidas: {p.resumo_encomendas_retidas ?? 0}</span>
-                        <span>🔑 Chaves Fora: {p.resumo_chaves_retiradas ?? 0}</span>
-                        <span>🛡️ Rondas: {p.resumo_rondas_cumpridas ?? 0}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Card: Encomendas Pendentes de Retirada (somente se habilitado) */}
           {moduloHabilitado('encomendas') && (
@@ -2431,68 +2461,6 @@ export default function PainelSindico({
                   })}
               </tbody>
             </table>
-          </div>
-        </div>
-      )}
-
-      {/* 8. ABA: TROCAS DE TURNO / PASSAGENS DE POSTO */}
-      {abaAtiva === 'passagens' && moduloHabilitado('passagem') && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-4 shadow-2xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b dark:border-slate-800 pb-3">
-            <div>
-              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
-                <Repeat className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
-                Auditoria de Trocas de Turno (Passagem de Posto)
-              </h3>
-              <p className="text-xs text-slate-500">
-                Histórico auditado de entrega e recebimento da portaria entre plantonistas.
-              </p>
-            </div>
-
-            <button
-              onClick={() => exportarRelatorioCsv('passagens_posto_sindico', passagens)}
-              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" /> Exportar Planilha
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {passagens.map((p) => (
-              <div key={p.id} className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-                <div className="flex items-center justify-between text-xs border-b dark:border-slate-700 pb-2">
-                  <span className="font-bold text-slate-900 dark:text-white">
-                    Turno: {p.turno || 'Diurno/Noturno'}
-                  </span>
-                  <span className="text-slate-500 font-mono text-[11px]">
-                    {new Date(p.created_at || p.data_hora_troca).toLocaleString('pt-BR')}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-xs bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                  <div>
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Operador Sainte</span>
-                    <strong className="text-slate-800 dark:text-slate-200">{p.operador_sai_nome || p.operador_sainte_nome || 'Operador'}</strong>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Operador Entrante</span>
-                    <strong className="text-slate-800 dark:text-slate-200">{p.operador_entra_nome || p.operador_entrante_nome || 'Operador'}</strong>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 pt-1">
-                  <span>📦 Retidas: <strong>{p.resumo_encomendas_retidas ?? 0}</strong></span>
-                  <span>🔑 Chaves Fora: <strong>{p.resumo_chaves_retiradas ?? 0}</strong></span>
-                  <span>🛡️ Rondas: <strong>{p.resumo_rondas_cumpridas ?? 0}</strong></span>
-                </div>
-
-                {p.observacoes && (
-                  <p className="text-[11px] text-slate-500 italic bg-amber-50 dark:bg-amber-950/20 p-2 rounded border border-amber-200 dark:border-amber-800">
-                    "{p.observacoes}"
-                  </p>
-                )}
-              </div>
-            ))}
           </div>
         </div>
       )}
