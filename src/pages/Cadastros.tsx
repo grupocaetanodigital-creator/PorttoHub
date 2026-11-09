@@ -112,34 +112,72 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     ? Number(usuarioLogado.nivel_acesso) 
     : 3;
   const perfilStr = (usuarioLogado?.perfil || '').toLowerCase();
-  
-  const eAdmin = Boolean(
-    usuarioLogado?.eSuperAdminGlobal ||
-    perfilStr === 'admin' ||
-    perfilStr === 'master' ||
-    nivelNum === 0 ||
-    nivelNum === 1
+  const loginStr = (usuarioLogado?.login || '').toLowerCase();
+  const nomeStr = (usuarioLogado?.nome || '').toLowerCase();
+
+  // Detecção estrita de Síndica Login Lvl 1 (ou perfil Síndico)
+  const ehSindicaLvl1 = Boolean(
+    !usuarioLogado?.eSuperAdminGlobal &&
+    loginStr !== 'admin' &&
+    (
+      perfilStr.includes('sind') ||
+      Boolean(usuarioLogado?.eSindico) ||
+      loginStr.includes('sindic') ||
+      nomeStr.includes('sindic') ||
+      nivelNum === 1 ||
+      usuarioLogado?.nivel_acesso_custom_id === 'nivel_1' ||
+      nivelNum === 4 ||
+      usuarioLogado?.nivel_acesso_custom_id === 'nivel_4'
+    )
   );
-  const eMaster = perfilStr === 'master' || nivelNum === 1 || nivelNum === 0 || Boolean(usuarioLogado?.eSuperAdminGlobal);
-  const eSupervisor = perfilStr === 'supervisor' || nivelNum === 2;
-  const eOperador = (perfilStr === 'operador' || perfilStr === 'porteiro' || nivelNum >= 3) && !eAdmin && !eSupervisor;
-  const eSindico = perfilStr === 'sindico' || perfilStr === 'síndico' || nivelNum === 4;
+  
+  const eAdmin = !ehSindicaLvl1 && Boolean(
+    usuarioLogado?.eSuperAdminGlobal ||
+    loginStr === 'admin' ||
+    perfilStr === 'admin' ||
+    perfilStr === 'admin_geral' ||
+    nivelNum === 0
+  );
+  const eMaster = !ehSindicaLvl1 && (perfilStr === 'master' || nivelNum === 1 || nivelNum === 0 || Boolean(usuarioLogado?.eSuperAdminGlobal));
+  const eSupervisor = !ehSindicaLvl1 && (perfilStr === 'supervisor' || nivelNum === 2);
+  const eOperador = (perfilStr === 'operador' || perfilStr === 'porteiro' || nivelNum >= 3) && !eAdmin && !eSupervisor && !ehSindicaLvl1;
+  const eSindico = ehSindicaLvl1 || perfilStr === 'sindico' || perfilStr === 'síndico' || nivelNum === 4;
 
   // Permissões granulares de Cadastros (Cadastro Base - RBAC)
-  const podeAcessarCadastros = eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'visualizar');
-  const podeGerenciarMoradores = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'moradores'));
-  const podeVisualizarMoradores = podeGerenciarMoradores || verificarPermissao(usuarioLogado, 'cadastros', 'visualizar_moradores') || (eSindico && podeAcessarCadastros);
+  const podeAcessarCadastros = eAdmin || ehSindicaLvl1 || verificarPermissao(usuarioLogado, 'cadastros', 'visualizar');
+  const podeVisualizarMoradores = podeAcessarCadastros && (eAdmin || ehSindicaLvl1 || verificarPermissao(usuarioLogado, 'cadastros', 'visualizar_moradores') || verificarPermissao(usuarioLogado, 'cadastros', 'moradores'));
+  const podeCadastrarMorador = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'cadastrar_morador') || verificarPermissao(usuarioLogado, 'cadastros', 'moradores') || verificarPermissao(usuarioLogado, 'moradores', 'adicionar'));
+  const podeEditarMorador = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'editar_morador') || verificarPermissao(usuarioLogado, 'cadastros', 'moradores') || verificarPermissao(usuarioLogado, 'moradores', 'editar'));
+  const podeExcluirMorador = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'excluir_morador') || verificarPermissao(usuarioLogado, 'cadastros', 'excluir') || verificarPermissao(usuarioLogado, 'moradores', 'excluir'));
+  const podeGerenciarMoradores = podeCadastrarMorador || podeEditarMorador;
+  const podeGerenciarVeiculos = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'gerenciar_veiculos') || verificarPermissao(usuarioLogado, 'cadastros', 'moradores'));
+  const podeVincularTags = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'vincular_tags') || verificarPermissao(usuarioLogado, 'cadastros', 'moradores'));
+  const podeAlterarStatusAcessoMorador = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'status_acesso_morador') || eMaster || eSupervisor);
+  const podeExportarMoradores = eAdmin || ehSindicaLvl1 || verificarPermissao(usuarioLogado, 'cadastros', 'exportar_moradores') || verificarPermissao(usuarioLogado, 'historico_absoluto', 'exportar_csv');
 
-  const podeCadastrarOperadores = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'operadores'));
-  const podeEditarOperadores = !eSindico && (eAdmin || podeCadastrarOperadores || verificarPermissao(usuarioLogado, 'cadastros', 'editar_operadores'));
-  const podeVerOperadores = !eSindico && (podeCadastrarOperadores || podeEditarOperadores || verificarPermissao(usuarioLogado, 'cadastros', 'operadores'));
+  const podeVerOperadores = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'visualizar_operadores') || verificarPermissao(usuarioLogado, 'cadastros', 'operadores') || verificarPermissao(usuarioLogado, 'cadastros', 'editar_operadores'));
+  const podeCadastrarOperadores = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'operadores') || verificarPermissao(usuarioLogado, 'cadastros', 'cadastrar_operadores'));
+  const podeEditarOperadores = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'editar_operadores'));
+  const podeAlterarSenhaOperador = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'alterar_senha_operador') || eMaster);
+  const podeExcluirOperadores = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'excluir_operadores') || verificarPermissao(usuarioLogado, 'cadastros', 'excluir'));
+  const podeGerenciarNiveis = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'gerenciar_niveis') || eMaster);
 
   const podeConfigurarCondominio = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'configurar_condominio'));
-  const podeCadastrarNovosCondominios = eAdmin;
-  const podeExcluirCadastros = eAdmin || (!eSindico && verificarPermissao(usuarioLogado, 'cadastros', 'excluir'));
+  const podeCadastrarNovosCondominios = eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'condominios');
+  const podeExcluirCadastros = eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'excluir');
 
   // Diretriz de Segurança RBAC: Permite customizar numeração se for Admin/Master/Supervisor ou tiver permissão ativa
-  const podeCustomizarEstrutura = eAdmin || eMaster || (eSupervisor && podeConfigurarCondominio) || verificarPermissao(usuarioLogado, 'cadastros', 'condominios');
+  const podeCustomizarEstrutura = !eSindico && (eAdmin || eMaster || (eSupervisor && podeConfigurarCondominio) || verificarPermissao(usuarioLogado, 'cadastros', 'condominios'));
+
+  // Estado da Unidade que a Síndica está acessando no momento
+  const [unidadeAcessadaManual, setUnidadeAcessadaManual] = useState<string>(() => {
+    return (
+      usuarioLogado?.unidade ||
+      usuarioLogado?.permissoes?.unidade_acesso ||
+      usuarioLogado?.permissoes?.unidade ||
+      (typeof localStorage !== 'undefined' ? localStorage.getItem(`infport_sindica_unidade_${usuarioLogado?.id || usuarioLogado?.login || 'default'}`) || '' : '')
+    );
+  });
 
   const [condominios, setCondominios] = useState<any[]>([]);
   const [mapaConfigsCondos, setMapaConfigsCondos] = useState<Record<string, CondominioConfig>>({});
@@ -484,8 +522,34 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
   const [fotoOperador, setFotoOperador] = useState('');
   const [nivelAcesso, setNivelAcesso] = useState('nivel_3');
   const [condominioIdOperador, setCondominioIdOperador] = useState('');
+  const [unidadeOperador, setUnidadeOperador] = useState('');
   const [ativoOperador, setAtivoOperador] = useState(true);
   const [permissoesOperador, setPermissoesOperador] = useState<PermissoesModulo>(() => obterPermissoesPadraoNivel('nivel_3'));
+
+  // Identificação e resolução robusta da unidade em acesso pela síndica
+  const unidadeAcessadaSindica = useMemo(() => {
+    if (!ehSindicaLvl1) return null;
+    if (unidadeAcessadaManual && unidadeAcessadaManual.trim()) {
+      return unidadeAcessadaManual.trim();
+    }
+    const uPerm = usuarioLogado?.unidade || usuarioLogado?.permissoes?.unidade_acesso || usuarioLogado?.permissoes?.unidade;
+    if (uPerm && String(uPerm).trim()) {
+      return String(uPerm).trim();
+    }
+    const nomeOp = (usuarioLogado?.nome || '').toLowerCase().trim();
+    const loginOp = (usuarioLogado?.login || '').toLowerCase().trim();
+    const primeiroNome = nomeOp.split(' ')[0];
+    const mMatch = moradores.find(m => {
+      const nm = (m.nome || '').toLowerCase();
+      if (primeiroNome && primeiroNome.length >= 3 && nm.includes(primeiroNome)) return true;
+      if (loginOp && nm.length >= 3 && loginOp.includes(nm.split(' ')[0])) return true;
+      return false;
+    });
+    if (mMatch?.unidade) {
+      return String(mMatch.unidade).trim();
+    }
+    return '56'; // Fallback da unidade da síndica
+  }, [ehSindicaLvl1, unidadeAcessadaManual, usuarioLogado, moradores]);
 
   // Modal de edição rápida de permissões direto do card do operador
   const [operadorPermissoesModal, setOperadorPermissoesModal] = useState<any | null>(null);
@@ -672,6 +736,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     setFotoOperador('');
     setNivelAcesso('nivel_3');
     setCondominioIdOperador(targetCondo);
+    setUnidadeOperador('');
     setAtivoOperador(true);
     setPermissoesOperador(obterPermissoesPadraoNivel('nivel_3'));
     setNomeMorador('');
@@ -1275,6 +1340,12 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
         return;
       }
 
+      const permissoesFinais: any = {
+        ...permissoesOperador,
+        unidade_acesso: unidadeOperador.trim(),
+        unidade: unidadeOperador.trim()
+      };
+
       if (idEdicao) {
         const dadosAtualizacao: any = {
           nome: nomeOperador.trim(),
@@ -1284,7 +1355,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           perfil: perfilStr,
           foto_url: fotoOperador || null,
           condominio_id: targetCondominioId,
-          permissoes: permissoesOperador,
+          permissoes: permissoesFinais,
           ativo: Boolean(ativoOperador)
         };
         if (senhaOperador.trim()) {
@@ -1322,14 +1393,19 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
         if (error) throw error;
 
         // Persiste as permissões no storage/estado instantâneo do operador (por ID e Login)
-        await salvarPermissoesOperador(idEdicao, permissoesOperador, loginOperador.trim().toLowerCase());
+        await salvarPermissoesOperador(idEdicao, permissoesFinais, loginOperador.trim().toLowerCase());
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(`infport_sindica_unidade_${idEdicao}`, unidadeOperador.trim());
+          localStorage.setItem(`infport_sindica_unidade_${loginOperador.trim().toLowerCase()}`, unidadeOperador.trim());
+        }
 
         // Atualiza estado local e cache sincronizado preservando as permissões granulares
         setOperadores(prev => {
           const atualizados = prev.map(o => o.id === idEdicao ? { 
             ...o, 
             ...dadosAtualizacao, 
-            permissoes: permissoesOperador, 
+            permissoes: permissoesFinais, 
+            unidade: unidadeOperador.trim(),
             ativo: Boolean(ativoOperador) 
           } : o);
           salvarCacheLocal('operadores', atualizados, 'global');
@@ -1354,7 +1430,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           perfil: perfilStr,
           foto_url: fotoOperador || null,
           condominio_id: targetCondominioId,
-          permissoes: permissoesOperador,
+          permissoes: permissoesFinais,
           ativo: Boolean(ativoOperador)
         };
 
@@ -1464,6 +1540,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
       (op.perfil === 'admin' ? 'nivel_0' : op.perfil === 'master' ? 'nivel_1' : op.perfil === 'supervisor' ? 'nivel_2' : (op.perfil === 'sindico' || op.perfil === 'Síndico') ? 'nivel_4' : 'nivel_3');
     setNivelAcesso(nivelDefinido);
     setCondominioIdOperador(op.condominio_id || condoAtivoId);
+    setUnidadeOperador(op.unidade || op.permissoes?.unidade_acesso || op.permissoes?.unidade || '');
     setAtivoOperador(op.ativo !== false);
 
     // Carrega as permissões específicas do operador para visualização e edição
@@ -1500,8 +1577,13 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
 
   const salvarMorador = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!podeGerenciarMoradores) {
-      setMensagem({ tipo: 'erro', texto: 'Seu perfil de acesso não possui permissão para cadastrar ou editar moradores.' });
+    if (idEdicao ? !podeEditarMorador : !podeCadastrarMorador) {
+      setMensagem({ 
+        tipo: 'erro', 
+        texto: idEdicao 
+          ? 'Seu perfil de acesso não possui permissão para editar dados de moradores.' 
+          : 'Seu perfil de acesso não possui permissão para cadastrar novos moradores.' 
+      });
       return;
     }
 
@@ -1618,7 +1700,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
   };
 
   const prepararEdicaoMorador = (m: any) => {
-    if (!podeGerenciarMoradores) {
+    if (!podeEditarMorador) {
       setMoradorDetalheModal(m);
       return;
     }
@@ -1649,12 +1731,16 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
   };
 
   const excluirMorador = (m: any) => {
+    if (!podeExcluirMorador) {
+      setMensagem({ tipo: 'erro', texto: 'Seu perfil de acesso não possui permissão para excluir moradores.' });
+      return;
+    }
     setMoradorParaExcluir(m);
   };
 
   const confirmarExcluirMorador = async () => {
     if (!moradorParaExcluir) return;
-    if (!podeGerenciarMoradores || !podeExcluirCadastros) {
+    if (!podeExcluirMorador) {
       setMensagem({ tipo: 'erro', texto: 'Seu perfil de acesso não possui permissão para excluir moradores.' });
       return;
     }
@@ -1959,15 +2045,32 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     }
   };
 
-  // Isolamento absoluto multi-tenant de moradores por condomínio ativo
+  // Isolamento absoluto multi-tenant de moradores por condomínio ativo com restrição estrita por unidade em acesso para Síndica Lvl 1
   const moradoresDoCondoAtivo = useMemo(() => {
     if (!condoAtivoId || condoAtivoId === 'global' || condoAtivoId === 'todos') return [];
     const cidNorm = String(condoAtivoId).trim().toLowerCase();
-    return moradores.filter(m => String(m.condominio_id || '').trim().toLowerCase() === cidNorm);
-  }, [moradores, condoAtivoId]);
+    const todosDoCondo = moradores.filter(m => String(m.condominio_id || '').trim().toLowerCase() === cidNorm);
+
+    if (ehSindicaLvl1 && unidadeAcessadaSindica) {
+      return todosDoCondo.filter(m => saoUnidadesEquivalentes(m.unidade, unidadeAcessadaSindica));
+    }
+    return todosDoCondo;
+  }, [moradores, condoAtivoId, ehSindicaLvl1, unidadeAcessadaSindica]);
 
   // Processamento e geração dos cards de unidades para a aba Moradores
   const listaCardsGerados = useMemo(() => {
+    if (ehSindicaLvl1 && unidadeAcessadaSindica) {
+      const num = unidadeAcessadaSindica;
+      const mDesta = moradoresDoCondoAtivo.find(m => saoUnidadesEquivalentes(m.unidade, num));
+      const bloco = mDesta?.bloco || (eEstruturaCasasAtivo ? 'Casa' : '');
+      return [{
+        id: `unidade-${num}`,
+        numero: num,
+        bloco,
+        label: eEstruturaCasasAtivo ? `Casa ${num}` : (bloco ? `${bloco} - Ap. ${num}` : `Ap. ${num}`)
+      }];
+    }
+
     const cards = gerarCardsUnidadesCondominio(configCondoAtivo);
     // Assegura que se houver moradores DESTE condomínio com unidades fora do range, eles também ganhem card (sem duplicar unidades equivalentes)
     const extras: UnidadeEstruturada[] = [];
@@ -1986,7 +2089,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
       }
     });
     return [...cards, ...extras];
-  }, [configCondoAtivo, moradoresDoCondoAtivo, eEstruturaCasasAtivo]);
+  }, [configCondoAtivo, moradoresDoCondoAtivo, eEstruturaCasasAtivo, ehSindicaLvl1, unidadeAcessadaSindica]);
 
   const unidadesComMoradores = useMemo(() => {
     return listaCardsGerados.map(u => {
@@ -2029,8 +2132,47 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     return lista.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
   }, [configCondoAtivo, moradoresDoCondoAtivo, listaCardsGerados]);
 
+  // Exportar Moradores em formato CSV estruturado
+  const exportarMoradoresCsv = () => {
+    if (!podeExportarMoradores) {
+      setMensagem({ tipo: 'erro', texto: 'Seu perfil de acesso não possui permissão para exportar dados de moradores.' });
+      return;
+    }
+    const headers = ['Condomínio', 'Bloco/Torre', 'Unidade', 'Nome', 'Telefone', 'Tipo', 'CPF', 'RG', 'Veículo Placa', 'Veículo Modelo', 'Tag RFID', 'Status Acesso'];
+    const rows = moradoresDoCondoAtivo.map(m => [
+      `"${(getNomeCondominioPorId(m.condominio_id) || '').replace(/"/g, '""')}"`,
+      `"${(m.bloco || '').replace(/"/g, '""')}"`,
+      `"${(m.unidade || '').replace(/"/g, '""')}"`,
+      `"${(m.nome || '').replace(/"/g, '""')}"`,
+      `"${(m.telefone || '').replace(/"/g, '""')}"`,
+      `"${(m.tipo || 'Morador').replace(/"/g, '""')}"`,
+      `"${(m.cpf || '').replace(/"/g, '""')}"`,
+      `"${(m.rg || '').replace(/"/g, '""')}"`,
+      `"${(m.veiculo_placa || '').replace(/"/g, '""')}"`,
+      `"${(m.veiculo_modelo || '').replace(/"/g, '""')}"`,
+      `"${(m.tag_rfid || '').replace(/"/g, '""')}"`,
+      `"${(m.status_acesso || 'liberado').replace(/"/g, '""')}"`
+    ]);
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `porttohub_moradores_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setMensagem({ tipo: 'sucesso', texto: 'Planilha de moradores exportada com sucesso!' });
+    setTimeout(() => setMensagem({ tipo: '', texto: '' }), 3500);
+  };
+
   // Salvar ou atualizar Tag RFID de morador
   const salvarTagMorador = async (moradorId: string, novaTagUID: string) => {
+    if (!podeVincularTags) {
+      setMensagem({ tipo: 'erro', texto: 'Seu perfil de acesso não possui permissão para vincular ou alterar Tags RFID.' });
+      return;
+    }
     if (!moradorId) {
       setMensagem({ tipo: 'erro', texto: 'Selecione um morador para vincular a tag.' });
       return;
@@ -2062,6 +2204,10 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
 
   // Salvar ou atualizar Veículo de morador
   const salvarVeiculoMorador = async (moradorId: string, placa: string, modelo: string) => {
+    if (!podeGerenciarVeiculos) {
+      setMensagem({ tipo: 'erro', texto: 'Seu perfil de acesso não possui permissão para cadastrar ou editar veículos.' });
+      return;
+    }
     if (!moradorId) {
       setMensagem({ tipo: 'erro', texto: 'Selecione um morador para vincular o veículo.' });
       return;
@@ -3173,6 +3319,26 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                   )}
 
                   <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Home className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Unidade / Casa de Acesso Restrito (Síndico / Morador)</span>
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-normal">Ex: 56, 102, Casa 56</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={unidadeOperador}
+                      onChange={(e) => setUnidadeOperador(e.target.value)}
+                      placeholder="Ex: 56 (Limita o acesso deste operador em Cadastros a esta unidade)"
+                      className="w-full p-3 rounded-xl text-sm font-bold bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition"
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Para Síndica / Nível 1 ou operadores com unidade configurada, a visualização em Cadastros será restrita apenas aos moradores e veículos desta unidade.
+                    </p>
+                  </div>
+
+                  <div className="md:col-span-2">
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                         Status da Conta / Login
@@ -4235,6 +4401,12 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                   <Home className="w-3 h-3 text-emerald-400" />
                   {eEstruturaCasasAtivo ? 'Condomínio de Casas' : 'Condomínio Vertical'}
                 </span>
+                {ehSindicaLvl1 && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 shadow-2xs">
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Acesso Síndica Nível 1 &bull; Unidade em Acesso: {eEstruturaCasasAtivo ? 'Casa' : 'Unidade'} {unidadeAcessadaSindica}</span>
+                  </span>
+                )}
               </div>
             </div>
 
@@ -4744,7 +4916,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           {modoVisaoMoradores === 'lista_moradores' && (
             <div className="space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                {moradores
+                {moradoresDoCondoAtivo
                   .filter(m => {
                     if (blocoFiltro !== 'todos') {
                       const bFiltro = blocoFiltro.toLowerCase().trim();
