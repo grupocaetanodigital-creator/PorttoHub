@@ -35,6 +35,7 @@ import AlertaRondaGlobal from './components/AlertaRondaGlobal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import ControleFonteAcessibilidade from './components/ControleFonteAcessibilidade';
 import BotaoAtualizarApp from './components/BotaoAtualizarApp';
+import SeletorTema from './components/SeletorTema';
 import { inicializarTema } from './services/themeService';
 import { NOME_APLICACAO, VERSAO_BUILD_ATUAL } from './services/versaoService';
 import { 
@@ -1887,6 +1888,7 @@ export default function App() {
             VERSÃO {VERSAO_BUILD_ATUAL}
           </button>
         </div>
+        <SeletorTema variante="compacto" />
         <ControleFonteAcessibilidade />
         <BotaoAtualizarApp />
       </div>
@@ -1922,7 +1924,7 @@ export default function App() {
               Usuário / Login
             </label>
             <div className="relative">
-              <User className="w-5 h-5 text-slate-400 dark:text-slate-500 absolute left-3.5 top-3.5 z-10" />
+              <User className="w-5 h-5 text-slate-500 absolute left-3.5 top-3.5 z-10" />
               <input
                 type="text"
                 required
@@ -1932,7 +1934,7 @@ export default function App() {
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
-                className="w-full pl-11 pr-4 py-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 text-base font-semibold shadow-inner transition-colors"
+                className="w-full pl-11 pr-4 py-3.5 bg-white text-slate-950 placeholder:text-slate-500 border border-slate-300 dark:border-slate-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base font-semibold shadow-inner transition-colors"
               />
             </div>
           </div>
@@ -1942,14 +1944,14 @@ export default function App() {
               Senha
             </label>
             <div className="relative">
-              <Lock className="w-5 h-5 text-slate-400 dark:text-slate-500 absolute left-3.5 top-3.5 z-10" />
+              <Lock className="w-5 h-5 text-slate-500 absolute left-3.5 top-3.5 z-10" />
               <input
                 type={mostrarSenhaLogin ? "text" : "password"}
                 required
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
                 placeholder="Digite sua senha"
-                className="w-full pl-11 pr-12 py-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 text-base font-semibold shadow-inner transition-colors"
+                className="w-full pl-11 pr-12 py-3.5 bg-white text-slate-950 placeholder:text-slate-500 border border-slate-300 dark:border-slate-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base font-semibold shadow-inner transition-colors"
               />
               <button
                 type="button"
