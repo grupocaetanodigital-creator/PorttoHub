@@ -211,6 +211,70 @@ export const CANONICAL_SCHEMA_MAP: TableDiagnostic[] = [
     category: 'Módulo 11 - Bancada',
     status: 'checking',
     notes: 'Volumes agrupados por estrutura e unidade física.'
+  },
+  {
+    canonicalName: 'bancada_conferencias',
+    duplicateOrLegacyNames: [],
+    purpose: 'Histórico de conferências e snapshots da bancada para auditoria',
+    category: 'Módulo 11 - Bancada',
+    status: 'checking',
+    notes: 'Snapshots completos com total_volumes, total_unidades e estruturas_resumo.'
+  },
+  {
+    canonicalName: 'historico_absoluto',
+    duplicateOrLegacyNames: [],
+    purpose: 'Trilha de auditoria e log imutável de todas as ações dos operadores',
+    category: 'Auditoria & Logs',
+    status: 'checking',
+    notes: 'Contém modulo, acao, descricao, operador_nome, ip, detalhes JSONB e data_hora.'
+  },
+  {
+    canonicalName: 'areas_comuns',
+    duplicateOrLegacyNames: [],
+    purpose: 'Espaços e áreas comuns para reserva (Salão de Festas, Churrasqueira, Quadras, etc.)',
+    category: 'Reserva de Áreas',
+    status: 'checking',
+    notes: 'Regras de uso, taxas, turnos, horários e aprovação do síndico.'
+  },
+  {
+    canonicalName: 'reservas_areas_comuns',
+    duplicateOrLegacyNames: [],
+    purpose: 'Agendamentos e reservas de áreas comuns pelos moradores',
+    category: 'Reserva de Áreas',
+    status: 'checking',
+    notes: 'Status da reserva, vistorias de entrada/saída, lista de convidados e termo aceito.'
+  },
+  {
+    canonicalName: 'pontos_acesso',
+    duplicateOrLegacyNames: [],
+    purpose: 'Pontos físicos de acesso (Portarias, Cancelas, Portões de Pedestre e Serviço)',
+    category: 'Controle de Acesso',
+    status: 'checking',
+    notes: 'Mapeamento das entradas e cancelas com tipo (pedestre, veiculo, misto).'
+  },
+  {
+    canonicalName: 'registros_acesso',
+    duplicateOrLegacyNames: [],
+    purpose: 'Livro digital de entradas e saídas de visitantes, prestadores e veículos',
+    category: 'Controle de Acesso',
+    status: 'checking',
+    notes: 'Fotos, documentos, placas, horários e vínculo com morador e unidade.'
+  },
+  {
+    canonicalName: 'passes_virtuais_qr',
+    duplicateOrLegacyNames: [],
+    purpose: 'Convites digitais e passes QR emitidos por moradores e portaria',
+    category: 'Controle de Acesso',
+    status: 'checking',
+    notes: 'Token temporário com data de validade, limite de usos e validação no totem.'
+  },
+  {
+    canonicalName: 'blacklist_bloqueios',
+    duplicateOrLegacyNames: [],
+    purpose: 'Lista de alerta e bloqueio de segurança para pessoas e veículos indesejados',
+    category: 'Controle de Acesso',
+    status: 'checking',
+    notes: 'Gravidade (alerta, bloqueio total, chamar polícia), motivo e documentos vinculados.'
   }
 ];
 
@@ -1531,7 +1595,282 @@ ALTER TABLE IF EXISTS public.agenda_emergencia
   ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
--- 21. LIMPEZA SEGURA DE TABELAS LEGADAS/DUPLICADAS
+-- 21. TABELAS: areas_comuns & reservas_areas_comuns (Reserva de Áreas)
+CREATE TABLE IF NOT EXISTS public.areas_comuns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID REFERENCES public.condominios(id) ON DELETE CASCADE,
+  nome TEXT NOT NULL,
+  descricao TEXT,
+  capacidade_maxima INTEGER DEFAULT 50,
+  taxa_reserva NUMERIC(10,2) DEFAULT 0,
+  taxa_limpeza NUMERIC(10,2) DEFAULT 0,
+  valor_caucao NUMERIC(10,2) DEFAULT 0,
+  antecedencia_minima_dias INTEGER DEFAULT 1,
+  antecedencia_maxima_dias INTEGER DEFAULT 90,
+  horario_inicio TEXT DEFAULT '08:00',
+  horario_fim TEXT DEFAULT '22:00',
+  duracao_slot_minutos INTEGER DEFAULT 60,
+  tipo_area TEXT DEFAULT 'churrasqueira',
+  intervalo_limpeza_horas INTEGER DEFAULT 2,
+  turnos_disponiveis JSONB DEFAULT '["manha", "tarde", "noite", "dia_todo"]'::jsonb,
+  dias_funcionamento JSONB DEFAULT '[0,1,2,3,4,5,6]'::jsonb,
+  regras_termo TEXT,
+  exige_aprovacao_sindico BOOLEAN DEFAULT FALSE,
+  foto_url TEXT,
+  ativa BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE IF EXISTS public.areas_comuns
+  ADD COLUMN IF NOT EXISTS condominio_id UUID,
+  ADD COLUMN IF NOT EXISTS nome TEXT,
+  ADD COLUMN IF NOT EXISTS descricao TEXT,
+  ADD COLUMN IF NOT EXISTS capacidade_maxima INTEGER DEFAULT 50,
+  ADD COLUMN IF NOT EXISTS taxa_reserva NUMERIC(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS taxa_limpeza NUMERIC(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS valor_caucao NUMERIC(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS antecedencia_minima_dias INTEGER DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS antecedencia_maxima_dias INTEGER DEFAULT 90,
+  ADD COLUMN IF NOT EXISTS horario_inicio TEXT DEFAULT '08:00',
+  ADD COLUMN IF NOT EXISTS horario_fim TEXT DEFAULT '22:00',
+  ADD COLUMN IF NOT EXISTS duracao_slot_minutos INTEGER DEFAULT 60,
+  ADD COLUMN IF NOT EXISTS tipo_area TEXT DEFAULT 'churrasqueira',
+  ADD COLUMN IF NOT EXISTS intervalo_limpeza_horas INTEGER DEFAULT 2,
+  ADD COLUMN IF NOT EXISTS turnos_disponiveis JSONB DEFAULT '["manha", "tarde", "noite", "dia_todo"]'::jsonb,
+  ADD COLUMN IF NOT EXISTS dias_funcionamento JSONB DEFAULT '[0,1,2,3,4,5,6]'::jsonb,
+  ADD COLUMN IF NOT EXISTS regras_termo TEXT,
+  ADD COLUMN IF NOT EXISTS exige_aprovacao_sindico BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS foto_url TEXT,
+  ADD COLUMN IF NOT EXISTS ativa BOOLEAN DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_areas_comuns_condo ON public.areas_comuns(condominio_id);
+
+CREATE TABLE IF NOT EXISTS public.reservas_areas_comuns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID REFERENCES public.condominios(id) ON DELETE CASCADE,
+  area_id UUID REFERENCES public.areas_comuns(id) ON DELETE SET NULL,
+  area_nome TEXT,
+  morador_id UUID REFERENCES public.moradores(id) ON DELETE SET NULL,
+  morador_nome TEXT NOT NULL,
+  morador_telefone TEXT,
+  unidade_bloco TEXT NOT NULL,
+  data_reserva DATE NOT NULL,
+  turno TEXT DEFAULT 'dia_todo',
+  horario_inicio TEXT,
+  horario_fim TEXT,
+  tipo_evento TEXT DEFAULT 'Confraternização Familiar',
+  qtd_convidados_estimada INTEGER DEFAULT 10,
+  status TEXT DEFAULT 'pendente',
+  valor_total NUMERIC(10,2) DEFAULT 0,
+  pago BOOLEAN DEFAULT FALSE,
+  termo_aceito BOOLEAN DEFAULT TRUE,
+  data_aceite_termo TIMESTAMPTZ DEFAULT NOW(),
+  observacoes_solicitante TEXT,
+  motivo_recusa TEXT,
+  aprovado_por_nome TEXT,
+  aprovado_em TIMESTAMPTZ,
+  vistoria_entrada JSONB DEFAULT '{}'::jsonb,
+  vistoria_saida JSONB DEFAULT '{}'::jsonb,
+  lista_convidados JSONB DEFAULT '[]'::jsonb,
+  criado_em TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE IF EXISTS public.reservas_areas_comuns
+  ADD COLUMN IF NOT EXISTS condominio_id UUID,
+  ADD COLUMN IF NOT EXISTS area_id UUID,
+  ADD COLUMN IF NOT EXISTS area_nome TEXT,
+  ADD COLUMN IF NOT EXISTS morador_id UUID,
+  ADD COLUMN IF NOT EXISTS morador_nome TEXT,
+  ADD COLUMN IF NOT EXISTS morador_telefone TEXT,
+  ADD COLUMN IF NOT EXISTS unidade_bloco TEXT,
+  ADD COLUMN IF NOT EXISTS data_reserva DATE,
+  ADD COLUMN IF NOT EXISTS turno TEXT DEFAULT 'dia_todo',
+  ADD COLUMN IF NOT EXISTS horario_inicio TEXT,
+  ADD COLUMN IF NOT EXISTS horario_fim TEXT,
+  ADD COLUMN IF NOT EXISTS tipo_evento TEXT DEFAULT 'Confraternização Familiar',
+  ADD COLUMN IF NOT EXISTS qtd_convidados_estimada INTEGER DEFAULT 10,
+  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pendente',
+  ADD COLUMN IF NOT EXISTS valor_total NUMERIC(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS pago BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS termo_aceito BOOLEAN DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS data_aceite_termo TIMESTAMPTZ DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS observacoes_solicitante TEXT,
+  ADD COLUMN IF NOT EXISTS motivo_recusa TEXT,
+  ADD COLUMN IF NOT EXISTS aprovado_por_nome TEXT,
+  ADD COLUMN IF NOT EXISTS aprovado_em TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS vistoria_entrada JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS vistoria_saida JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS lista_convidados JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS criado_em TIMESTAMPTZ DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_reservas_condo_data ON public.reservas_areas_comuns(condominio_id, data_reserva);
+
+-- 22. TABELAS: pontos_acesso & registros_acesso (Controle de Acesso)
+CREATE TABLE IF NOT EXISTS public.pontos_acesso (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID REFERENCES public.condominios(id) ON DELETE CASCADE,
+  nome TEXT NOT NULL,
+  tipo TEXT DEFAULT 'misto',
+  localizacao TEXT,
+  ativo BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE IF EXISTS public.pontos_acesso
+  ADD COLUMN IF NOT EXISTS condominio_id UUID,
+  ADD COLUMN IF NOT EXISTS nome TEXT,
+  ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'misto',
+  ADD COLUMN IF NOT EXISTS localizacao TEXT,
+  ADD COLUMN IF NOT EXISTS ativo BOOLEAN DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+CREATE TABLE IF NOT EXISTS public.registros_acesso (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID REFERENCES public.condominios(id) ON DELETE CASCADE,
+  tipo TEXT DEFAULT 'visitante',
+  nome TEXT NOT NULL,
+  documento TEXT,
+  telefone TEXT,
+  empresa TEXT,
+  unidade_bloco TEXT NOT NULL,
+  morador_responsavel TEXT,
+  ponto_acesso_entrada TEXT DEFAULT 'Portaria Principal (Pedestres)',
+  ponto_acesso_saida TEXT,
+  veiculo_placa TEXT,
+  veiculo_modelo TEXT,
+  veiculo_cor TEXT,
+  data_hora_entrada TIMESTAMPTZ DEFAULT NOW(),
+  data_hora_saida TIMESTAMPTZ,
+  status TEXT DEFAULT 'presente',
+  foto_entrada_url TEXT,
+  foto_saida_url TEXT,
+  operador_entrada_nome TEXT,
+  operador_saida_nome TEXT,
+  observacoes TEXT,
+  cracha_ou_tag TEXT,
+  reserva_area_id UUID,
+  passe_qr_id UUID,
+  motivo_bloqueio TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE IF EXISTS public.registros_acesso
+  ADD COLUMN IF NOT EXISTS condominio_id UUID,
+  ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'visitante',
+  ADD COLUMN IF NOT EXISTS nome TEXT,
+  ADD COLUMN IF NOT EXISTS documento TEXT,
+  ADD COLUMN IF NOT EXISTS telefone TEXT,
+  ADD COLUMN IF NOT EXISTS empresa TEXT,
+  ADD COLUMN IF NOT EXISTS unidade_bloco TEXT,
+  ADD COLUMN IF NOT EXISTS morador_responsavel TEXT,
+  ADD COLUMN IF NOT EXISTS ponto_acesso_entrada TEXT DEFAULT 'Portaria Principal (Pedestres)',
+  ADD COLUMN IF NOT EXISTS ponto_acesso_saida TEXT,
+  ADD COLUMN IF NOT EXISTS veiculo_placa TEXT,
+  ADD COLUMN IF NOT EXISTS veiculo_modelo TEXT,
+  ADD COLUMN IF NOT EXISTS veiculo_cor TEXT,
+  ADD COLUMN IF NOT EXISTS data_hora_entrada TIMESTAMPTZ DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS data_hora_saida TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'presente',
+  ADD COLUMN IF NOT EXISTS foto_entrada_url TEXT,
+  ADD COLUMN IF NOT EXISTS foto_saida_url TEXT,
+  ADD COLUMN IF NOT EXISTS operador_entrada_nome TEXT,
+  ADD COLUMN IF NOT EXISTS operador_saida_nome TEXT,
+  ADD COLUMN IF NOT EXISTS observacoes TEXT,
+  ADD COLUMN IF NOT EXISTS cracha_ou_tag TEXT,
+  ADD COLUMN IF NOT EXISTS reserva_area_id UUID,
+  ADD COLUMN IF NOT EXISTS passe_qr_id UUID,
+  ADD COLUMN IF NOT EXISTS motivo_bloqueio TEXT,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_registros_acesso_condo_status ON public.registros_acesso(condominio_id, status);
+
+-- 23. TABELAS: passes_virtuais_qr & blacklist_bloqueios
+CREATE TABLE IF NOT EXISTS public.passes_virtuais_qr (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID REFERENCES public.condominios(id) ON DELETE CASCADE,
+  token TEXT NOT NULL,
+  morador_nome TEXT NOT NULL,
+  morador_telefone TEXT,
+  unidade_bloco TEXT NOT NULL,
+  visitante_nome TEXT NOT NULL,
+  visitante_documento TEXT,
+  tipo TEXT DEFAULT 'visitante',
+  data_validade DATE NOT NULL,
+  hora_inicio TEXT DEFAULT '08:00',
+  hora_fim TEXT DEFAULT '22:00',
+  max_usos INTEGER DEFAULT 1,
+  usos_realizados INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'valido',
+  observacoes TEXT,
+  criado_em TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE IF EXISTS public.passes_virtuais_qr
+  ADD COLUMN IF NOT EXISTS condominio_id UUID,
+  ADD COLUMN IF NOT EXISTS token TEXT,
+  ADD COLUMN IF NOT EXISTS morador_nome TEXT,
+  ADD COLUMN IF NOT EXISTS morador_telefone TEXT,
+  ADD COLUMN IF NOT EXISTS unidade_bloco TEXT,
+  ADD COLUMN IF NOT EXISTS visitante_nome TEXT,
+  ADD COLUMN IF NOT EXISTS visitante_documento TEXT,
+  ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'visitante',
+  ADD COLUMN IF NOT EXISTS data_validade DATE,
+  ADD COLUMN IF NOT EXISTS hora_inicio TEXT DEFAULT '08:00',
+  ADD COLUMN IF NOT EXISTS hora_fim TEXT DEFAULT '22:00',
+  ADD COLUMN IF NOT EXISTS max_usos INTEGER DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS usos_realizados INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'valido',
+  ADD COLUMN IF NOT EXISTS observacoes TEXT,
+  ADD COLUMN IF NOT EXISTS criado_em TIMESTAMPTZ DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_passes_token ON public.passes_virtuais_qr(token);
+
+CREATE TABLE IF NOT EXISTS public.blacklist_bloqueios (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID REFERENCES public.condominios(id) ON DELETE CASCADE,
+  tipo TEXT DEFAULT 'pessoa',
+  nome_ou_placa TEXT NOT NULL,
+  documento TEXT,
+  motivo TEXT NOT NULL,
+  gravidade TEXT DEFAULT 'alerta',
+  registrado_por TEXT,
+  ativo BOOLEAN DEFAULT TRUE,
+  criado_em TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE IF EXISTS public.blacklist_bloqueios
+  ADD COLUMN IF NOT EXISTS condominio_id UUID,
+  ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'pessoa',
+  ADD COLUMN IF NOT EXISTS nome_ou_placa TEXT,
+  ADD COLUMN IF NOT EXISTS documento TEXT,
+  ADD COLUMN IF NOT EXISTS motivo TEXT,
+  ADD COLUMN IF NOT EXISTS gravidade TEXT DEFAULT 'alerta',
+  ADD COLUMN IF NOT EXISTS registrado_por TEXT,
+  ADD COLUMN IF NOT EXISTS ativo BOOLEAN DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS criado_em TIMESTAMPTZ DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_blacklist_condo ON public.blacklist_bloqueios(condominio_id, ativo);
+
+-- 24. LIMPEZA SEGURA DE TABELAS LEGADAS/DUPLICADAS
 DROP TABLE IF EXISTS rondas_execucoes CASCADE;
 DROP TABLE IF EXISTS registros_ronda CASCADE;
 DROP TABLE IF EXISTS pontos_ronda CASCADE;
@@ -1546,7 +1885,7 @@ DROP TABLE IF EXISTS unidades CASCADE;
 DROP TABLE IF EXISTS encomendas CASCADE;
 DROP TABLE IF EXISTS materiais CASCADE;
 
--- 22. SUPABASE STORAGE (Bucket 'encomendas' e Políticas de Armazenamento)
+-- 25. SUPABASE STORAGE (Bucket 'encomendas' e Políticas de Armazenamento)
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'encomendas') THEN
@@ -1591,7 +1930,7 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- 23. ROW LEVEL SECURITY (RLS) E POLÍTICAS PERMISSIVAS
+-- 26. ROW LEVEL SECURITY (RLS) E POLÍTICAS PERMISSIVAS PARA TODAS AS 34 TABELAS
 DO $$
 DECLARE
   tbl TEXT;
@@ -1604,7 +1943,8 @@ DECLARE
     'rondas_setores', 'ocorrencias', 'passagens_posto', 'prestadores',
     'prestadores_acessos', 'lembretes_portaria', 'bancada_volumes',
     'bancada_conferencias', 'historico_absoluto', 'templates_whatsapp',
-    'agenda_emergencia'
+    'agenda_emergencia', 'areas_comuns', 'reservas_areas_comuns',
+    'pontos_acesso', 'registros_acesso', 'passes_virtuais_qr', 'blacklist_bloqueios'
   ];
 BEGIN
   FOREACH tbl IN ARRAY tabelas_alvo LOOP
@@ -1644,7 +1984,7 @@ BEGIN
   END LOOP;
 END $$;
 
--- 24. SUPABASE REALTIME (Configuração de publicações em tempo real)
+-- 27. SUPABASE REALTIME (Configuração de publicações em tempo real)
 DO $$
 DECLARE
   tbl_rt TEXT;
@@ -1657,7 +1997,9 @@ DECLARE
     'chaves',
     'movimentacao_chaves',
     'prestadores_acessos',
-    'passagens_posto'
+    'passagens_posto',
+    'reservas_areas_comuns',
+    'registros_acesso'
   ];
 BEGIN
   FOREACH tbl_rt IN ARRAY tabelas_realtime LOOP

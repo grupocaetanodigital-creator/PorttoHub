@@ -64,7 +64,13 @@ export const MIGRATION_TABLES: Omit<MigrationTableInfo, 'status' | 'migratedCoun
   { name: 'historico_absoluto', label: 'Histórico & Auditoria', category: 'Auditoria', order: 25 },
   { name: 'lembretes_portaria', label: 'Lembretes de Portaria', category: 'Sistema', order: 26 },
   { name: 'bancada_conferencias', label: 'Conferências de Bancada', category: 'Bancada', order: 27 },
-  { name: 'bancada_volumes', label: 'Volumes de Bancada', category: 'Bancada', order: 28 }
+  { name: 'bancada_volumes', label: 'Volumes de Bancada', category: 'Bancada', order: 28 },
+  { name: 'areas_comuns', label: 'Áreas Comuns & Espaços', category: 'Áreas Comuns', order: 29 },
+  { name: 'reservas_areas_comuns', label: 'Reservas de Áreas Comuns', category: 'Áreas Comuns', order: 30 },
+  { name: 'pontos_acesso', label: 'Pontos de Acesso (Portões/Catracas)', category: 'Controle de Acesso', order: 31 },
+  { name: 'registros_acesso', label: 'Registros de Acesso', category: 'Controle de Acesso', order: 32 },
+  { name: 'passes_virtuais_qr', label: 'Passes Virtuais QR Code', category: 'Controle de Acesso', order: 33 },
+  { name: 'blacklist_bloqueios', label: 'Blacklist & Restrições de Acesso', category: 'Controle de Acesso', order: 34 }
 ];
 
 export interface SupabaseCredentials {
@@ -111,6 +117,12 @@ export const BANCOS_PADRAO: BancoPredefinido[] = [
  * e por último as tabelas raiz (operadores e condomínios).
  */
 export const TABELAS_ORDEM_LIMPEZA = [
+  'registros_acesso',
+  'passes_virtuais_qr',
+  'blacklist_bloqueios',
+  'pontos_acesso',
+  'reservas_areas_comuns',
+  'areas_comuns',
   'encomendas_itens',
   'lotes_re',
   'custodia',
@@ -308,6 +320,52 @@ export const TARGET_TABLE_COLUMNS: Record<string, string[]> = {
     'id', 'condominio_id', 'estrutura', 'unidade', 'volumes', 'observacao',
     'tipo_volume', 'operador_nome', 'operador_id', 'status', 'created_at',
     'updated_at'
+  ],
+  areas_comuns: [
+    'id', 'condominio_id', 'nome', 'descricao', 'capacidade_maxima', 'taxa_reserva',
+    'taxa_limpeza', 'valor_caucao', 'antecedencia_minima_dias', 'antecedencia_maxima_dias',
+    'requer_aprovacao', 'exige_aprovacao_sindico', 'horario_inicio', 'horario_fim',
+    'duracao_slot_minutos', 'tipo_area', 'intervalo_limpeza_horas', 'turnos_disponiveis',
+    'dias_funcionamento', 'regras', 'regras_termo', 'foto_url', 'ativo', 'ativa',
+    'created_at', 'updated_at'
+  ],
+  reservas_areas_comuns: [
+    'id', 'condominio_id', 'area_id', 'area_nome', 'morador_id', 'unidade', 'bloco',
+    'unidade_bloco', 'morador_nome', 'morador_telefone', 'data_reserva', 'turno',
+    'horario_inicio', 'horario_fim', 'tipo_evento', 'qtd_convidados_estimada',
+    'status', 'valor_total', 'pago', 'termo_aceito', 'data_aceite_termo',
+    'observacoes_solicitante', 'observacoes', 'motivo_recusa', 'aprovado_por',
+    'aprovado_por_nome', 'aprovado_em', 'data_aprovacao', 'vistoria_entrada',
+    'vistoria_saida', 'lista_convidados', 'convidados_lista', 'criado_em',
+    'created_at', 'updated_at'
+  ],
+  pontos_acesso: [
+    'id', 'condominio_id', 'nome', 'tipo', 'localizacao', 'direcao', 'ip_leitora',
+    'ativo', 'created_at', 'updated_at'
+  ],
+  registros_acesso: [
+    'id', 'condominio_id', 'tipo', 'tipo_pessoa', 'pessoa_id', 'nome', 'documento',
+    'telefone', 'empresa', 'unidade', 'bloco', 'unidade_bloco', 'morador_responsavel',
+    'ponto_acesso_id', 'ponto_acesso_nome', 'ponto_acesso_entrada', 'ponto_acesso_saida',
+    'direcao', 'tipo_acesso', 'credencial_utilizada', 'cracha_ou_tag', 'veiculo_placa',
+    'veiculo_modelo', 'veiculo_cor', 'data_hora_entrada', 'data_hora_saida', 'data_hora',
+    'status', 'foto_entrada_url', 'foto_saida_url', 'foto_registro_url', 'operador_entrada_nome',
+    'operador_saida_nome', 'observacoes', 'reserva_area_id', 'passe_qr_id', 'motivo_bloqueio',
+    'created_at'
+  ],
+  passes_virtuais_qr: [
+    'id', 'condominio_id', 'token', 'token_hash', 'morador_id', 'morador_nome',
+    'morador_telefone', 'unidade', 'bloco', 'unidade_bloco', 'visitante_nome',
+    'visitante_doc', 'visitante_documento', 'tipo', 'data_inicio', 'data_fim',
+    'data_validade', 'hora_inicio', 'hora_fim', 'limite_usos', 'max_usos',
+    'usos_realizados', 'status', 'observacoes', 'compartilhado_via', 'criado_em',
+    'created_at', 'updated_at'
+  ],
+  blacklist_bloqueios: [
+    'id', 'condominio_id', 'tipo', 'nome_completo', 'nome_ou_placa', 'cpf', 'rg',
+    'documento', 'motivo', 'gravidade', 'grau_risco', 'bloqueado_por_id',
+    'bloqueado_por_nome', 'registrado_por', 'ativo', 'foto_url', 'criado_em',
+    'created_at', 'updated_at'
   ]
 };
 

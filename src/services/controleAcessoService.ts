@@ -307,7 +307,9 @@ export async function salvarItemBlacklist(
   operadorLogado?: any
 ): Promise<BloqueioSeguranca> {
   const lista = await carregarBlacklist(condominioId);
-  const id = item.id || `blk-${Date.now()}`;
+  const id = (item.id && isUUID(item.id)) 
+    ? item.id 
+    : ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `blk-${Date.now()}`);
 
   const novo: BloqueioSeguranca = {
     id,
@@ -367,7 +369,7 @@ export async function registrarEntradaAcesso(
   }
 
   const registros = await carregarRegistrosAcesso(condominioId);
-  const id = `acesso-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `acesso-${Date.now()}`;
 
   const novo: RegistroAcesso = {
     id,
@@ -389,8 +391,8 @@ export async function registrarEntradaAcesso(
     operador_entrada_nome: operadorLogado?.nome || 'Portaria',
     observacoes: dados.observacoes || '',
     cracha_ou_tag: dados.cracha_ou_tag || '',
-    reserva_area_id: dados.reserva_area_id,
-    passe_qr_id: dados.passe_qr_id
+    reserva_area_id: (dados.reserva_area_id && isUUID(dados.reserva_area_id)) ? dados.reserva_area_id : undefined,
+    passe_qr_id: (dados.passe_qr_id && isUUID(dados.passe_qr_id)) ? dados.passe_qr_id : undefined
   };
 
   registros.unshift(novo);
@@ -521,7 +523,7 @@ export async function gerarPasseVirtual(
   operadorLogado?: any
 ): Promise<PasseVirtualQR> {
   const passes = await carregarPassesVirtuais(condominioId);
-  const id = `passe-${Date.now()}`;
+  const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `passe-${Date.now()}`;
   const token = `PASS-${Math.random().toString(36).substring(2, 6).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
   const novo: PasseVirtualQR = {

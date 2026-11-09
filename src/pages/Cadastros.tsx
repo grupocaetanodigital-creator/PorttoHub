@@ -522,7 +522,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
   const [fotoOperador, setFotoOperador] = useState('');
   const [nivelAcesso, setNivelAcesso] = useState('nivel_3');
   const [condominioIdOperador, setCondominioIdOperador] = useState('');
-  const [unidadeOperador, setUnidadeOperador] = useState('');
+  const [unidadeOperador, setUnidadeOperador] = useState('TODAS');
   const [ativoOperador, setAtivoOperador] = useState(true);
   const [permissoesOperador, setPermissoesOperador] = useState<PermissoesModulo>(() => obterPermissoesPadraoNivel('nivel_3'));
 
@@ -530,11 +530,21 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
   const unidadeAcessadaSindica = useMemo(() => {
     if (!ehSindicaLvl1) return null;
     if (unidadeAcessadaManual && unidadeAcessadaManual.trim()) {
-      return unidadeAcessadaManual.trim();
+      const u = unidadeAcessadaManual.trim();
+      if (u.toUpperCase() === 'TODAS' || u === '*' || u.toLowerCase() === 'todas as unidades') return 'TODAS';
+      return u;
     }
     const uPerm = usuarioLogado?.unidade || usuarioLogado?.permissoes?.unidade_acesso || usuarioLogado?.permissoes?.unidade;
     if (uPerm && String(uPerm).trim()) {
-      return String(uPerm).trim();
+      const u = String(uPerm).trim();
+      if (u.toUpperCase() === 'TODAS' || u === '*' || u.toLowerCase() === 'todas as unidades') return 'TODAS';
+      return u;
+    }
+    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(`infport_sindica_unidade_${usuarioLogado?.id || usuarioLogado?.login || 'default'}`) : null;
+    if (saved && saved.trim()) {
+      const u = saved.trim();
+      if (u.toUpperCase() === 'TODAS' || u === '*') return 'TODAS';
+      return u;
     }
     const nomeOp = (usuarioLogado?.nome || '').toLowerCase().trim();
     const loginOp = (usuarioLogado?.login || '').toLowerCase().trim();
@@ -548,7 +558,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     if (mMatch?.unidade) {
       return String(mMatch.unidade).trim();
     }
-    return '56'; // Fallback da unidade da síndica
+    return 'TODAS'; // Padrão: todas as unidades liberadas
   }, [ehSindicaLvl1, unidadeAcessadaManual, usuarioLogado, moradores]);
 
   // Modal de edição rápida de permissões direto do card do operador
@@ -736,7 +746,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     setFotoOperador('');
     setNivelAcesso('nivel_3');
     setCondominioIdOperador(targetCondo);
-    setUnidadeOperador('');
+    setUnidadeOperador('TODAS');
     setAtivoOperador(true);
     setPermissoesOperador(obterPermissoesPadraoNivel('nivel_3'));
     setNomeMorador('');
@@ -778,6 +788,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
       targetCondo = 'todos';
     }
     setCondominioIdOperador(targetCondo);
+    setUnidadeOperador('TODAS');
     setNivelAcesso('nivel_3');
     setPermissoesOperador(obterPermissoesPadraoNivel('nivel_3'));
     setIdEdicao(null);
@@ -1340,10 +1351,14 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
         return;
       }
 
+      const unidadeFinal = (unidadeOperador.trim().toUpperCase() === 'TODAS' || unidadeOperador.trim() === '*' || !unidadeOperador.trim())
+        ? 'TODAS'
+        : unidadeOperador.trim();
+
       const permissoesFinais: any = {
         ...permissoesOperador,
-        unidade_acesso: unidadeOperador.trim(),
-        unidade: unidadeOperador.trim()
+        unidade_acesso: unidadeFinal,
+        unidade: unidadeFinal
       };
 
       if (idEdicao) {
@@ -1356,6 +1371,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           foto_url: fotoOperador || null,
           condominio_id: targetCondominioId,
           permissoes: permissoesFinais,
+          unidade: unidadeFinal,
           ativo: Boolean(ativoOperador)
         };
         if (senhaOperador.trim()) {
@@ -1395,8 +1411,8 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
         // Persiste as permissões no storage/estado instantâneo do operador (por ID e Login)
         await salvarPermissoesOperador(idEdicao, permissoesFinais, loginOperador.trim().toLowerCase());
         if (typeof localStorage !== 'undefined') {
-          localStorage.setItem(`infport_sindica_unidade_${idEdicao}`, unidadeOperador.trim());
-          localStorage.setItem(`infport_sindica_unidade_${loginOperador.trim().toLowerCase()}`, unidadeOperador.trim());
+          localStorage.setItem(`infport_sindica_unidade_${idEdicao}`, unidadeFinal);
+          localStorage.setItem(`infport_sindica_unidade_${loginOperador.trim().toLowerCase()}`, unidadeFinal);
         }
 
         // Atualiza estado local e cache sincronizado preservando as permissões granulares
@@ -1405,7 +1421,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
             ...o, 
             ...dadosAtualizacao, 
             permissoes: permissoesFinais, 
-            unidade: unidadeOperador.trim(),
+            unidade: unidadeFinal,
             ativo: Boolean(ativoOperador) 
           } : o);
           salvarCacheLocal('operadores', atualizados, 'global');
@@ -1539,8 +1555,8 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
       (op.nivel_acesso !== undefined && op.nivel_acesso !== null && !isNaN(Number(op.nivel_acesso)) ? `nivel_${op.nivel_acesso}` : null) ||
       (op.perfil === 'admin' ? 'nivel_0' : op.perfil === 'master' ? 'nivel_1' : op.perfil === 'supervisor' ? 'nivel_2' : (op.perfil === 'sindico' || op.perfil === 'Síndico') ? 'nivel_4' : 'nivel_3');
     setNivelAcesso(nivelDefinido);
-    setCondominioIdOperador(op.condominio_id || condoAtivoId);
-    setUnidadeOperador(op.unidade || op.permissoes?.unidade_acesso || op.permissoes?.unidade || '');
+    const rawUnid = (op.unidade || op.permissoes?.unidade_acesso || op.permissoes?.unidade || '').trim();
+    setUnidadeOperador(rawUnid && rawUnid.toUpperCase() !== 'TODAS' && rawUnid !== '*' ? rawUnid : 'TODAS');
     setAtivoOperador(op.ativo !== false);
 
     // Carrega as permissões específicas do operador para visualização e edição
@@ -3318,24 +3334,73 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                     </div>
                   )}
 
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                      <span className="flex items-center gap-1.5">
-                        <Home className="w-3.5 h-3.5 text-blue-600" />
-                        <span>Unidade / Casa de Acesso Restrito (Síndico / Morador)</span>
+                  <div className="md:col-span-2 space-y-2.5">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <Home className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                        <span>Abrangência de Acesso a Unidades (Síndico / Morador) *</span>
+                      </label>
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                        unidadeOperador.trim().toUpperCase() === 'TODAS' || unidadeOperador.trim() === '*'
+                          ? 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700'
+                          : 'bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700'
+                      }`}>
+                        {unidadeOperador.trim().toUpperCase() === 'TODAS' || unidadeOperador.trim() === '*' ? '🌐 Todas as Unidades' : `🔒 Restrito: ${unidadeOperador}`}
                       </span>
-                      <span className="text-[10px] text-slate-500 font-normal">Ex: 56, 102, Casa 56</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={unidadeOperador}
-                      onChange={(e) => setUnidadeOperador(e.target.value)}
-                      placeholder="Ex: 56 (Limita o acesso deste operador em Cadastros a esta unidade)"
-                      className="w-full p-3 rounded-xl text-sm font-bold bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition"
-                    />
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Para Síndica / Nível 1 ou operadores com unidade configurada, a visualização em Cadastros será restrita apenas aos moradores e veículos desta unidade.
-                    </p>
+                    </div>
+
+                    {/* Seleção rápida: Todas as Unidades vs Unidade Específica */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setUnidadeOperador('TODAS')}
+                        className={`p-3 rounded-xl border text-xs font-black flex items-center justify-center gap-2 transition cursor-pointer ${
+                          unidadeOperador.trim().toUpperCase() === 'TODAS' || unidadeOperador.trim() === '*'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-600/30 ring-2 ring-blue-500/20'
+                            : 'bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-900'
+                        }`}
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Todas as Unidades (Geral)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (unidadeOperador.trim().toUpperCase() === 'TODAS' || unidadeOperador.trim() === '*') {
+                            setUnidadeOperador('');
+                          }
+                        }}
+                        className={`p-3 rounded-xl border text-xs font-black flex items-center justify-center gap-2 transition cursor-pointer ${
+                          unidadeOperador.trim().toUpperCase() !== 'TODAS' && unidadeOperador.trim() !== '*'
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-600/30 ring-2 ring-indigo-500/20'
+                            : 'bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-900'
+                        }`}
+                      >
+                        <Home className="w-4 h-4" />
+                        <span>Restringir a uma Unidade/Casa</span>
+                      </button>
+                    </div>
+
+                    {unidadeOperador.trim().toUpperCase() === 'TODAS' || unidadeOperador.trim() === '*' ? (
+                      <div className="p-3 bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl text-xs text-blue-900 dark:text-blue-200 flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                        <span><strong>Acesso Global Liberado:</strong> O Síndico ou operador terá acesso completo e irrestrito para visualizar e gerenciar <strong>todas as unidades e moradores</strong> do condomínio.</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5 pt-1">
+                        <input
+                          type="text"
+                          value={unidadeOperador}
+                          onChange={(e) => setUnidadeOperador(e.target.value)}
+                          placeholder="Digite o número da unidade ou casa restrita (ex: 56, 102, Casa 14)"
+                          className="w-full p-3 rounded-xl text-sm font-bold bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition"
+                        />
+                        <p className="text-[11px] text-slate-500">
+                          🔒 Para operadores ou síndicos com unidade específica configurada, a visualização em Cadastros será restrita apenas aos moradores e veículos desta unidade.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="md:col-span-2">
@@ -4402,10 +4467,32 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                   {eEstruturaCasasAtivo ? 'Condomínio de Casas' : 'Condomínio Vertical'}
                 </span>
                 {ehSindicaLvl1 && (
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 shadow-2xs">
-                    <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Acesso Síndica Nível 1 &bull; Unidade em Acesso: {eEstruturaCasasAtivo ? 'Casa' : 'Unidade'} {unidadeAcessadaSindica}</span>
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 shadow-2xs">
+                      <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                      <span>
+                        {unidadeAcessadaSindica === 'TODAS' || unidadeAcessadaSindica === '*'
+                          ? 'Acesso Síndica Nível 1 • 🌐 Todas as Unidades'
+                          : `Acesso Síndica Nível 1 • Unidade em Acesso: ${eEstruturaCasasAtivo ? 'Casa' : 'Unidade'} ${unidadeAcessadaSindica}`}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nova = (unidadeAcessadaSindica === 'TODAS' || unidadeAcessadaSindica === '*') 
+                          ? (usuarioLogado?.unidade && usuarioLogado.unidade !== 'TODAS' ? usuarioLogado.unidade : '56') 
+                          : 'TODAS';
+                        setUnidadeAcessadaManual(nova);
+                        if (typeof localStorage !== 'undefined') {
+                          localStorage.setItem(`infport_sindica_unidade_${usuarioLogado?.id || usuarioLogado?.login || 'default'}`, nova);
+                        }
+                      }}
+                      className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-slate-800 text-slate-200 border border-slate-600 hover:bg-slate-700 transition cursor-pointer"
+                      title={unidadeAcessadaSindica === 'TODAS' ? 'Alternar para visualizar unidade específica' : 'Alternar para visualizar todas as unidades'}
+                    >
+                      {unidadeAcessadaSindica === 'TODAS' || unidadeAcessadaSindica === '*' ? '🔒 Filtrar Unidade' : '🌐 Ver Todas'}
+                    </button>
+                  </div>
                 )}
               </div>
             </div>

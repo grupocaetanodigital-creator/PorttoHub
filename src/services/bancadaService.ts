@@ -151,7 +151,7 @@ export async function adicionarOuIncrementarItemBancada(
   } else {
     // Cria novo item
     itemResultado = {
-      id: `bancada_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `bancada_${Date.now()}`,
       condominio_id: condominioId,
       estrutura: estruturaNormalizada,
       unidade: unidadeNormalizada,
@@ -358,7 +358,7 @@ export async function salvarSnapshotConferencia(
   const totalUnidades = itens.length;
 
   const snapshot: ConferenciaBancadaSnapshot = {
-    id: `conf_bancada_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `conf_bancada_${Date.now()}`,
     condominio_id: condominioId,
     operador_nome: operadorNome,
     data_hora: new Date().toISOString(),

@@ -166,7 +166,9 @@ export async function excluirTodasAreasComuns(condominioId: string): Promise<boo
 
 export async function salvarAreaComum(condominioId: string, area: Partial<AreaComum>): Promise<AreaComum> {
   const areas = await carregarAreasComuns(condominioId);
-  const id = area.id || `area-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const id = (area.id && isUUID(area.id)) 
+    ? area.id 
+    : ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `area-${Date.now()}`);
   
   const areaCompleta: AreaComum = {
     id,
@@ -400,15 +402,17 @@ export async function criarOuAtualizarReserva(
   const areas = await carregarAreasComuns(condominioId);
   const area = areas.find(a => a.id === dados.area_id);
 
-  const id = dados.id || `res-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const id = (dados.id && isUUID(dados.id))
+    ? dados.id
+    : ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `res-${Date.now()}`);
   const statusInicial = dados.status || (area?.exige_aprovacao_sindico ? 'pendente' : 'aprovada');
 
   const novaReserva: ReservaArea = {
     id,
     condominio_id: condominioId,
-    area_id: dados.area_id,
+    area_id: (dados.area_id && isUUID(dados.area_id)) ? dados.area_id : dados.area_id,
     area_nome: area?.nome || dados.area_nome || 'Área Comum',
-    morador_id: dados.morador_id || '',
+    morador_id: (dados.morador_id && isUUID(dados.morador_id)) ? dados.morador_id : undefined,
     morador_nome: dados.morador_nome || 'Morador Solicitante',
     morador_telefone: dados.morador_telefone || '',
     unidade_bloco: dados.unidade_bloco || 'Unidade não informada',
