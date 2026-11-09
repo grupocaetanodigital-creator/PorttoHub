@@ -777,35 +777,28 @@ export default function PainelSindico({
     <div className="space-y-5 animate-fade-in p-2 sm:p-4 pb-20">
       
       {/* BANNER OFICIAL DE AUDITORIA DO SÍNDICO */}
-      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 border-2 border-emerald-500/40 rounded-3xl p-4 sm:p-6 text-white shadow-2xl relative overflow-hidden">
+      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 border-2 border-emerald-500/40 rounded-2xl sm:rounded-3xl p-3 sm:p-4 text-white shadow-2xl relative overflow-hidden">
         <div className="absolute right-0 top-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
         
-        <div className="relative z-10 flex items-start sm:items-center justify-between gap-4">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/30 shadow-inner">
-                <ShieldCheck className="w-6 h-6" />
-              </span>
-              <div>
-                <h1 className="text-xl sm:text-2xl font-black tracking-tight flex items-center gap-2">
-                  Portal de Auditorial
-                </h1>
-                <p className="text-xs text-slate-300">
-                  Visão executiva em tempo real com dados restritos aos módulos habilitados para este condomínio.
-                </p>
-              </div>
-            </div>
+        <div className="relative z-10 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <span className="p-2 sm:p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl sm:rounded-2xl border border-emerald-500/30 shadow-inner shrink-0">
+              <ShieldCheck className="w-5 h-5 sm:w-6 sm:h-6" />
+            </span>
+            <h1 className="text-base sm:text-lg md:text-xl font-black tracking-tight truncate">
+              Portal de Auditoria
+            </h1>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={carregarDadosSindico}
               disabled={loading || flagsLoading}
               title={loading || flagsLoading ? 'Atualizando...' : 'Atualizar'}
               aria-label="Atualizar dados"
-              className="p-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl transition flex items-center justify-center shadow-lg shadow-emerald-950/50 cursor-pointer active:scale-95 disabled:opacity-50"
+              className="p-2 sm:p-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl transition flex items-center justify-center shadow-lg shadow-emerald-950/50 cursor-pointer active:scale-95 disabled:opacity-50"
             >
-              <RefreshCw className={`w-4 h-4 ${loading || flagsLoading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${loading || flagsLoading ? 'animate-spin' : ''}`} />
             </button>
           </div>
         </div>
