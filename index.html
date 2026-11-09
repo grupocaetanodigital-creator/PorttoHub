@@ -1,11 +1,37 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="dark" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>PorttoHub - Portaria Inteligente & Gestão Condominial</title>
     <meta name="description" content="Sistema multi-condomínio para reserva limpa e ágil de áreas comuns, portaria, encomendas, controle de acesso e custódia." />
     
+    <!-- Script de Inicialização Imediata do Modo Escuro / Claro sem flicker -->
+    <script>
+      (function() {
+        try {
+          var tema = localStorage.getItem('infport_tema_visual_v2') || 'escuro';
+          var custom = localStorage.getItem('porttohub_customizacao_visual_v2');
+          if (custom) {
+            try {
+              var c = JSON.parse(custom);
+              if (c.temaGlobalId === 'clean_light') tema = 'claro';
+            } catch(e) {}
+          }
+          if (tema === 'claro') {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.classList.add('light');
+            document.documentElement.setAttribute('data-theme', 'light');
+            document.documentElement.style.colorScheme = 'light';
+          } else {
+            document.documentElement.classList.add('dark');
+            document.documentElement.classList.remove('light');
+            document.documentElement.setAttribute('data-theme', 'dark');
+            document.documentElement.style.colorScheme = 'dark';
+          }
+        } catch(e) {}
+      })();
+    </script>
     <!-- PWA Standalone & Samsung / Android 13 Display Directives -->
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#0f172a" />
