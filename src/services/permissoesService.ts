@@ -64,13 +64,23 @@ export interface PermissoesModulo {
     relatorio?: boolean;
   };
   cadastros?: PermissaoModuloPadrao & {
-    moradores?: boolean;
     visualizar_moradores?: boolean;
+    moradores?: boolean;
+    cadastrar_morador?: boolean;
+    editar_morador?: boolean;
+    excluir_morador?: boolean;
+    gerenciar_veiculos?: boolean;
+    vincular_tags?: boolean;
+    status_acesso_morador?: boolean;
+    exportar_moradores?: boolean;
+    visualizar_operadores?: boolean;
     operadores?: boolean;
     editar_operadores?: boolean;
+    alterar_senha_operador?: boolean;
+    excluir_operadores?: boolean;
+    gerenciar_niveis?: boolean;
     configurar_condominio?: boolean;
     condominios?: boolean;
-    gerenciar_niveis?: boolean;
     excluir?: boolean;
   };
   moradores?: PermissaoModuloPadrao & {
@@ -240,15 +250,25 @@ export const MODULOS_DEFINICAO_RBAC: ModuloDefinicaoInfo[] = [
   {
     id: 'cadastros',
     nome: 'Cadastros Base',
+    descricao: 'Gestão completa de condomínios, postos, operadores, moradores, veículos e tags RFID',
     acoesEspecificas: [
-      { id: 'moradores', label: 'Gerenciar Moradores & Casas/Unidades' },
       { id: 'visualizar_moradores', label: 'Visualizar Moradores & Unidades (Consulta)' },
+      { id: 'cadastrar_morador', label: 'Cadastrar Novos Moradores' },
+      { id: 'editar_morador', label: 'Editar Dados de Moradores' },
+      { id: 'excluir_morador', label: 'Excluir Moradores / Dependentes' },
+      { id: 'gerenciar_veiculos', label: 'Cadastrar e Editar Veículos & Placas' },
+      { id: 'vincular_tags', label: 'Vincular / Alterar Tags RFID' },
+      { id: 'status_acesso_morador', label: 'Alterar Status de Acesso (Bloquear / Liberar)' },
+      { id: 'exportar_moradores', label: 'Exportar Lista de Moradores (CSV / Relatórios)' },
+      { id: 'visualizar_operadores', label: 'Visualizar Equipe de Operadores' },
       { id: 'operadores', label: 'Cadastrar Novos Operadores' },
       { id: 'editar_operadores', label: 'Editar Operadores Existentes' },
-      { id: 'configurar_condominio', label: 'Configurar Condomínio do Posto' },
-      { id: 'condominios', label: 'Cadastrar Novos Condomínios (Admin)' },
-      { id: 'gerenciar_niveis', label: 'Gerenciar Níveis de Acesso (RBAC)' },
-      { id: 'excluir', label: 'Excluir Registros em Cadastros' }
+      { id: 'alterar_senha_operador', label: 'Redefinir Senhas de Operadores' },
+      { id: 'excluir_operadores', label: 'Excluir ou Desativar Operadores' },
+      { id: 'gerenciar_niveis', label: 'Gerenciar Permissões Granulares & Níveis (RBAC)' },
+      { id: 'configurar_condominio', label: 'Configurar Condomínio / Posto' },
+      { id: 'condominios', label: 'Cadastrar Novos Condomínios (Multi-Condomínio)' },
+      { id: 'excluir', label: 'Exclusão Geral de Registros em Cadastros' }
     ]
   },
   {
@@ -321,7 +341,7 @@ export const NIVEIS_PADRAO: NivelAcessoItem[] = [
       manutencao: { visualizar: true, criar: true, editar: true, excluir: true, abrir_os: true, concluir: true },
       ocorrencias: { visualizar: true, criar: true, editar: true, excluir: true, resolver: true },
       passagem_posto: { visualizar: true, criar: true, editar: true, excluir: true, assumir_posto: true, relatorio: true },
-      cadastros: { visualizar: true, criar: true, editar: true, excluir: true, moradores: true, visualizar_moradores: true, operadores: true, editar_operadores: true, configurar_condominio: true, condominios: true, gerenciar_niveis: true },
+      cadastros: { visualizar: true, criar: true, editar: true, excluir: true, moradores: true, visualizar_moradores: true, cadastrar_morador: true, editar_morador: true, excluir_morador: true, gerenciar_veiculos: true, vincular_tags: true, status_acesso_morador: true, exportar_moradores: true, visualizar_operadores: true, operadores: true, editar_operadores: true, alterar_senha_operador: true, excluir_operadores: true, configurar_condominio: true, condominios: true, gerenciar_niveis: true },
       moradores: { visualizar: true, criar: true, editar: true, excluir: true, adicionar: true },
       historico_absoluto: { visualizar: true, criar: true, editar: true, excluir: true, ver_feed: true, ver_metricas: true, exportar_csv: true, limpar_dados: true },
       configuracoes: { visualizar: true, criar: true, editar: true, excluir: true, gerenciar_niveis: true, feature_flags: true },
@@ -346,7 +366,7 @@ export const NIVEIS_PADRAO: NivelAcessoItem[] = [
       manutencao: { visualizar: true, criar: true, editar: true, excluir: false, abrir_os: true, concluir: true },
       ocorrencias: { visualizar: true, criar: true, editar: true, excluir: false, resolver: true },
       passagem_posto: { visualizar: true, criar: true, editar: true, excluir: false, assumir_posto: true, relatorio: true },
-      cadastros: { visualizar: true, criar: true, editar: true, excluir: false, moradores: true, visualizar_moradores: true, operadores: true, editar_operadores: true, configurar_condominio: true, condominios: false, gerenciar_niveis: false },
+      cadastros: { visualizar: true, criar: true, editar: true, excluir: false, moradores: true, visualizar_moradores: true, cadastrar_morador: true, editar_morador: true, excluir_morador: false, gerenciar_veiculos: true, vincular_tags: true, status_acesso_morador: true, exportar_moradores: true, visualizar_operadores: true, operadores: true, editar_operadores: true, alterar_senha_operador: true, excluir_operadores: false, configurar_condominio: true, condominios: false, gerenciar_niveis: false },
       moradores: { visualizar: true, criar: true, editar: true, excluir: false, adicionar: true },
       historico_absoluto: { visualizar: true, criar: false, editar: false, excluir: false, ver_feed: true, ver_metricas: true, exportar_csv: true, limpar_dados: false },
       configuracoes: { visualizar: true, criar: false, editar: false, excluir: false, gerenciar_niveis: false, feature_flags: false },
@@ -371,7 +391,7 @@ export const NIVEIS_PADRAO: NivelAcessoItem[] = [
       manutencao: { visualizar: true, criar: true, editar: true, excluir: false, abrir_os: true, concluir: true },
       ocorrencias: { visualizar: true, criar: true, editar: true, excluir: false, resolver: true },
       passagem_posto: { visualizar: true, criar: true, editar: true, excluir: false, assumir_posto: true, relatorio: true },
-      cadastros: { visualizar: true, criar: true, editar: true, excluir: false, moradores: true, visualizar_moradores: true, operadores: true, editar_operadores: true, configurar_condominio: true, condominios: false, gerenciar_niveis: false },
+      cadastros: { visualizar: true, criar: true, editar: true, excluir: false, moradores: true, visualizar_moradores: true, cadastrar_morador: true, editar_morador: true, excluir_morador: false, gerenciar_veiculos: true, vincular_tags: true, status_acesso_morador: true, exportar_moradores: true, visualizar_operadores: true, operadores: true, editar_operadores: true, alterar_senha_operador: false, excluir_operadores: false, configurar_condominio: true, condominios: false, gerenciar_niveis: false },
       moradores: { visualizar: true, criar: true, editar: true, excluir: false, adicionar: true },
       historico_absoluto: { visualizar: true, criar: false, editar: false, excluir: false, ver_feed: true, ver_metricas: true, exportar_csv: false, limpar_dados: false },
       configuracoes: { visualizar: false, criar: false, editar: false, excluir: false, gerenciar_niveis: false, feature_flags: false },
@@ -396,7 +416,7 @@ export const NIVEIS_PADRAO: NivelAcessoItem[] = [
       manutencao: { visualizar: true, criar: true, editar: false, excluir: false, abrir_os: true, concluir: false },
       ocorrencias: { visualizar: true, criar: true, editar: false, excluir: false, resolver: false },
       passagem_posto: { visualizar: true, criar: true, editar: true, excluir: false, assumir_posto: true, relatorio: true },
-      cadastros: { visualizar: true, criar: false, editar: false, excluir: false, moradores: false, visualizar_moradores: true, operadores: false, editar_operadores: false, configurar_condominio: false, condominios: false, gerenciar_niveis: false },
+      cadastros: { visualizar: true, criar: false, editar: false, excluir: false, moradores: false, visualizar_moradores: true, cadastrar_morador: true, editar_morador: false, excluir_morador: false, gerenciar_veiculos: true, vincular_tags: false, status_acesso_morador: false, exportar_moradores: false, visualizar_operadores: false, operadores: false, editar_operadores: false, alterar_senha_operador: false, excluir_operadores: false, configurar_condominio: false, condominios: false, gerenciar_niveis: false },
       moradores: { visualizar: true, criar: true, editar: false, excluir: false, adicionar: true },
       historico_absoluto: { visualizar: true, criar: false, editar: false, excluir: false, ver_feed: true, ver_metricas: false, exportar_csv: false, limpar_dados: false },
       configuracoes: { visualizar: false, criar: false, editar: false, excluir: false, gerenciar_niveis: false, feature_flags: false },
@@ -422,7 +442,7 @@ export const NIVEIS_PADRAO: NivelAcessoItem[] = [
       manutencao: { visualizar: true, criar: true, editar: false, excluir: false, abrir_os: true, concluir: false },
       ocorrencias: { visualizar: true, criar: true, editar: false, excluir: false, resolver: true },
       passagem_posto: { visualizar: true, criar: false, editar: false, excluir: false, assumir_posto: false, relatorio: true },
-      cadastros: { visualizar: true, criar: false, editar: false, excluir: false, moradores: false, visualizar_moradores: true, operadores: false, editar_operadores: false, configurar_condominio: false, condominios: false, gerenciar_niveis: false },
+      cadastros: { visualizar: true, criar: false, editar: false, excluir: false, moradores: false, visualizar_moradores: true, cadastrar_morador: false, editar_morador: false, excluir_morador: false, gerenciar_veiculos: false, vincular_tags: false, status_acesso_morador: false, exportar_moradores: true, visualizar_operadores: true, operadores: false, editar_operadores: false, alterar_senha_operador: false, excluir_operadores: false, configurar_condominio: false, condominios: false, gerenciar_niveis: false },
       moradores: { visualizar: true, criar: false, editar: false, excluir: false, adicionar: false },
       historico_absoluto: { visualizar: true, criar: false, editar: false, excluir: false, ver_feed: true, ver_metricas: true, exportar_csv: true, limpar_dados: false },
       configuracoes: { visualizar: false, criar: false, editar: false, excluir: false, gerenciar_niveis: false, feature_flags: false },
@@ -923,10 +943,20 @@ export function resolverAcaoEmPermissoesModulo(permissoesModulo: any, modKey: st
   }
 
   if (modKey === 'cadastros') {
-    if (acao === 'operadores' || acao === 'cadastrar_operadores') return permissoesModulo.operadores ?? permissoesModulo.criar;
+    if (acao === 'operadores' || acao === 'cadastrar_operadores') return permissoesModulo.operadores ?? permissoesModulo.cadastrar_operadores ?? permissoesModulo.criar;
+    if (acao === 'visualizar_operadores') return permissoesModulo.visualizar_operadores ?? permissoesModulo.operadores ?? permissoesModulo.visualizar ?? true;
     if (acao === 'editar_operadores') return permissoesModulo.editar_operadores ?? permissoesModulo.operadores ?? permissoesModulo.editar;
+    if (acao === 'alterar_senha_operador') return permissoesModulo.alterar_senha_operador ?? permissoesModulo.editar_operadores ?? permissoesModulo.operadores;
+    if (acao === 'excluir_operadores') return permissoesModulo.excluir_operadores ?? permissoesModulo.excluir ?? false;
     if (acao === 'moradores' || acao === 'gerenciar_moradores') return permissoesModulo.moradores ?? permissoesModulo.criar;
     if (acao === 'visualizar_moradores') return permissoesModulo.visualizar_moradores ?? permissoesModulo.moradores ?? permissoesModulo.visualizar ?? true;
+    if (acao === 'cadastrar_morador') return permissoesModulo.cadastrar_morador ?? permissoesModulo.moradores ?? permissoesModulo.criar;
+    if (acao === 'editar_morador') return permissoesModulo.editar_morador ?? permissoesModulo.moradores ?? permissoesModulo.editar;
+    if (acao === 'excluir_morador') return permissoesModulo.excluir_morador ?? permissoesModulo.excluir ?? false;
+    if (acao === 'gerenciar_veiculos' || acao === 'veiculos') return permissoesModulo.gerenciar_veiculos ?? permissoesModulo.moradores ?? permissoesModulo.editar ?? true;
+    if (acao === 'vincular_tags' || acao === 'tags_rfid') return permissoesModulo.vincular_tags ?? permissoesModulo.moradores ?? permissoesModulo.editar;
+    if (acao === 'status_acesso_morador') return permissoesModulo.status_acesso_morador ?? permissoesModulo.editar_morador ?? permissoesModulo.moradores;
+    if (acao === 'exportar_moradores') return permissoesModulo.exportar_moradores ?? permissoesModulo.visualizar_moradores ?? permissoesModulo.visualizar ?? true;
     if (acao === 'configurar_condominio') return permissoesModulo.configurar_condominio ?? permissoesModulo.condominios ?? permissoesModulo.editar;
     if (acao === 'condominios') return permissoesModulo.condominios ?? permissoesModulo.criar;
     if (acao === 'gerenciar_niveis') return permissoesModulo.gerenciar_niveis ?? permissoesModulo.editar;
