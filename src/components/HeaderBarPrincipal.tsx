@@ -4,6 +4,7 @@ import BotaoNotificacoesLembretes from './BotaoNotificacoesLembretes';
 import AlertaNoCondominioTopo from './AlertaNoCondominioTopo';
 import { NOME_APLICACAO } from '../services/versaoService';
 import { useCustomizacaoVisual, obterClasseTamanhoFonte } from '../services/customizacaoVisualService';
+import SeletorTema from './SeletorTema';
 
 interface HeaderBarPrincipalProps {
   condominioId?: string;
@@ -129,6 +130,9 @@ export default function HeaderBarPrincipal({
             onNavegar={() => onNavegarModulo ? onNavegarModulo('prestadores') : undefined}
           />
         )}
+
+        {/* SELETOR DE MODO CLARO / ESCURO */}
+        <SeletorTema variante="compacto" />
 
         {/* NOTIFICAÇÕES & LEMBRETES DA PORTARIA (CININHO) */}
         <div className="relative shrink-0">
