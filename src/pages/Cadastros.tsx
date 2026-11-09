@@ -534,7 +534,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
       if (u.toUpperCase() === 'TODAS' || u === '*' || u.toLowerCase() === 'todas as unidades') return 'TODAS';
       return u;
     }
-    const uPerm = usuarioLogado?.unidade || usuarioLogado?.permissoes?.unidade_acesso || usuarioLogado?.permissoes?.unidade;
+    const uPerm = usuarioLogado?.unidade || usuarioLogado?.permissoes?.unidade_acesso || usuarioLogado?.permissoes?.unidade || usuarioLogado?.unidade_acesso;
     if (uPerm && String(uPerm).trim()) {
       const u = String(uPerm).trim();
       if (u.toUpperCase() === 'TODAS' || u === '*' || u.toLowerCase() === 'todas as unidades') return 'TODAS';
@@ -546,20 +546,19 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
       if (u.toUpperCase() === 'TODAS' || u === '*') return 'TODAS';
       return u;
     }
-    const nomeOp = (usuarioLogado?.nome || '').toLowerCase().trim();
-    const loginOp = (usuarioLogado?.login || '').toLowerCase().trim();
-    const primeiroNome = nomeOp.split(' ')[0];
-    const mMatch = moradores.find(m => {
-      const nm = (m.nome || '').toLowerCase();
-      if (primeiroNome && primeiroNome.length >= 3 && nm.includes(primeiroNome)) return true;
-      if (loginOp && nm.length >= 3 && loginOp.includes(nm.split(' ')[0])) return true;
+    return 'TODAS'; // Padrão absoluto: todas as unidades liberadas
+  }, [ehSindicaLvl1, unidadeAcessadaManual, usuarioLogado]);
+
+  // Determina se a visualização está restrita a uma unidade específica (diferente de TODAS)
+  const temRestricaoUnidadeEspecifica = useMemo(() => {
+    if (!ehSindicaLvl1) return false;
+    if (!unidadeAcessadaSindica) return false;
+    const u = String(unidadeAcessadaSindica).trim().toUpperCase();
+    if (!u || u === 'TODAS' || u === '*' || u === 'GLOBAL' || u === 'TODAS AS UNIDADES') {
       return false;
-    });
-    if (mMatch?.unidade) {
-      return String(mMatch.unidade).trim();
     }
-    return 'TODAS'; // Padrão: todas as unidades liberadas
-  }, [ehSindicaLvl1, unidadeAcessadaManual, usuarioLogado, moradores]);
+    return true;
+  }, [ehSindicaLvl1, unidadeAcessadaSindica]);
 
   // Modal de edição rápida de permissões direto do card do operador
   const [operadorPermissoesModal, setOperadorPermissoesModal] = useState<any | null>(null);
@@ -2067,15 +2066,18 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     const cidNorm = String(condoAtivoId).trim().toLowerCase();
     const todosDoCondo = moradores.filter(m => String(m.condominio_id || '').trim().toLowerCase() === cidNorm);
 
-    if (ehSindicaLvl1 && unidadeAcessadaSindica) {
+    // Só restringe se houver uma unidade específica configurada (diferente de 'TODAS')
+    if (ehSindicaLvl1 && temRestricaoUnidadeEspecifica && unidadeAcessadaSindica) {
       return todosDoCondo.filter(m => saoUnidadesEquivalentes(m.unidade, unidadeAcessadaSindica));
     }
+    // Quando selecionado 'TODAS', retorna TODOS os moradores deste condomínio!
     return todosDoCondo;
-  }, [moradores, condoAtivoId, ehSindicaLvl1, unidadeAcessadaSindica]);
+  }, [moradores, condoAtivoId, ehSindicaLvl1, temRestricaoUnidadeEspecifica, unidadeAcessadaSindica]);
 
   // Processamento e geração dos cards de unidades para a aba Moradores
   const listaCardsGerados = useMemo(() => {
-    if (ehSindicaLvl1 && unidadeAcessadaSindica) {
+    // Só gera card único se houver restrição real a uma unidade específica
+    if (ehSindicaLvl1 && temRestricaoUnidadeEspecifica && unidadeAcessadaSindica) {
       const num = unidadeAcessadaSindica;
       const mDesta = moradoresDoCondoAtivo.find(m => saoUnidadesEquivalentes(m.unidade, num));
       const bloco = mDesta?.bloco || (eEstruturaCasasAtivo ? 'Casa' : '');
@@ -2087,12 +2089,14 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
       }];
     }
 
+    // Quando selecionado 'TODAS', GERA TODAS AS UNIDADES DESTE CONDOMÍNIO (ex: Casa 01 a Casa 117)!
     const cards = gerarCardsUnidadesCondominio(configCondoAtivo);
     // Assegura que se houver moradores DESTE condomínio com unidades fora do range, eles também ganhem card (sem duplicar unidades equivalentes)
     const extras: UnidadeEstruturada[] = [];
     moradoresDoCondoAtivo.forEach(m => {
       const num = (m.unidade || '').toString().trim();
-      if (!num) return;
+      // Não cria cards espúrios para strings reservadas como 'TODAS' ou '*'
+      if (!num || num.toUpperCase() === 'TODAS' || num === '*' || num.toUpperCase() === 'GLOBAL') return;
       const jaExiste = cards.some(c => saoUnidadesEquivalentes(c.numero, num)) || 
                        extras.some(e => saoUnidadesEquivalentes(e.numero, num));
       if (!jaExiste) {
@@ -2105,7 +2109,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
       }
     });
     return [...cards, ...extras];
-  }, [configCondoAtivo, moradoresDoCondoAtivo, eEstruturaCasasAtivo, ehSindicaLvl1, unidadeAcessadaSindica]);
+  }, [configCondoAtivo, moradoresDoCondoAtivo, eEstruturaCasasAtivo, ehSindicaLvl1, temRestricaoUnidadeEspecifica, unidadeAcessadaSindica]);
 
   const unidadesComMoradores = useMemo(() => {
     return listaCardsGerados.map(u => {
