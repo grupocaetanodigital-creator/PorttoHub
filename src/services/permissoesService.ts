@@ -107,6 +107,12 @@ export interface PermissoesModulo {
     gerar_passe_qr?: boolean;
     configurar_portoes?: boolean;
   };
+  painel_sindico?: PermissaoModuloPadrao & {
+    relatorio?: boolean;
+    auditoria?: boolean;
+    nova_ocorrencia?: boolean;
+    nova_os?: boolean;
+  };
 }
 
 export interface NivelAcessoItem {
@@ -131,6 +137,15 @@ export interface ModuloDefinicaoInfo {
 }
 
 export const MODULOS_DEFINICAO_RBAC: ModuloDefinicaoInfo[] = [
+  {
+    id: 'painel_sindico',
+    nome: 'Portal do Síndico & Auditoria',
+    acoesEspecificas: [
+      { id: 'relatorio', label: 'Exportar Relatórios Executivos' },
+      { id: 'nova_ocorrencia', label: 'Registrar Ocorrência pelo Síndico' },
+      { id: 'nova_os', label: 'Abrir Chamado OS pelo Síndico' }
+    ]
+  },
   {
     id: 'encomendas',
     nome: 'Encomendas',
