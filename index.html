@@ -30,6 +30,14 @@
             document.documentElement.style.colorScheme = 'dark';
           }
         } catch(e) {}
+        // Limpa service workers em ambiente de desenvolvimento Vite/AI Studio
+        if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+          if (window.location.hostname.includes('ais-dev') || window.location.hostname === 'localhost') {
+            navigator.serviceWorker.getRegistrations().then(function(regs) {
+              for (var i = 0; i < regs.length; i++) { regs[i].unregister(); }
+            }).catch(function() {});
+          }
+        }
       })();
     </script>
     <!-- PWA Standalone & Samsung / Android 13 Display Directives -->

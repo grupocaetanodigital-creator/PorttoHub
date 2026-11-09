@@ -60,8 +60,16 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
 
-  // Não intercepta WebSockets
-  if (url.protocol === 'ws:' || url.protocol === 'wss:') {
+  // Não intercepta WebSockets nem módulos de desenvolvimento Vite (.tsx, .ts, /src/, /@vite, /api/)
+  if (
+    url.protocol === 'ws:' || 
+    url.protocol === 'wss:' ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.startsWith('/node_modules/') ||
+    url.pathname.startsWith('/api/') ||
+    /\.(tsx?|jsx|mjs)$/i.test(url.pathname)
+  ) {
     return;
   }
 

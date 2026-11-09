@@ -2,33 +2,55 @@ import { isModuloAtivo, carregarModulosCondominio } from './services/modulosServ
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { supabase } from './services/supabase';
 
-// Code Splitting Dinâmico: Carregamento sob demanda dos módulos pesados reduzindo o bundle inicial em ~75%
-const Cadastros = lazy(() => import('./pages/Cadastros'));
-const Encomendas = lazy(() => import('./pages/Encomendas'));
-const Custodia = lazy(() => import('./pages/Custodia'));
-const Materiais = lazy(() => import('./pages/Materiais'));
-const Chaves = lazy(() => import('./pages/Chaves'));
-const Manutencao = lazy(() => import('./pages/Manutencao'));
-const Rondas = lazy(() => import('./pages/Rondas'));
-const Ocorrencias = lazy(() => import('./pages/Ocorrencias'));
-const PassagemPosto = lazy(() => import('./pages/PassagemPosto'));
-const PrestadoresObras = lazy(() => import('./pages/PrestadoresObras'));
-const Bancada = lazy(() => import('./pages/Bancada'));
-const Configuracoes = lazy(() => import('./pages/Configuracoes'));
-const HistoricoAbsoluto = lazy(() => import('./pages/HistoricoAbsoluto'));
-const PainelSindico = lazy(() => import('./pages/PainelSindico'));
-const ReservaAreas = lazy(() => import('./pages/ReservaAreas'));
-const ControleAcesso = lazy(() => import('./pages/ControleAcesso'));
+import ModuloErrorBoundary from './components/ModuloErrorBoundary';
+
+// Carregador resiliente com retry automático para evitar falhas transitórias de dynamic import
+function lazyWithRetry<T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T }>,
+  maxRetries = 2
+): React.LazyExoticComponent<T> {
+  return lazy(() => {
+    let retries = 0;
+    const execute = (): Promise<{ default: T }> => {
+      return factory().catch((error) => {
+        if (retries < maxRetries) {
+          retries++;
+          return new Promise((resolve) => setTimeout(resolve, 300 * retries)).then(execute);
+        }
+        throw error;
+      });
+    };
+    return execute();
+  });
+}
+
+// Code Splitting Dinâmico Resiliente
+const Cadastros = lazyWithRetry(() => import('./pages/Cadastros'));
+const Encomendas = lazyWithRetry(() => import('./pages/Encomendas'));
+const Custodia = lazyWithRetry(() => import('./pages/Custodia'));
+const Materiais = lazyWithRetry(() => import('./pages/Materiais'));
+const Chaves = lazyWithRetry(() => import('./pages/Chaves'));
+const Manutencao = lazyWithRetry(() => import('./pages/Manutencao'));
+const Rondas = lazyWithRetry(() => import('./pages/Rondas'));
+const Ocorrencias = lazyWithRetry(() => import('./pages/Ocorrencias'));
+const PassagemPosto = lazyWithRetry(() => import('./pages/PassagemPosto'));
+const PrestadoresObras = lazyWithRetry(() => import('./pages/PrestadoresObras'));
+const Bancada = lazyWithRetry(() => import('./pages/Bancada'));
+const Configuracoes = lazyWithRetry(() => import('./pages/Configuracoes'));
+const HistoricoAbsoluto = lazyWithRetry(() => import('./pages/HistoricoAbsoluto'));
+const PainelSindico = lazyWithRetry(() => import('./pages/PainelSindico'));
+const ReservaAreas = lazyWithRetry(() => import('./pages/ReservaAreas'));
+const ControleAcesso = lazyWithRetry(() => import('./pages/ControleAcesso'));
 
 // Modais sob demanda carregados apenas quando acionados pelo usuário
-const TutorialOperacionalPorttoHub = lazy(() => import('./components/TutorialOperacionalPorttoHub'));
-const ModalGerenciadorModulosCondominio = lazy(() => import('./components/ModalGerenciadorModulosCondominio'));
-const ModalInfoVersaoRepositorio = lazy(() => import('./components/ModalInfoVersaoRepositorio'));
-const ModalMeuPerfil = lazy(() => import('./components/ModalMeuPerfil'));
-const SupabaseDoctorModal = lazy(() => import('./components/SupabaseDoctorModal'));
-const ModalLembretesPortaria = lazy(() => import('./components/ModalLembretesPortaria'));
-const LeitorNFC = lazy(() => import('./components/LeitorNFC'));
-const ModalConfigHorariosObrasMudancas = lazy(() => import('./components/ModalConfigHorariosObrasMudancas'));
+const TutorialOperacionalPorttoHub = lazyWithRetry(() => import('./components/TutorialOperacionalPorttoHub'));
+const ModalGerenciadorModulosCondominio = lazyWithRetry(() => import('./components/ModalGerenciadorModulosCondominio'));
+const ModalInfoVersaoRepositorio = lazyWithRetry(() => import('./components/ModalInfoVersaoRepositorio'));
+const ModalMeuPerfil = lazyWithRetry(() => import('./components/ModalMeuPerfil'));
+const SupabaseDoctorModal = lazyWithRetry(() => import('./components/SupabaseDoctorModal'));
+const ModalLembretesPortaria = lazyWithRetry(() => import('./components/ModalLembretesPortaria'));
+const LeitorNFC = lazyWithRetry(() => import('./components/LeitorNFC'));
+const ModalConfigHorariosObrasMudancas = lazyWithRetry(() => import('./components/ModalConfigHorariosObrasMudancas'));
 
 
 import AlertaRondaGlobal from './components/AlertaRondaGlobal';
@@ -1493,7 +1515,8 @@ export default function App() {
               </div>
             )}
 
-            <Suspense fallback={<ModuloLoadingFallback />}>
+            <ModuloErrorBoundary nomeModulo={moduloAtual}>
+              <Suspense fallback={<ModuloLoadingFallback />}>
               {(moduloAtual === 'painel_sindico' || (eSindico && moduloAtual === 'dashboard')) ? (
                 <PainelSindico
                   usuarioLogado={operadorContextoGlobal}
@@ -1609,6 +1632,7 @@ export default function App() {
                 </>
               )}
             </Suspense>
+          </ModuloErrorBoundary>
           </main>
 
         </div>

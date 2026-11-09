@@ -172,6 +172,9 @@ export default function AlertaNoCondominioTopo({
       <span className="text-white font-black text-xs px-1.5 py-0.5 rounded-md bg-white/20 leading-none">
         {totalNoCondominio}
       </span>
+      <span className="hidden sm:inline text-[11px] font-bold">
+        {totalNoCondominio === 1 ? 'no condomínio' : 'no condomínio'}
+      </span>
 
       {temEstourados && (
         <span className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-red-600 text-white text-[10px] font-black uppercase tracking-wider">

@@ -79,7 +79,7 @@ export default function PainelSindico({
   // Filtros internos por aba
   const [filtroEncomendas, setFiltroEncomendas] = useState<'todas' | 'pendentes' | 'entregues'>('pendentes');
   const [filtroChavesAba, setFiltroChavesAba] = useState<'quadro' | 'historico'>('quadro');
-  const [filtroPrestadores, setFiltroPrestadores] = useState<'todos' | 'ativos' | 'concluidos'>('todos');
+  const [filtroPrestadores, setFiltroPrestadores] = useState<'todos' | 'ativos' | 'liberados' | 'vencidos' | 'concluidos'>('todos');
   const [filtroOcorrencias, setFiltroOcorrencias] = useState<'todas' | 'pendentes' | 'resolvidas'>('todas');
   const [filtroCustodia, setFiltroCustodia] = useState<'guardados' | 'todos' | 'entregues'>('guardados');
   const [filtroMateriais, setFiltroMateriais] = useState<'todos' | 'fora_de_uso' | 'operacionais'>('todos');
@@ -285,20 +285,14 @@ export default function PainelSindico({
       if (moduloHabilitado('prestadores')) {
         let qPrest = supabase
           .from('prestadores')
-          .select('id, condominio_id, nome_profissional, status_acesso, created_at, perfil_acesso, unidade, bloco, empresa, documento, cracha_atribuido, data_hora_entrada, data_hora_saida, foto_rosto, foto_documento')
+          .select('id, condominio_id, nome_profissional, status_acesso, created_at, perfil_acesso, unidade, bloco, empresa, documento, cracha_atribuido, data_hora_entrada, data_hora_saida, foto_rosto, foto_documento, tipo_validade, data_validade_fim, data_validade_inicio, limite_permanencia_ate, ativo')
           .order('created_at', { ascending: false });
         if (idCondo) qPrest = qPrest.eq('condominio_id', idCondo);
-        const { data: dataPrest } = await qPrest;
-        if (dataPrest && dataPrest.length > 0) {
-          setPrestadores(dataPrest);
-        } else {
-          setPrestadores([
-            { id: 'pr-1', nome_profissional: 'Valdemir Souza (Eletricista)', empresa: 'EletroServ Manutenções', documento: '28.391.029-4', cracha_atribuido: 'CR-04', perfil_acesso: 'Prestador de Serviço', unidade: '402', bloco: 'Bloco A', status_acesso: 'DENTRO', data_hora_entrada: new Date(Date.now() - 3600000 * 1.5).toISOString(), data_hora_saida: null, created_at: new Date().toISOString() },
-            { id: 'pr-2', nome_profissional: 'Cláudio Ferreira (Gesseiro)', empresa: 'DryWall Express', documento: '34.819.201-8', cracha_atribuido: 'CR-09', perfil_acesso: 'Prestador de Serviço', unidade: '701', bloco: 'Bloco B', status_acesso: 'DENTRO', data_hora_entrada: new Date(Date.now() - 3600000 * 2.8).toISOString(), data_hora_saida: null, created_at: new Date().toISOString() },
-            { id: 'pr-3', nome_profissional: 'Roberto Macedo (Técnico Fibra)', empresa: 'Claro Telecom', documento: '19.482.019-3', cracha_atribuido: 'CR-02', perfil_acesso: 'Prestador de Serviço', unidade: 'Área Técnica', bloco: 'Central', status_acesso: 'FINALIZADO', data_hora_entrada: new Date(Date.now() - 3600000 * 6).toISOString(), data_hora_saida: new Date(Date.now() - 3600000 * 4).toISOString(), created_at: new Date().toISOString() },
-            { id: 'pr-4', nome_profissional: 'Marcos Vinícius (Pintor)', empresa: 'Pinturas Silva & Cia', documento: '45.192.381-0', cracha_atribuido: 'CR-11', perfil_acesso: 'Prestador de Serviço', unidade: '104', bloco: 'Bloco C', status_acesso: 'FINALIZADO', data_hora_entrada: new Date(Date.now() - 3600000 * 28).toISOString(), data_hora_saida: new Date(Date.now() - 3600000 * 22).toISOString(), created_at: new Date().toISOString() }
-          ]);
+        const { data: dataPrest, error: errPrest } = await qPrest;
+        if (errPrest) {
+          console.warn('[PainelSindico] Erro ao carregar prestadores do Supabase:', errPrest);
         }
+        setPrestadores(dataPrest || []);
       } else {
         setPrestadores([]);
       }
@@ -452,12 +446,28 @@ export default function PainelSindico({
     }).length;
     const chavesDisponiveis = Math.max(0, chaves.length - chavesRetiradas);
 
-    // 3. Prestadores presentes no condomínio neste exato momento (status DENTRO/EM_ANDAMENTO/AUTORIZADO e sem saída)
+    // 3. Prestadores presentes no condomínio neste exato momento (status DENTRO ou EM_ANDAMENTO e sem saída registrada)
+    // NOTA: 'AUTORIZADO' é a liberação cadastrada para acesso futuro/válido, NÃO presença física atual
     const prestadoresAtivos = prestadores.filter(p => {
       const s = String(p.status_acesso || '').toUpperCase();
-      const dentro = s === 'AUTORIZADO' || s === 'EM_ANDAMENTO' || s === 'DENTRO' || s === 'PRESENTE';
-      return dentro && !p.data_hora_saida;
+      const dentro = (s === 'DENTRO' || s === 'EM_ANDAMENTO' || s === 'PRESENTE') && !p.data_hora_saida;
+      return dentro;
     }).length;
+
+    // Prestadores liberados (apenas cadastros que NÃO estão com a entrada vencida)
+    const agoraTs = Date.now();
+    const prestadoresLiberados = prestadores.filter(p => {
+      const st = String(p.status || p.status_acesso || '').toUpperCase();
+      if (st === 'BLOQUEADO' || st === 'CANCELADO' || st === 'INATIVO') return false;
+      // Validade permanente ou sem data fim cadastrada = liberado/válido
+      if (p.tipo_validade === 'permanente' || !p.data_validade_fim) return true;
+      const strFim = String(p.data_validade_fim);
+      const tFim = strFim.includes('T') ? new Date(strFim).getTime() : new Date(strFim + 'T23:59:59').getTime();
+      if (isNaN(tFim)) return true;
+      return agoraTs <= tFim;
+    }).length;
+
+    const prestadoresVencidos = Math.max(0, prestadores.length - prestadoresLiberados);
     
     // Rondas hoje
     const rondasHoje = rondas.filter(r => {
@@ -516,6 +526,9 @@ export default function PainelSindico({
       chavesDisponiveis,
       totalChaves: chaves.length,
       prestadoresAtivos,
+      prestadoresLiberados,
+      prestadoresVencidos,
+      totalPrestadores: prestadores.length,
       rondasConcluidas,
       totalRondasHoje: rondasHoje.length,
       ocorrenciasHoje,
@@ -853,26 +866,47 @@ export default function PainelSindico({
               </span>
               <HardHat className="w-4 h-4 text-current" />
             </div>
+            {/* Total Liberados (sem entrada vencida) */}
             <div className="flex items-baseline gap-1.5">
-              <div className="text-2xl font-black">{metricas.prestadoresAtivos}</div>
+              <div className="text-2xl font-black">{metricas.prestadoresLiberados}</div>
               <span className="text-[11px] font-black uppercase tracking-wide">
-                {metricas.prestadoresAtivos > 0 ? 'No condomínio!' : 'no condomínio'}
+                liberados
               </span>
             </div>
-            <div className="text-[10px] mt-1 flex flex-col gap-0.5">
+
+            {/* Alerta de presentes no condomínio */}
+            <div className="text-[10px] mt-1 flex flex-col gap-1">
               {metricas.prestadoresAtivos > 0 ? (
-                <div className="bg-white/25 text-white px-1.5 py-0.5 rounded text-[9px] font-black tracking-wide text-center uppercase">
-                  ⚠️ Presentes no condomínio agora
+                <div className="bg-white/25 text-white px-2 py-1 rounded-lg text-[9px] font-black tracking-wide text-center uppercase flex items-center justify-center gap-1 shadow-2xs">
+                  <span className="relative flex h-2 w-2 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-90"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                  </span>
+                  <span>
+                    ⚠️ {metricas.prestadoresAtivos === 1 ? '1 no condomínio agora' : `${metricas.prestadoresAtivos} no condomínio agora`}
+                  </span>
                 </div>
               ) : (
-                <div className="text-slate-500 dark:text-slate-400 text-[10px]">
-                  Nenhum no momento
+                <div className="text-slate-500 dark:text-slate-400 text-[10px] py-0.5">
+                  0 no condomínio agora
                 </div>
               )}
-              <div className="flex items-center justify-between text-[9px] opacity-80 pt-0.5">
-                <span>Cadastrados:</span>
-                <span>{prestadores.length} no total</span>
+
+              {/* Total Cadastrado e Entrada Vencida */}
+              <div className="flex items-center justify-between text-[9px] opacity-85 pt-1 border-t border-current/15">
+                <span>Total cadastrado:</span>
+                <span className="font-bold">{prestadores.length} no total</span>
               </div>
+              {metricas.prestadoresVencidos > 0 && (
+                <div className="flex items-center justify-between text-[9px] opacity-85">
+                  <span className={metricas.prestadoresAtivos > 0 ? 'text-white/90' : 'text-amber-500 dark:text-amber-400'}>
+                    Entrada vencida:
+                  </span>
+                  <span className="font-bold">
+                    {metricas.prestadoresVencidos}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -2170,10 +2204,10 @@ export default function PainelSindico({
                 </div>
                 <div>
                   <h4 className="font-black text-sm uppercase tracking-wide">
-                    {metricas.prestadoresAtivos} Prestador(es) Trabalhando no Condomínio Agora!
+                    {metricas.prestadoresAtivos === 1 ? '1 Prestador Trabalhando no Condomínio Agora!' : `${metricas.prestadoresAtivos} Prestadores Trabalhando no Condomínio Agora!`}
                   </h4>
                   <p className="text-xs text-orange-100">
-                    Há prestadores com acesso em andamento. Monitore horários de obras e regras de circulação.
+                    {metricas.prestadoresAtivos === 1 ? 'Há 1 prestador com acesso em andamento.' : `Há ${metricas.prestadoresAtivos} prestadores com acesso em andamento.`} Monitore horários de obras e regras de circulação.
                   </p>
                 </div>
               </div>
@@ -2181,7 +2215,7 @@ export default function PainelSindico({
                 onClick={() => setFiltroPrestadores('ativos')}
                 className="px-3 py-1.5 bg-white text-orange-900 text-xs font-black rounded-lg hover:bg-orange-50 transition cursor-pointer self-start sm:self-auto shadow-sm"
               >
-                Filtrar Presentes
+                Filtrar Presentes ({metricas.prestadoresAtivos})
               </button>
             </div>
           )}
@@ -2200,6 +2234,16 @@ export default function PainelSindico({
                 <Clock className="w-3.5 h-3.5" /> No Condomínio Agora ({metricas.prestadoresAtivos})
               </button>
               <button
+                onClick={() => setFiltroPrestadores('liberados')}
+                className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                  filtroPrestadores === 'liberados'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" /> Liberados ({metricas.prestadoresLiberados})
+              </button>
+              <button
                 onClick={() => setFiltroPrestadores('todos')}
                 className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap cursor-pointer ${
                   filtroPrestadores === 'todos'
@@ -2209,15 +2253,27 @@ export default function PainelSindico({
               >
                 Todos Cadastrados ({prestadores.length})
               </button>
+              {metricas.prestadoresVencidos > 0 && (
+                <button
+                  onClick={() => setFiltroPrestadores('vencidos')}
+                  className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                    filtroPrestadores === 'vencidos'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40'
+                  }`}
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" /> Entrada Vencida ({metricas.prestadoresVencidos})
+                </button>
+              )}
               <button
                 onClick={() => setFiltroPrestadores('concluidos')}
                 className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
                   filtroPrestadores === 'concluidos'
-                    ? 'bg-emerald-600 text-white shadow-xs'
+                    ? 'bg-slate-700 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                <CheckCircle2 className="w-3.5 h-3.5" /> Finalizados ({prestadores.length - metricas.prestadoresAtivos})
+                Finalizados ({prestadores.length - metricas.prestadoresAtivos})
               </button>
             </div>
 
@@ -2251,9 +2307,18 @@ export default function PainelSindico({
                 {prestadores
                   .filter(p => {
                     const s = String(p.status_acesso || '').toUpperCase();
-                    const noLocal = (s === 'AUTORIZADO' || s === 'EM_ANDAMENTO' || s === 'DENTRO' || s === 'PRESENTE') && !p.data_hora_saida;
+                    const noLocal = (s === 'DENTRO' || s === 'EM_ANDAMENTO' || s === 'PRESENTE') && !p.data_hora_saida;
+                    const st = String(p.status_acesso || '').toUpperCase();
+                    const ehBloqueado = st === 'BLOQUEADO' || st === 'CANCELADO' || st === 'INATIVO';
+                    const dataFimStr = String(p.data_validade_fim || '');
+                    const tFim = dataFimStr ? (dataFimStr.includes('T') ? new Date(dataFimStr).getTime() : new Date(dataFimStr + 'T23:59:59').getTime()) : NaN;
+                    const vencido = !ehBloqueado && Boolean(p.data_validade_fim && p.tipo_validade !== 'permanente' && !isNaN(tFim) && Date.now() > tFim);
+                    const liberado = !ehBloqueado && !vencido;
+
                     if (filtroPrestadores === 'ativos' && !noLocal) return false;
                     if (filtroPrestadores === 'concluidos' && noLocal) return false;
+                    if (filtroPrestadores === 'liberados' && !liberado) return false;
+                    if (filtroPrestadores === 'vencidos' && !vencido) return false;
                     if (!buscaTexto) return true;
                     const txt = buscaTexto.toLowerCase();
                     return (
@@ -2266,7 +2331,7 @@ export default function PainelSindico({
                   })
                   .map((p) => {
                     const s = String(p.status_acesso || '').toUpperCase();
-                    const noLocal = (s === 'AUTORIZADO' || s === 'EM_ANDAMENTO' || s === 'DENTRO' || s === 'PRESENTE') && !p.data_hora_saida;
+                    const noLocal = (s === 'DENTRO' || s === 'EM_ANDAMENTO' || s === 'PRESENTE') && !p.data_hora_saida;
                     return (
                       <tr key={p.id} className={noLocal ? 'bg-orange-50/40 dark:bg-orange-950/20 hover:bg-orange-50 dark:hover:bg-orange-950/30' : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'}>
                         <td className="p-3">

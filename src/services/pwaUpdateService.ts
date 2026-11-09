@@ -67,6 +67,23 @@ export async function inicializarDetectorAtualizacoesPwa(): Promise<void> {
   }
   inicializado = true;
 
+  // No ambiente de desenvolvimento (Vite / AI Studio Dev), desativa e limpa service workers legados
+  // para evitar interceptação de arquivos .tsx e falhas de dynamic import
+  const isDev = import.meta.env.DEV || window.location.hostname.includes('ais-dev') || window.location.hostname === 'localhost';
+  if (isDev) {
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const r of regs) {
+        await r.unregister();
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+    } catch {}
+    return;
+  }
+
   try {
     // 1. Tenta obter registro existente ou registrar novo
     let reg = await navigator.serviceWorker.getRegistration();
