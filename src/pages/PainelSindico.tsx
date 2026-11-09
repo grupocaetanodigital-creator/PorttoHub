@@ -34,6 +34,26 @@ import {
 } from 'lucide-react';
 import SeletorTema from '../components/SeletorTema';
 
+// Helpers estritos para identificação do status de encomendas sem ambiguidade
+export const isEncomendaRetirada = (item: any): boolean => {
+  if (!item) return false;
+  const s = String(item.status || '').trim().toUpperCase();
+  if (s === 'ENTREGUE' || s === 'RETIRADO' || s === 'BAIXADO' || s === 'ENTREGUE_MORADOR') return true;
+  if (item.data_hora_retirada || item.data_retirada || item.retirado_por) {
+    if (s !== 'CANCELADO' && s !== 'DEVOLVIDO' && s !== 'RETIDO' && s !== 'AGUARDANDO RETIRADA' && s !== 'AGUARDANDO_RETIRADA') {
+      return true;
+    }
+  }
+  return false;
+};
+
+export const isEncomendaRetida = (item: any): boolean => {
+  if (!item) return false;
+  const s = String(item.status || '').trim().toUpperCase();
+  if (s === 'CANCELADO' || s === 'DEVOLVIDO') return false;
+  return !isEncomendaRetirada(item);
+};
+
 interface PainelSindicoProps {
   usuarioLogado: any;
   condominioAtivo: any;
@@ -65,6 +85,7 @@ export default function PainelSindico({
 
   // Estados dos Dados para Consulta (Histórico Completo)
   const [encomendas, setEncomendas] = useState<any[]>([]);
+  const [totalEntreguesBanco, setTotalEntreguesBanco] = useState<number | null>(null);
   const [ocorrencias, setOcorrencias] = useState<any[]>([]);
   const [rondas, setRondas] = useState<any[]>([]);
   const [chaves, setChaves] = useState<any[]>([]);
@@ -116,12 +137,13 @@ export default function PainelSindico({
     return isModuloAtivo(moduloKey, flagsAtivas);
   };
 
-  // Sincroniza condomínio se mudar na prop
+  // Sincroniza condomínio se mudar na prop ou se lista de condomínios for carregada
   useEffect(() => {
-    if (condominioAtivo?.id && condominioAtivo.id !== condominioFiltro) {
-      setCondominioFiltro(condominioAtivo.id);
+    const idAlvo = condominioAtivo?.id || usuarioLogado?.condominio_id || (listaCondominios && listaCondominios[0]?.id);
+    if (idAlvo && (!condominioFiltro || (condominioAtivo?.id && condominioAtivo.id !== condominioFiltro))) {
+      setCondominioFiltro(idAlvo);
     }
-  }, [condominioAtivo?.id]);
+  }, [condominioAtivo?.id, usuarioLogado?.condominio_id, listaCondominios]);
 
   // Carrega as feature flags do condomínio selecionado
   const carregarFlagsDoCondominio = async (idCondo: string) => {
@@ -178,28 +200,73 @@ export default function PainelSindico({
     const idCondo = condominioFiltro || usuarioLogado?.condominio_id || condominioAtivo?.id;
 
     try {
-      // 1. Encomendas (mod02_gestao_encomendas) - HISTÓRICO COMPLETO
+      // 1. Encomendas (mod02_gestao_encomendas) - HISTÓRICO COMPLETO EXCLUSIVO DO CONDOMÍNIO ATIVO
       if (moduloHabilitado('encomendas')) {
-        let qEnc = supabase
-          .from('encomendas_itens')
-          .select('id, condominio_id, status, created_at, destinatario, morador_nome, bloco, unidade, data_recebimento, data_retirada, data_hora_retirada, codigo_barras, codigo_rastreio, local_armazenamento, retirado_por, foto_etiqueta_url, foto_etiqueta')
-          .order('created_at', { ascending: false });
-        if (idCondo) qEnc = qEnc.eq('condominio_id', idCondo);
-        const { data: dataEnc } = await qEnc;
-        if (dataEnc && dataEnc.length > 0) {
-          setEncomendas(dataEnc);
+        if (!idCondo || idCondo === 'global' || idCondo === 'todos') {
+          // Sem condomínio alvo definido, zera para não misturar dados de múltiplos locais
+          setEncomendas([]);
+          setTotalEntreguesBanco(0);
         } else {
-          // Fallback para demonstração completa de histórico e sinalização de retiradas
-          setEncomendas([
-            { id: 'enc-1', destinatario: 'Carlos Eduardo Mendes', morador_nome: 'Carlos Eduardo', bloco: 'A', unidade: '102', codigo_rastreio: 'BR839201948AA', codigo_barras: '789100029381', local_armazenamento: 'Bancada 01', status: 'Aguardando Retirada', data_recebimento: new Date(Date.now() - 3600000 * 4).toISOString(), created_at: new Date(Date.now() - 3600000 * 4).toISOString() },
-            { id: 'enc-2', destinatario: 'Juliana Silveira', morador_nome: 'Juliana Silveira', bloco: 'B', unidade: '405', codigo_rastreio: 'NL992837461BR', codigo_barras: '789100029382', local_armazenamento: 'Prateleira Correios', status: 'Aguardando Retirada', data_recebimento: new Date(Date.now() - 3600000 * 8).toISOString(), created_at: new Date(Date.now() - 3600000 * 8).toISOString() },
-            { id: 'enc-3', destinatario: 'Marcos Roberto Vieira', morador_nome: 'Marcos Vieira', bloco: 'A', unidade: '701', codigo_rastreio: 'SEDEX-4492010', codigo_barras: '789100029383', local_armazenamento: 'Armário Encomendas', status: 'Aguardando Retirada', data_recebimento: new Date(Date.now() - 3600000 * 12).toISOString(), created_at: new Date(Date.now() - 3600000 * 12).toISOString() },
-            { id: 'enc-4', destinatario: 'Patrícia Albuquerque', morador_nome: 'Patrícia Albuquerque', bloco: 'B', unidade: '204', codigo_rastreio: 'AMZ-BR-109284', codigo_barras: '789100029384', local_armazenamento: 'Bancada 02', status: 'Aguardando Retirada', data_recebimento: new Date(Date.now() - 3600000 * 18).toISOString(), created_at: new Date(Date.now() - 3600000 * 18).toISOString() },
-            { id: 'enc-5', destinatario: 'Renato Guimarães', morador_nome: 'Renato Guimarães', bloco: 'C', unidade: '301', codigo_rastreio: 'ML-PAC-8847291', codigo_barras: '789100029385', local_armazenamento: 'Guarita Principal', status: 'Aguardando Retirada', data_recebimento: new Date(Date.now() - 3600000 * 24).toISOString(), created_at: new Date(Date.now() - 3600000 * 24).toISOString() },
-            { id: 'enc-6', destinatario: 'Mariana Costa Ramos', morador_nome: 'Mariana Ramos', bloco: 'A', unidade: '304', codigo_rastreio: 'BR771029384AA', codigo_barras: '789100029386', local_armazenamento: 'Bancada 01', status: 'ENTREGUE', data_recebimento: new Date(Date.now() - 3600000 * 48).toISOString(), data_retirada: new Date(Date.now() - 3600000 * 2).toISOString(), data_hora_retirada: new Date(Date.now() - 3600000 * 2).toISOString(), retirado_por: 'Mariana Ramos (Própria)', created_at: new Date(Date.now() - 3600000 * 48).toISOString() },
-            { id: 'enc-7', destinatario: 'Fernando Dias Santos', morador_nome: 'Fernando Dias', bloco: 'B', unidade: '502', codigo_rastreio: 'SHP-992019482', codigo_barras: '789100029387', local_armazenamento: 'Bancada 02', status: 'ENTREGUE', data_recebimento: new Date(Date.now() - 3600000 * 72).toISOString(), data_retirada: new Date(Date.now() - 3600000 * 10).toISOString(), data_hora_retirada: new Date(Date.now() - 3600000 * 10).toISOString(), retirado_por: 'Esposa Carla Santos', created_at: new Date(Date.now() - 3600000 * 72).toISOString() },
-            { id: 'enc-8', destinatario: 'Aline Barros', morador_nome: 'Aline Barros', bloco: 'A', unidade: '802', codigo_rastreio: 'SEDEX-9910284', codigo_barras: '789100029388', local_armazenamento: 'Armário', status: 'ENTREGUE', data_recebimento: new Date(Date.now() - 3600000 * 96).toISOString(), data_retirada: new Date(Date.now() - 3600000 * 20).toISOString(), data_hora_retirada: new Date(Date.now() - 3600000 * 20).toISOString(), retirado_por: 'Aline Barros', created_at: new Date(Date.now() - 3600000 * 96).toISOString() }
-          ]);
+          let itensCarregados: any[] = [];
+
+          // Consulta 1: Tabela oficial 'encomendas_itens' e contagem exata de entregues no banco
+          try {
+            const [resItens, resCount] = await Promise.all([
+              supabase
+                .from('encomendas_itens')
+                .select('id, condominio_id, lote_re_id, status, created_at, destinatario, morador_nome, bloco, unidade, data_recebimento, data_retirada, data_hora_retirada, codigo_barras, codigo_rastreio, local_armazenamento, retirado_por, foto_etiqueta_url, foto_etiqueta')
+                .eq('condominio_id', idCondo)
+                .order('created_at', { ascending: false }),
+              supabase
+                .from('encomendas_itens')
+                .select('id', { count: 'exact', head: true })
+                .eq('condominio_id', idCondo)
+                .or('status.ilike.%entregue%,status.ilike.%retirad%,status.ilike.%baixad%')
+            ]);
+
+            if (!resItens.error && Array.isArray(resItens.data)) {
+              // Garante em memória que SOMENTE registros deste condomínio permaneçam
+              itensCarregados = resItens.data.filter((item: any) => String(item.condominio_id) === String(idCondo));
+            }
+            if (!resCount.error && typeof resCount.count === 'number') {
+              setTotalEntreguesBanco(resCount.count);
+            }
+          } catch (eEnc) {
+            console.warn('[PainelSindico] Falha na consulta de encomendas_itens:', eEnc);
+          }
+
+          // Consulta 2: Se a tabela principal não retornou nada, tenta a tabela legada 'encomendas' com o MESMO filtro estrito
+          if (itensCarregados.length === 0) {
+            try {
+              const { data: legacyEnc, error: errLeg } = await supabase
+                .from('encomendas')
+                .select('*')
+                .eq('condominio_id', idCondo)
+                .order('created_at', { ascending: false });
+
+              if (!errLeg && Array.isArray(legacyEnc) && legacyEnc.length > 0) {
+                itensCarregados = legacyEnc.filter((item: any) => String(item.condominio_id) === String(idCondo));
+              }
+            } catch (eLeg) {
+              // Tabela legada opcional
+            }
+          }
+
+          // Consulta 3: Cache local específico DESTE condomínio (IndexedDB / localStorage)
+          if (itensCarregados.length === 0) {
+            try {
+              const rawLocal = localStorage.getItem(`infport_cache_retidos_${idCondo}`);
+              if (rawLocal) {
+                const parsedLocal = JSON.parse(rawLocal);
+                if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
+                  itensCarregados = parsedLocal.filter((item: any) => String(item.condominio_id) === String(idCondo));
+                }
+              }
+            } catch (eLocal) {}
+          }
+
+          // Atribui com exatidão - NUNCA gera itens falsos ou mock de demonstração!
+          setEncomendas(itensCarregados);
         }
       } else {
         setEncomendas([]);
@@ -392,51 +459,81 @@ export default function PainelSindico({
   };
 
   useEffect(() => {
+    // Ao trocar ou atualizar condomínio, limpa os dados anteriores para evitar qualquer mistura visual
+    setEncomendas([]);
     carregarDadosSindico();
 
     const handleSync = () => carregarDadosSindico();
-    window.addEventListener('infport_sincronizar_dados_global', handleSync);
+    const handleEncomendasUpdate = (evt: any) => {
+      const condoEvt = evt?.detail?.condominioId;
+      const idAtual = condominioFiltro || usuarioLogado?.condominio_id || condominioAtivo?.id;
+      if (!condoEvt || !idAtual || String(condoEvt) === String(idAtual)) {
+        carregarDadosSindico();
+      }
+    };
 
-    const idCondo = condominioFiltro || usuarioLogado?.condominio_id || condominioAtivo?.id || 'global';
-    const canal = supabase
-      .channel(`sindico_realtime_${idCondo}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'ocorrencias' }, () => {
-        carregarDadosSindico();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'chamados_manutencao' }, () => {
-        carregarDadosSindico();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'encomendas_itens' }, () => {
-        carregarDadosSindico();
-      })
-      .subscribe();
+    window.addEventListener('infport_sincronizar_dados_global', handleSync);
+    window.addEventListener('infport_encomendas_atualizadas', handleEncomendasUpdate);
+    window.addEventListener('porttohub_delta_encomendas_itens', handleEncomendasUpdate);
+    window.addEventListener('porttohub_local_mutate_encomendas_itens', handleEncomendasUpdate);
+
+    const idCondo = condominioFiltro || usuarioLogado?.condominio_id || condominioAtivo?.id;
+    let canal: any = null;
+
+    if (idCondo && idCondo !== 'global' && idCondo !== 'todos') {
+      canal = supabase
+        .channel(`sindico_realtime_${idCondo}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'ocorrencias' }, () => {
+          carregarDadosSindico();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'chamados_manutencao' }, () => {
+          carregarDadosSindico();
+        })
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'encomendas_itens'
+        }, () => {
+          carregarDadosSindico();
+        })
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'lotes_re'
+        }, () => {
+          carregarDadosSindico();
+        })
+        .subscribe();
+    }
 
     return () => {
       window.removeEventListener('infport_sincronizar_dados_global', handleSync);
-      supabase.removeChannel(canal);
+      window.removeEventListener('infport_encomendas_atualizadas', handleEncomendasUpdate);
+      window.removeEventListener('porttohub_delta_encomendas_itens', handleEncomendasUpdate);
+      window.removeEventListener('porttohub_local_mutate_encomendas_itens', handleEncomendasUpdate);
+      if (canal) {
+        supabase.removeChannel(canal);
+      }
     };
-  }, [condominioFiltro, flagsAtivas]);
+  }, [condominioFiltro, condominioAtivo?.id, flagsAtivas]);
 
   // Cálculos de Indicadores Executivos com tratamento de sinônimos e normalização de maiúsculas/minúsculas
   const metricas = useMemo(() => {
     const hojeStr = new Date().toISOString().slice(0, 10);
 
-    // 1. Encomendas: itens pendentes para retirar vs entregues
-    const retidas = encomendas.filter(e => {
-      const s = String(e.status || '').toUpperCase();
-      return s !== 'ENTREGUE' && s !== 'RETIRADO' && s !== 'CANCELADO' && s !== 'DEVOLVIDO';
-    }).length;
-
-    const entreguesTotal = encomendas.filter(e => {
-      const s = String(e.status || '').toUpperCase();
-      return s === 'ENTREGUE' || s === 'RETIRADO';
-    }).length;
+    // 1. Encomendas: itens retidos na guarita vs total com status entregue no banco de dados
+    const retidas = encomendas.filter(e => isEncomendaRetida(e)).length;
+    const entreguesCalculados = encomendas.filter(e => isEncomendaRetirada(e)).length;
+    const entreguesTotal = (totalEntreguesBanco !== null && totalEntreguesBanco >= entreguesCalculados)
+      ? totalEntreguesBanco
+      : entreguesCalculados;
+    const totalHistorico = Math.max(encomendas.length, retidas + entreguesTotal);
 
     const entreguesHoje = encomendas.filter(e => {
-      const s = String(e.status || '').toUpperCase();
+      if (!isEncomendaRetirada(e)) return false;
       const dtRetirada = String(e.data_hora_retirada || e.data_retirada || '');
       const dtCriado = String(e.created_at || '');
-      return (s === 'ENTREGUE' || s === 'RETIRADO') && (dtRetirada.startsWith(hojeStr) || (!dtRetirada && dtCriado.startsWith(hojeStr)));
+      return dtRetirada.startsWith(hojeStr) || (!dtRetirada && dtCriado.startsWith(hojeStr));
     }).length;
     
     // 2. Chaves: em uso vs disponíveis no claviculário
@@ -521,6 +618,7 @@ export default function PainelSindico({
     return {
       retidas,
       entreguesTotal,
+      totalHistorico,
       entreguesHoje,
       chavesRetiradas,
       chavesDisponiveis,
@@ -540,7 +638,7 @@ export default function PainelSindico({
       materiaisAvaria: materiaisForaDeUso,
       manutencoesAbertas
     };
-  }, [encomendas, chaves, prestadores, rondas, ocorrencias, custodia, materiais, manutencoes]);
+  }, [encomendas, totalEntreguesBanco, chaves, prestadores, rondas, ocorrencias, custodia, materiais, manutencoes]);
 
   // Contagem de módulos ativos no condomínio
   const modulosAtivosCount = useMemo(() => {
@@ -786,9 +884,13 @@ export default function PainelSindico({
             <div className="flex items-center justify-between mb-1">
               <span className="text-[11px] font-bold uppercase tracking-wider opacity-85 flex items-center gap-1">
                 <span>Encomendas</span>
-                {metricas.retidas > 0 && (
+                {metricas.retidas > 0 ? (
                   <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-300">
-                    Pendente
+                    Na Guarita
+                  </span>
+                ) : (
+                  <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    Sem Pendência
                   </span>
                 )}
               </span>
@@ -796,7 +898,7 @@ export default function PainelSindico({
             </div>
             <div className="flex items-baseline gap-1.5">
               <div className="text-2xl font-black">{metricas.retidas}</div>
-              <span className="text-[11px] font-bold opacity-75">faltam retirar</span>
+              <span className="text-[11px] font-bold opacity-75">na guarita</span>
             </div>
             <div className="text-[10px] opacity-80 mt-1 flex flex-col gap-0.5">
               <div className="flex items-center justify-between font-bold">
@@ -804,8 +906,8 @@ export default function PainelSindico({
                 <span className="text-amber-500 dark:text-amber-300">{metricas.retidas} un</span>
               </div>
               <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[9px]">
-                <span>Histórico:</span>
-                <span>{encomendas.length} ({metricas.entreguesTotal} entregues)</span>
+                <span>Entregue:</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">{metricas.entreguesTotal} un</span>
               </div>
             </div>
           </div>
@@ -1083,7 +1185,7 @@ export default function PainelSindico({
             }`}
           >
             <Package className="w-3.5 h-3.5" />
-            <span>Encomendas ({encomendas.length})</span>
+            <span>Encomendas ({metricas.retidas} na guarita)</span>
           </button>
         )}
 
@@ -1313,24 +1415,29 @@ export default function PainelSindico({
           {/* Card: Encomendas Pendentes de Retirada (somente se habilitado) */}
           {moduloHabilitado('encomendas') && (
             <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-3">
-              <div className="flex items-center justify-between border-b dark:border-slate-800 pb-2">
-                <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                  <Package className="w-4 h-4 text-blue-500" />
-                  Encomendas na Guarita ({metricas.retidas} aguardando morador)
-                </h3>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b dark:border-slate-800 pb-2 gap-2">
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                    <Package className="w-4 h-4 text-blue-500" />
+                    Encomendas na Guarita ({metricas.retidas} aguardando morador)
+                  </h3>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Entregue: <strong className="text-emerald-600 dark:text-emerald-400">{metricas.entreguesTotal}</strong> encomendas ({metricas.totalHistorico} no total auditado)
+                  </div>
+                </div>
                 <button 
                   onClick={() => setAbaAtiva('encomendas')} 
-                  className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                  className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5 cursor-pointer shrink-0"
                 >
                   Ver Todas <ChevronRight className="w-3 h-3" />
                 </button>
               </div>
 
-              {encomendas.filter(e => String(e.status || '').toUpperCase() !== 'ENTREGUE').length === 0 ? (
-                <p className="text-xs text-slate-400 py-6 text-center">Nenhum pacote retido na portaria no momento.</p>
+              {encomendas.filter(e => isEncomendaRetida(e)).length === 0 ? (
+                <p className="text-xs text-slate-400 py-6 text-center">Nenhum pacote retido na portaria deste condomínio no momento.</p>
               ) : (
                 <div className="space-y-2">
-                  {encomendas.filter(e => String(e.status || '').toUpperCase() !== 'ENTREGUE').slice(0, 4).map((enc) => (
+                  {encomendas.filter(e => isEncomendaRetida(e)).slice(0, 4).map((enc) => (
                     <div key={enc.id} className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
                       <div>
                         <div className="font-bold text-slate-900 dark:text-white">
@@ -1341,7 +1448,7 @@ export default function PainelSindico({
                         </div>
                       </div>
                       <span className="text-[10px] font-mono text-slate-400">
-                        {new Date(enc.created_at).toLocaleDateString('pt-BR')}
+                        {enc.created_at ? new Date(enc.created_at).toLocaleDateString('pt-BR') : ''}
                       </span>
                     </div>
                   ))}
@@ -1434,7 +1541,7 @@ export default function PainelSindico({
             }`}>
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                  Faltam Retirar na Portaria
+                  Na Guarita (Faltam Retirar)
                 </span>
                 <div className="text-2xl font-black text-amber-900 dark:text-amber-200 mt-0.5">
                   {metricas.retidas}
@@ -1449,12 +1556,12 @@ export default function PainelSindico({
             <div className="p-3.5 rounded-xl border bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 flex items-center justify-between">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                  Já Entregues / Baixadas
+                  Entregue
                 </span>
                 <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200 mt-0.5">
                   {metricas.entreguesTotal}
                 </div>
-                <span className="text-[10px] text-slate-500">Entregues com protocolo</span>
+                <span className="text-[10px] text-slate-500">Total com status entregue no banco de dados</span>
               </div>
               <div className="p-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600">
                 <CheckCircle2 className="w-5 h-5" />
@@ -1464,12 +1571,12 @@ export default function PainelSindico({
             <div className="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 flex items-center justify-between">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
-                  Total no Histórico
+                  Total Geral no Histórico
                 </span>
                 <div className="text-2xl font-black text-slate-900 dark:text-white mt-0.5">
-                  {encomendas.length}
+                  {metricas.totalHistorico}
                 </div>
-                <span className="text-[10px] text-slate-500">Histórico integral auditado</span>
+                <span className="text-[10px] text-slate-500">Auditadas neste condomínio</span>
               </div>
               <div className="p-2.5 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
                 <Package className="w-5 h-5" />
@@ -1488,17 +1595,7 @@ export default function PainelSindico({
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                <Clock className="w-3.5 h-3.5" /> Faltam Retirar ({metricas.retidas})
-              </button>
-              <button
-                onClick={() => setFiltroEncomendas('todas')}
-                className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap cursor-pointer ${
-                  filtroEncomendas === 'todas'
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                Histórico Completo ({encomendas.length})
+                <Clock className="w-3.5 h-3.5" /> Na Guarita ({metricas.retidas})
               </button>
               <button
                 onClick={() => setFiltroEncomendas('entregues')}
@@ -1508,7 +1605,17 @@ export default function PainelSindico({
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                <CheckCircle2 className="w-3.5 h-3.5" /> Já Retiradas ({metricas.entreguesTotal})
+                <CheckCircle2 className="w-3.5 h-3.5" /> Entregue ({metricas.entreguesTotal})
+              </button>
+              <button
+                onClick={() => setFiltroEncomendas('todas')}
+                className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap cursor-pointer ${
+                  filtroEncomendas === 'todas'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                Histórico Geral ({metricas.totalHistorico})
               </button>
             </div>
 
@@ -1534,16 +1641,17 @@ export default function PainelSindico({
                   <th className="p-3">Código / Rastreio</th>
                   <th className="p-3">Local Guarda</th>
                   <th className="p-3">Entrada na Guarita</th>
-                  <th className="p-3">Retirada / Protocolo</th>
+                  <th className="p-3">Entrega / Protocolo</th>
                   <th className="p-3 text-center">Foto</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
                 {encomendas
                   .filter(e => {
-                    const isEntregue = String(e.status || '').toUpperCase() === 'ENTREGUE';
-                    if (filtroEncomendas === 'pendentes' && isEntregue) return false;
-                    if (filtroEncomendas === 'entregues' && !isEntregue) return false;
+                    const isRetirada = isEncomendaRetirada(e);
+                    const isRetida = isEncomendaRetida(e);
+                    if (filtroEncomendas === 'pendentes' && !isRetida) return false;
+                    if (filtroEncomendas === 'entregues' && !isRetirada) return false;
                     if (!buscaTexto) return true;
                     const txt = buscaTexto.toLowerCase();
                     return (
@@ -1557,16 +1665,16 @@ export default function PainelSindico({
                     );
                   })
                   .map((item) => {
-                    const isEntregue = String(item.status || '').toUpperCase() === 'ENTREGUE';
+                    const isRetirada = isEncomendaRetirada(item);
                     return (
-                      <tr key={item.id} className={isEntregue ? 'hover:bg-slate-50 dark:hover:bg-slate-800/40' : 'bg-amber-50/40 dark:bg-amber-950/15 hover:bg-amber-50 dark:hover:bg-amber-950/30'}>
+                      <tr key={item.id} className={isRetirada ? 'hover:bg-slate-50 dark:hover:bg-slate-800/40' : 'bg-amber-50/40 dark:bg-amber-950/15 hover:bg-amber-50 dark:hover:bg-amber-950/30'}>
                         <td className="p-3">
                           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                            isEntregue 
+                            isRetirada 
                               ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
                               : 'bg-amber-200 text-amber-950 dark:bg-amber-900 dark:text-amber-200 border border-amber-300'
                           }`}>
-                            {isEntregue ? (
+                            {isRetirada ? (
                               <>
                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                                 Entregue
@@ -1574,7 +1682,7 @@ export default function PainelSindico({
                             ) : (
                               <>
                                 <span className="w-2 h-2 rounded-full bg-amber-600 animate-ping" />
-                                Falta Retirar
+                                Na Guarita
                               </>
                             )}
                           </span>
@@ -1594,10 +1702,10 @@ export default function PainelSindico({
                           </span>
                         </td>
                         <td className="p-3 text-slate-500">
-                          {new Date(item.created_at).toLocaleString('pt-BR')}
+                          {item.created_at ? new Date(item.created_at).toLocaleString('pt-BR') : '—'}
                         </td>
                         <td className="p-3">
-                          {isEntregue ? (
+                          {isRetirada ? (
                             <div>
                               <span className="font-bold text-slate-800 dark:text-slate-200">{item.retirado_por || 'Morador'}</span>
                               <div className="text-[10px] text-slate-400">
