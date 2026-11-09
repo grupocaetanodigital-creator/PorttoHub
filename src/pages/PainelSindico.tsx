@@ -32,7 +32,6 @@ import {
   Grid,
   ShieldAlert
 } from 'lucide-react';
-import SeletorTema from '../components/SeletorTema';
 
 // Helpers estritos para identificação do status de encomendas sem ambiguidade
 export const isEncomendaRetirada = (item: any): boolean => {
@@ -781,7 +780,7 @@ export default function PainelSindico({
       <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 border-2 border-emerald-500/40 rounded-3xl p-4 sm:p-6 text-white shadow-2xl relative overflow-hidden">
         <div className="absolute right-0 top-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
         
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="relative z-10 flex items-start sm:items-center justify-between gap-4">
           <div className="space-y-2">
             <div className="flex items-center gap-2.5 flex-wrap">
               <span className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/30 shadow-inner">
@@ -789,7 +788,7 @@ export default function PainelSindico({
               </span>
               <div>
                 <h1 className="text-xl sm:text-2xl font-black tracking-tight flex items-center gap-2">
-                  Portal de Auditoria do Síndico
+                  Portal de Auditorial
                 </h1>
                 <p className="text-xs text-slate-300">
                   Visão executiva em tempo real com dados restritos aos módulos habilitados para este condomínio.
@@ -798,16 +797,15 @@ export default function PainelSindico({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            <SeletorTema variante="compacto" />
-
+          <div className="flex items-center gap-2">
             <button
               onClick={carregarDadosSindico}
               disabled={loading || flagsLoading}
-              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl transition flex items-center gap-2 shadow-lg shadow-emerald-950/50 cursor-pointer active:scale-95 disabled:opacity-50"
+              title={loading || flagsLoading ? 'Atualizando...' : 'Atualizar'}
+              aria-label="Atualizar dados"
+              className="p-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl transition flex items-center justify-center shadow-lg shadow-emerald-950/50 cursor-pointer active:scale-95 disabled:opacity-50"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading || flagsLoading ? 'animate-spin' : ''}`} />
-              <span>{loading || flagsLoading ? 'Atualizando...' : 'Atualizar'}</span>
+              <RefreshCw className={`w-4 h-4 ${loading || flagsLoading ? 'animate-spin' : ''}`} />
             </button>
           </div>
         </div>
