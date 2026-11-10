@@ -53,7 +53,8 @@ import {
   CheckCircle2,
   Lock,
   Copy,
-  EyeOff
+  EyeOff,
+  Briefcase
 } from 'lucide-react';
 import { comprimirImagemBase64 } from '../services/imageUtils';
 import { 
@@ -100,6 +101,147 @@ import {
 import { salvarCacheLocal, obterCacheLocal } from '../services/offlineStorageService';
 import { cachedQuery, invalidarCacheTabela } from '../services/redisCacheService';
 import { ImagemOtimizada } from '../components/ImagemOtimizada';
+
+export interface FuncaoOperacionalItem {
+  id: string;
+  nome: string;
+  categoria: string;
+  desc: string;
+  corBadge: string;
+}
+
+export const FUNCOES_OPERACIONAIS: FuncaoOperacionalItem[] = [
+  { 
+    id: 'Porteiro', 
+    nome: 'Porteiro', 
+    categoria: 'Portaria & Guarita', 
+    desc: 'Atendimento na guarita, controle de interfone, recebimento de encomendas e liberação de visitantes.',
+    corBadge: 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200/80 dark:border-blue-800/60'
+  },
+  { 
+    id: 'Zelador', 
+    nome: 'Zelador', 
+    categoria: 'Zeladoria & Supervisão', 
+    desc: 'Coordenação operacional do condomínio, inspeção de áreas comuns, supervisão predial e apoio aos condôminos.',
+    corBadge: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200/80 dark:border-amber-800/60'
+  },
+  { 
+    id: 'Limpeza', 
+    nome: 'Limpeza / Serviços Gerais', 
+    categoria: 'Conservação & Higiene', 
+    desc: 'Higienização, limpeza diária das áreas comuns, checklists de conservação e relatório de materiais de consumo.',
+    corBadge: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-800/60'
+  },
+  { 
+    id: 'Rondista / Vigilante', 
+    nome: 'Rondista / Vigilante', 
+    categoria: 'Segurança Patrimonial', 
+    desc: 'Execução de rondas preventivas por QR Code e NFC, fiscalização de perímetros, portões e segurança patrimonial.',
+    corBadge: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border-indigo-200/80 dark:border-indigo-800/60'
+  },
+  { 
+    id: 'Manutenção', 
+    nome: 'Manutenção / Técnico', 
+    categoria: 'Manutenção Predial', 
+    desc: 'Reparos elétricos, hidráulicos, bombas, geradores, inspeção de maquinários e custódia de ferramentas técnicas.',
+    corBadge: 'bg-orange-50 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300 border-orange-200/80 dark:border-orange-800/60'
+  },
+  { 
+    id: 'Controlador de Acesso', 
+    nome: 'Controlador de Acesso', 
+    categoria: 'Acesso Social & Veicular', 
+    desc: 'Triagem rápida de pedestres e veículos nas clausuras e cancelas com validação de passes e credenciais.',
+    corBadge: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300 border-cyan-200/80 dark:border-cyan-800/60'
+  },
+  { 
+    id: 'Recepcionista', 
+    nome: 'Recepcionista', 
+    categoria: 'Recepção Social', 
+    desc: 'Recepção de visitantes, direcionamento de entregadores, atendimento telefônico e registros no hall social.',
+    corBadge: 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border-purple-200/80 dark:border-purple-800/60'
+  },
+  { 
+    id: 'Supervisor', 
+    nome: 'Supervisor Operacional', 
+    categoria: 'Liderança de Posto', 
+    desc: 'Supervisão de escala de plantão, conferência de passagem de posto e auditoria operacional do turno.',
+    corBadge: 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200/80 dark:border-rose-800/60'
+  },
+  { 
+    id: 'Gerente Predial', 
+    nome: 'Gerente Predial', 
+    categoria: 'Gestão Executiva', 
+    desc: 'Gestão executiva de rotinas condominiais, fiscalização de prestadores de serviços e obras.',
+    corBadge: 'bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-300 border-teal-200/80 dark:border-teal-800/60'
+  },
+  { 
+    id: 'Administrativo', 
+    nome: 'Apoio Administrativo', 
+    categoria: 'Secretaria & Apoio', 
+    desc: 'Suporte administrativo à administração do condomínio, cadastro de moradores e gestão de correspondências.',
+    corBadge: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+  },
+  { 
+    id: 'Outro', 
+    nome: 'Outra Função (Personalizada)', 
+    categoria: 'Customizado', 
+    desc: 'Atribua um cargo ou função específica digitando o título livremente.',
+    corBadge: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700'
+  }
+];
+
+export function obterFuncaoOperador(op: any): string {
+  if (!op) return 'Porteiro';
+  if (op.funcao && typeof op.funcao === 'string' && op.funcao.trim()) return op.funcao.trim();
+  if (op.cargo && typeof op.cargo === 'string' && op.cargo.trim()) return op.cargo.trim();
+  if (typeof localStorage !== 'undefined') {
+    if (op.id) {
+      const salvo = localStorage.getItem(`porttohub_operador_funcao_${op.id}`);
+      if (salvo) return salvo;
+    }
+    if (op.login) {
+      const salvo = localStorage.getItem(`porttohub_operador_funcao_${op.login.toLowerCase()}`);
+      if (salvo) return salvo;
+    }
+  }
+  if (op.perfil === 'admin') return 'Administrador Master';
+  if (op.perfil === 'master') return 'Gerente / Master';
+  if (op.perfil === 'supervisor') return 'Supervisor Operacional';
+  if (op.perfil === 'sindico') return 'Síndico';
+  return 'Porteiro';
+}
+
+export function obterEstiloBadgeFuncao(funcao: string): string {
+  const f = (funcao || '').toLowerCase();
+  if (f.includes('porteir') || f.includes('portaria') || f.includes('guarita')) {
+    return 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200/80 dark:border-blue-800/60';
+  }
+  if (f.includes('zelad')) {
+    return 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200/80 dark:border-amber-800/60';
+  }
+  if (f.includes('limp') || f.includes('higien') || f.includes('serviços gerais')) {
+    return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-800/60';
+  }
+  if (f.includes('rond') || f.includes('vigil') || f.includes('seguran')) {
+    return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border-indigo-200/80 dark:border-indigo-800/60';
+  }
+  if (f.includes('manuten') || f.includes('técnic')) {
+    return 'bg-orange-50 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300 border-orange-200/80 dark:border-orange-800/60';
+  }
+  if (f.includes('controlador') || f.includes('acesso')) {
+    return 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300 border-cyan-200/80 dark:border-cyan-800/60';
+  }
+  if (f.includes('recep')) {
+    return 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border-purple-200/80 dark:border-purple-800/60';
+  }
+  if (f.includes('supervis')) {
+    return 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200/80 dark:border-rose-800/60';
+  }
+  if (f.includes('gerente')) {
+    return 'bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-300 border-teal-200/80 dark:border-teal-800/60';
+  }
+  return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700';
+}
 
 interface CadastrosProps {
   usuarioLogado?: any;
@@ -520,6 +662,8 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
   const [camposSenhaOcultosEdicao, setCamposSenhaOcultosEdicao] = useState(true);
   const [senhaCopiada, setSenhaCopiada] = useState(false);
   const [fotoOperador, setFotoOperador] = useState('');
+  const [funcaoOperador, setFuncaoOperador] = useState<string>('Porteiro');
+  const [funcaoCustomizada, setFuncaoCustomizada] = useState<string>('');
   const [nivelAcesso, setNivelAcesso] = useState('nivel_3');
   const [condominioIdOperador, setCondominioIdOperador] = useState('');
   const [unidadeOperador, setUnidadeOperador] = useState('TODAS');
@@ -743,6 +887,8 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     setCamposSenhaOcultosEdicao(true);
     setSenhaCopiada(false);
     setFotoOperador('');
+    setFuncaoOperador('Porteiro');
+    setFuncaoCustomizada('');
     setNivelAcesso('nivel_3');
     setCondominioIdOperador(targetCondo);
     setUnidadeOperador('TODAS');
@@ -788,6 +934,8 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     }
     setCondominioIdOperador(targetCondo);
     setUnidadeOperador('TODAS');
+    setFuncaoOperador('Porteiro');
+    setFuncaoCustomizada('');
     setNivelAcesso('nivel_3');
     setPermissoesOperador(obterPermissoesPadraoNivel('nivel_3'));
     setIdEdicao(null);
@@ -1354,6 +1502,10 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
         ? 'TODAS'
         : unidadeOperador.trim();
 
+      const funcaoFinal = (funcaoOperador === 'Outro'
+        ? (funcaoCustomizada.trim() || 'Operador')
+        : (funcaoOperador.trim() || 'Porteiro'));
+
       const permissoesFinais: any = {
         ...permissoesOperador,
         unidade_acesso: unidadeFinal,
@@ -1367,6 +1519,8 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           nivel_acesso: nivelNum,
           nivel_acesso_custom_id: customId,
           perfil: perfilStr,
+          funcao: funcaoFinal,
+          cargo: funcaoFinal,
           foto_url: fotoOperador || null,
           condominio_id: targetCondominioId,
           permissoes: permissoesFinais,
@@ -1386,12 +1540,14 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           error.message?.includes('permissoes') ||
           error.message?.includes('nivel_acesso_custom_id') || 
           error.message?.includes('perfil') || 
+          error.message?.includes('funcao') || 
+          error.message?.includes('cargo') || 
           error.message?.includes('schema cache') || 
           error.message?.includes('column') || 
           (error as any).code === '42703' ||
           (error as any).code === 'PGRST204'
         )) {
-          console.warn('Fallback: salvando operador sem colunas extras de RBAC/permissoes...');
+          console.warn('Fallback: salvando operador sem colunas extras de RBAC/permissoes/funcao...');
           const fallback: any = {
             nome: nomeOperador.trim(),
             login: loginOperador.trim().toLowerCase(),
@@ -1412,13 +1568,30 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
         if (typeof localStorage !== 'undefined') {
           localStorage.setItem(`infport_sindica_unidade_${idEdicao}`, unidadeFinal);
           localStorage.setItem(`infport_sindica_unidade_${loginOperador.trim().toLowerCase()}`, unidadeFinal);
+          localStorage.setItem(`porttohub_operador_funcao_${idEdicao}`, funcaoFinal);
+          localStorage.setItem(`porttohub_operador_funcao_${loginOperador.trim().toLowerCase()}`, funcaoFinal);
+          try {
+            const sessaoRaw = localStorage.getItem('infport_sessao_operador');
+            if (sessaoRaw) {
+              const sessao = JSON.parse(sessaoRaw);
+              if (sessao.operador && (sessao.operador.id === idEdicao || sessao.operador.login?.toLowerCase() === loginOperador.trim().toLowerCase())) {
+                sessao.operador.funcao = funcaoFinal;
+                sessao.operador.cargo = funcaoFinal;
+                sessao.operador.nome = nomeOperador.trim();
+                localStorage.setItem('infport_sessao_operador', JSON.stringify(sessao));
+                window.dispatchEvent(new CustomEvent('infport_sessao_atualizada', { detail: sessao }));
+              }
+            }
+          } catch {}
         }
 
-        // Atualiza estado local e cache sincronizado preservando as permissões granulares
+        // Atualiza estado local e cache sincronizado preservando as permissões granulares e a função
         setOperadores(prev => {
           const atualizados = prev.map(o => o.id === idEdicao ? { 
             ...o, 
             ...dadosAtualizacao, 
+            funcao: funcaoFinal,
+            cargo: funcaoFinal,
             permissoes: permissoesFinais, 
             unidade: unidadeFinal,
             ativo: Boolean(ativoOperador) 
@@ -1428,7 +1601,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
         });
         window.dispatchEvent(new CustomEvent('operadores_atualizados'));
 
-        setMensagem({ tipo: 'sucesso', texto: 'Operador e permissões atualizados com sucesso!' });
+        setMensagem({ tipo: 'sucesso', texto: `Operador e função (${funcaoFinal}) atualizados com sucesso!` });
       } else {
         if (!senhaOperador.trim()) {
           setMensagem({ tipo: 'erro', texto: 'Informe a senha para o novo operador.' });
@@ -1443,6 +1616,8 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           nivel_acesso: nivelNum,
           nivel_acesso_custom_id: customId,
           perfil: perfilStr,
+          funcao: funcaoFinal,
+          cargo: funcaoFinal,
           foto_url: fotoOperador || null,
           condominio_id: targetCondominioId,
           permissoes: permissoesFinais,
@@ -1455,12 +1630,14 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           error.message?.includes('permissoes') ||
           error.message?.includes('nivel_acesso_custom_id') || 
           error.message?.includes('perfil') || 
+          error.message?.includes('funcao') || 
+          error.message?.includes('cargo') || 
           error.message?.includes('schema cache') || 
           error.message?.includes('column') || 
           (error as any).code === '42703' ||
           (error as any).code === 'PGRST204'
         )) {
-          console.warn('Fallback: cadastrando operador sem colunas extras de RBAC/permissoes...');
+          console.warn('Fallback: cadastrando operador sem colunas extras de RBAC/permissoes/funcao...');
           const fallbackOp = {
             nome: novoOp.nome,
             login: novoOp.login,
@@ -1478,9 +1655,15 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
 
         const opIdSalvo = opCriado?.id || novoOp.login;
         await salvarPermissoesOperador(opIdSalvo, permissoesOperador, novoOp.login);
+        if (typeof localStorage !== 'undefined') {
+          if (opIdSalvo) localStorage.setItem(`porttohub_operador_funcao_${opIdSalvo}`, funcaoFinal);
+          if (novoOp.login) localStorage.setItem(`porttohub_operador_funcao_${novoOp.login.toLowerCase()}`, funcaoFinal);
+        }
 
         const opFinalParaEstado = {
           ...(opCriado || novoOp),
+          funcao: funcaoFinal,
+          cargo: funcaoFinal,
           permissoes: permissoesOperador
         };
 
@@ -1491,7 +1674,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
         });
         window.dispatchEvent(new CustomEvent('operadores_atualizados'));
 
-        setMensagem({ tipo: 'sucesso', texto: 'Operador cadastrado e permissões configuradas com sucesso!' });
+        setMensagem({ tipo: 'sucesso', texto: `Operador com função (${funcaoFinal}) cadastrado com sucesso!` });
       }
 
       voltarParaLista();
@@ -1557,6 +1740,20 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     const rawUnid = (op.unidade || op.permissoes?.unidade_acesso || op.permissoes?.unidade || '').trim();
     setUnidadeOperador(rawUnid && rawUnid.toUpperCase() !== 'TODAS' && rawUnid !== '*' ? rawUnid : 'TODAS');
     setAtivoOperador(op.ativo !== false);
+
+    // Carrega e delega a função do operador no app (Porteiro, Zelador, Limpeza, etc.)
+    const fnCarregada = obterFuncaoOperador(op);
+    const fnEncontrada = FUNCOES_OPERACIONAIS.find(f => 
+      f.id.toLowerCase() === fnCarregada.toLowerCase() || 
+      f.nome.toLowerCase() === fnCarregada.toLowerCase()
+    );
+    if (fnEncontrada && fnEncontrada.id !== 'Outro') {
+      setFuncaoOperador(fnEncontrada.id);
+      setFuncaoCustomizada('');
+    } else {
+      setFuncaoOperador('Outro');
+      setFuncaoCustomizada(fnCarregada);
+    }
 
     // Carrega as permissões específicas do operador para visualização e edição
     const perms = obterPermissoesOperador(op);
@@ -3059,7 +3256,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                       value={nomeOperador}
                       onChange={(e) => setNomeOperador(e.target.value)}
                       placeholder="Ex: Marcos Souza Oliveira"
-                      className="w-full p-3 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none transition"
+                      className="w-full p-3 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition"
                     />
                   </div>
 
@@ -3076,8 +3273,129 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                       autoCapitalize="none"
                       autoCorrect="off"
                       spellCheck={false}
-                      className="w-full p-3 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none transition"
+                      className="w-full p-3 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition"
                     />
+                  </div>
+                </div>
+
+                {/* Seção de Delegação de Função do Operador */}
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400">
+                        <Briefcase className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block">
+                          Função Delegada no App / Cargo *
+                        </label>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          Delegue a função correspondente às atividades do colaborador no condomínio
+                        </p>
+                      </div>
+                    </div>
+
+                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 self-start sm:self-auto border border-slate-200 dark:border-slate-700">
+                      Função Atual: <strong className="text-blue-600 dark:text-blue-400">{funcaoOperador === 'Outro' ? (funcaoCustomizada || 'Personalizada') : funcaoOperador}</strong>
+                    </span>
+                  </div>
+
+                  {/* Botões Rápidos para Selecionar Função Instantaneamente */}
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                      Atalhos Rápidos de Função:
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {[
+                        { id: 'Porteiro', label: 'Porteiro', badgeCor: 'hover:border-blue-400' },
+                        { id: 'Zelador', label: 'Zelador', badgeCor: 'hover:border-amber-400' },
+                        { id: 'Limpeza', label: 'Limpeza', badgeCor: 'hover:border-emerald-400' },
+                        { id: 'Rondista / Vigilante', label: 'Rondista', badgeCor: 'hover:border-indigo-400' },
+                        { id: 'Manutenção', label: 'Manutenção', badgeCor: 'hover:border-orange-400' },
+                        { id: 'Controlador de Acesso', label: 'Controlador', badgeCor: 'hover:border-cyan-400' },
+                        { id: 'Recepcionista', label: 'Recepção', badgeCor: 'hover:border-purple-400' },
+                        { id: 'Supervisor', label: 'Supervisor', badgeCor: 'hover:border-rose-400' },
+                        { id: 'Outro', label: 'Outra Função...', badgeCor: 'hover:border-slate-400' }
+                      ].map((f) => {
+                        const ativo = funcaoOperador === f.id;
+                        return (
+                          <button
+                            key={f.id}
+                            type="button"
+                            onClick={() => {
+                              setFuncaoOperador(f.id);
+                              if (f.id !== 'Outro') {
+                                setFuncaoCustomizada('');
+                              }
+                            }}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border active:scale-95 ${
+                              ativo
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-600/30 ring-2 ring-blue-500/20'
+                                : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                            }`}
+                          >
+                            {ativo && <Check className="w-3.5 h-3.5" />}
+                            <span>{f.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Dropdown com Lista Completa e Campo de Customização */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
+                        Selecione a Lista Completa de Funções
+                      </label>
+                      <select
+                        value={funcaoOperador}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFuncaoOperador(val);
+                          if (val !== 'Outro') {
+                            setFuncaoCustomizada('');
+                          }
+                        }}
+                        className="w-full p-3 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-900 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition cursor-pointer"
+                      >
+                        {FUNCOES_OPERACIONAIS.map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.nome} — ({f.categoria})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      {funcaoOperador === 'Outro' ? (
+                        <div>
+                          <label className="block text-[11px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-1">
+                            Especifique o Cargo / Função *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={funcaoCustomizada}
+                            onChange={(e) => setFuncaoCustomizada(e.target.value)}
+                            placeholder="Ex: Auxiliar de Jardinagem, Manobrista..."
+                            className="w-full p-3 bg-slate-50 dark:bg-slate-950 border border-blue-400 dark:border-blue-600 rounded-xl text-sm font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:bg-white dark:focus:bg-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition"
+                          />
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
+                            Atribuição Operacional no PorttoHub
+                          </label>
+                          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400 min-h-[46px]">
+                            <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                            <span className="leading-relaxed">
+                              {FUNCOES_OPERACIONAIS.find(f => f.id === funcaoOperador)?.desc || 'Função operacional ativa no sistema.'}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -3464,6 +3782,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                   onChange={setPermissoesOperador}
                   nomeOperador={nomeOperador}
                   loginOperador={loginOperador}
+                  funcaoOperador={funcaoOperador === 'Outro' ? (funcaoCustomizada || 'Personalizada') : funcaoOperador}
                   somenteLeitura={eOperador}
                 />
               </div>
@@ -4338,18 +4657,23 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
               .filter(op => {
                 if (!buscaOperador.trim()) return true;
                 const termo = buscaOperador.toLowerCase();
-                return (op.nome || '').toLowerCase().includes(termo) || (op.login || '').toLowerCase().includes(termo);
+                const fn = obterFuncaoOperador(op).toLowerCase();
+                return (op.nome || '').toLowerCase().includes(termo) || 
+                       (op.login || '').toLowerCase().includes(termo) ||
+                       fn.includes(termo);
               })
               .map((op) => {
                 const estaAtivo = op.ativo !== false;
                 const permsOp = obterPermissoesOperador(op);
                 const qtdModulos = contarModulosHabilitados(permsOp);
                 const totalModulos = MODULOS_DEFINICAO_RBAC.length;
+                const fnOperador = obterFuncaoOperador(op);
+                const estiloBadgeFn = obterEstiloBadgeFuncao(fnOperador);
                 return (
                   <div 
                     key={op.id} 
-                    className={`bg-white rounded-xl border p-3 shadow-2xs hover:border-slate-300 transition flex flex-col justify-between gap-2.5 ${
-                      estaAtivo ? 'border-slate-200/80' : 'border-red-200 bg-red-50/20'
+                    className={`bg-white dark:bg-slate-900 rounded-xl border p-3 shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 transition flex flex-col justify-between gap-2.5 ${
+                      estaAtivo ? 'border-slate-200/80 dark:border-slate-800' : 'border-red-200 dark:border-red-900/50 bg-red-50/20 dark:bg-red-950/20'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -4361,25 +4685,31 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                             loading="lazy" 
                             decoding="async" 
                             className={`w-9 h-9 rounded-lg object-cover border shrink-0 ${
-                              estaAtivo ? 'border-slate-200' : 'border-red-300 opacity-60'
+                              estaAtivo ? 'border-slate-200 dark:border-slate-700' : 'border-red-300 dark:border-red-800 opacity-60'
                             }`} 
                           />
                         ) : (
                           <div className={`w-9 h-9 rounded-lg font-bold text-xs flex items-center justify-center shrink-0 border ${
-                            estaAtivo ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-red-100 text-red-700 border-red-200'
+                            estaAtivo ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700' : 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800'
                           }`}>
                             {op.nome ? op.nome.charAt(0).toUpperCase() : 'OP'}
                           </div>
                         )}
                         <div className="min-w-0">
                           <h4 className={`font-bold text-xs sm:text-sm truncate ${
-                            estaAtivo ? 'text-slate-900' : 'text-slate-500 line-through'
+                            estaAtivo ? 'text-slate-900 dark:text-slate-100' : 'text-slate-500 line-through'
                           }`}>
                             {op.nome}
                           </h4>
-                          <p className="text-[11px] font-mono text-slate-500 truncate">
-                            @{op.login}
-                          </p>
+                          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                            <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">
+                              @{op.login}
+                            </span>
+                            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-extrabold uppercase border ${estiloBadgeFn}`}>
+                              <Briefcase className="w-2.5 h-2.5" />
+                              <span>{fnOperador}</span>
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -6204,6 +6534,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                 onChange={setPermissoesModalState}
                 nomeOperador={operadorPermissoesModal.nome}
                 loginOperador={operadorPermissoesModal.login}
+                funcaoOperador={obterFuncaoOperador(operadorPermissoesModal)}
                 somenteLeitura={eOperador}
               />
             </div>

@@ -13,7 +13,8 @@ import {
   Eye,
   EyeOff,
   Camera,
-  Trash2
+  Trash2,
+  Briefcase
 } from 'lucide-react';
 import { comprimirImagemBase64 } from '../services/imageUtils';
 
@@ -232,7 +233,16 @@ export default function ModalMeuPerfil({
           </div>
 
           {/* Cards de Identificação */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                <Briefcase className="w-3 h-3 text-blue-600 dark:text-blue-400" /> Função no App
+              </span>
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                {operador?.funcao || operador?.cargo || (operador?.perfil === 'admin' ? 'Administrador Master' : 'Porteiro')}
+              </p>
+            </div>
+
             <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
                 <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> Nível de Acesso
@@ -242,9 +252,9 @@ export default function ModalMeuPerfil({
               </p>
             </div>
 
-            <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-1">
+            <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-1 sm:col-span-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                <Building2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> Condomínio Vinculado
+                <Building2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> Condomínio
               </span>
               <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate" title={condominio?.nome || 'Não definido'}>
                 {condominio?.nome || 'Administração Geral'}

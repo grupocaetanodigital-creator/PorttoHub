@@ -22,7 +22,8 @@ import {
   Layers,
   Inbox,
   Database,
-  Check
+  Check,
+  Briefcase
 } from 'lucide-react';
 import {
   PermissoesModulo,
@@ -36,6 +37,7 @@ interface CardPermissoesOperadorProps {
   onChange: (novasPermissoes: PermissoesModulo) => void;
   nomeOperador?: string;
   loginOperador?: string;
+  funcaoOperador?: string;
   somenteLeitura?: boolean;
 }
 
@@ -61,6 +63,7 @@ export const CardPermissoesOperador: React.FC<CardPermissoesOperadorProps> = ({
   onChange,
   nomeOperador,
   loginOperador,
+  funcaoOperador,
   somenteLeitura = false
 }) => {
   const [moduloAberto, setModuloAberto] = useState<string | null>(null);
@@ -167,10 +170,18 @@ NOTIFY pgrst, 'reload schema';`;
                 {modulosHabilitados} de {totalModulos} Módulos Ativos
               </span>
             </h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {nomeOperador ? `Operador: ${nomeOperador}` : 'Configure as funções autorizadas para este operador'}
-              {loginOperador ? ` (@${loginOperador})` : ''}
-            </p>
+            <div className="flex items-center gap-2 flex-wrap text-xs text-slate-500 dark:text-slate-400">
+              <span>
+                {nomeOperador ? `Operador: ${nomeOperador}` : 'Configure as funções autorizadas para este operador'}
+                {loginOperador ? ` (@${loginOperador})` : ''}
+              </span>
+              {funcaoOperador && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                  <Briefcase className="w-2.5 h-2.5" />
+                  <span>{funcaoOperador}</span>
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
