@@ -10,7 +10,7 @@ export const FUSO_HORARIO_OFICIAL_BRASIL = 'America/Sao_Paulo';
 
 // Versão de build gerada automaticamente no build (Horário de Brasília)
 export const VERSAO_BUILD_ATUAL = '1011260914';
-export const COMMIT_HASH_ATUAL = '95f29ad';
+export const COMMIT_HASH_ATUAL = '0d85aec';
 
 export function gerarVersaoHorarioBrasil(data: Date = new Date()): string {
   try {
