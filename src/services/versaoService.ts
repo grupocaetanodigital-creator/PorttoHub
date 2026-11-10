@@ -9,8 +9,8 @@ export const NOME_APLICACAO = 'PorttoHub';
 export const FUSO_HORARIO_OFICIAL_BRASIL = 'America/Sao_Paulo';
 
 // Versão de build gerada automaticamente no build (Horário de Brasília)
-export const VERSAO_BUILD_ATUAL = '1011260914';
-export const COMMIT_HASH_ATUAL = '0d85aec';
+export const VERSAO_BUILD_ATUAL = '1011260935';
+export const COMMIT_HASH_ATUAL = '4bdbb75';
 
 export function gerarVersaoHorarioBrasil(data: Date = new Date()): string {
   try {
