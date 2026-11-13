@@ -47,7 +47,7 @@ export interface ModuloInfoItem {
 export const LISTA_MODULOS_SISTEMA: ModuloInfoItem[] = [
   {
     id: 'bancada',
-    nome: 'Bancada de Portaria & Conferencia',
+    nome: 'Bancada de Portaria & Conferência',
     descricao: 'Painel rápido para triagem, contagem de volumes e registro ágil na guarita',
     categoria: 'operacional',
     icone: <Layers className="w-5 h-5 text-amber-500" />

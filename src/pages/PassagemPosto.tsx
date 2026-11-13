@@ -864,7 +864,7 @@ export default function PassagemPosto({
         return {
           id: m.id,
           nomeChave: m.chaves?.nome_chave || m.nome_chave || 'Chave do Posto',
-          codigoChave: m.chaves?.codigo_chave || m.codigo_chave || 'S/C',
+          codigoChave: m.chaves?.codigo_chave || m.codigo_chave || 'Sem código',
           setor: m.chaves?.setor || 'Geral',
           comQuemTa: m.nome_retirante || 'Não informado',
           documento: m.documento_retirante || 'Não informado',
@@ -1420,8 +1420,8 @@ export default function PassagemPosto({
         if (listaChaves.length > 0) {
           texto += `🚨 *Chaves em posse de terceiros/moradores:*\n` +
             listaChaves.map((k: any) => 
-              `  🔑 *${k.nomeChave || k.nome_chave || 'Chave'}* (${k.codigoChave || k.codigo_chave || 'S/C'})\n` +
-              `     ↳ Com quem tá: *${k.comQuemTa || k.nome_retirante || 'Portador'}* (${k.empresaOuApto || k.empresa_ou_apto || 'N/A'})\n` +
+              `  🔑 *${k.nomeChave || k.nome_chave || 'Chave'}* (${k.codigoChave || k.codigo_chave || 'Sem código'})\n` +
+              `     ↳ Com quem está: *${k.comQuemTa || k.nome_retirante || 'Portador'}* (${k.empresaOuApto || k.empresa_ou_apto || 'N/A'})\n` +
               `     ↳ Doc: ${k.documento || k.documento_retirante || 'N/A'} | Fone: ${k.telefone || k.telefone_retirante || 'N/A'}\n` +
               `     ↳ Retirada em: ${new Date(k.retiradaEm || k.data_hora_retirada || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${k.atrasado ? ' ⚠️ *ATRASADO!*' : ''}`
             ).join('\n\n') + `\n`;
@@ -2254,7 +2254,7 @@ export default function PassagemPosto({
                                   </div>
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[11px] text-slate-700">
                                     <div>
-                                      👤 <strong>Com quem tá:</strong> {k.comQuemTa} ({k.empresaOuApto})
+                                      👤 <strong>Com quem está:</strong> {k.comQuemTa} ({k.empresaOuApto})
                                     </div>
                                     <div>
                                       📄 <strong>Doc:</strong> {k.documento} | 📞 {k.telefone}

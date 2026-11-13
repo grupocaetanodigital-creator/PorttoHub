@@ -24,6 +24,12 @@ import { subscreverTabelaRealtime } from '../services/realtimeSyncEngine';
 import { formatarLinkWhatsApp } from '../services/configWhatsappService';
 import { getCondominioAtivoId } from '../services/condominioService';
 import { verificarPermissao } from '../services/permissoesService';
+import {
+  isVerifiedGlobalAdmin,
+  extrairCondominioIdDeEvento,
+  isValidCondominioId,
+  canAccessCondominio
+} from '../services/tenantAuthService';
 
 interface OcorrenciasProps {
   usuarioLogado?: any;
@@ -35,7 +41,7 @@ export default function Ocorrencias({ usuarioLogado }: OcorrenciasProps) {
     : 3;
   const perfilStr = (usuarioLogado?.perfil || '').toLowerCase();
   const eAdmin = Boolean(
-    usuarioLogado?.eSuperAdminGlobal ||
+    isVerifiedGlobalAdmin(usuarioLogado) ||
     perfilStr === 'admin' ||
     perfilStr === 'master' ||
     nivelNum === 0 ||
@@ -62,22 +68,27 @@ export default function Ocorrencias({ usuarioLogado }: OcorrenciasProps) {
   const [ocorrenciaRecente, setOcorrenciaRecente] = useState<any | null>(null);
 
   const [condId, setCondId] = useState(() => getCondominioAtivoId(usuarioLogado));
+  const loadSeqRef = React.useRef(0);
 
   useEffect(() => {
     const handleCondoChange = (e: any) => {
-      const novoId = e?.detail?.id;
-      if (novoId && novoId !== 'global' && novoId !== 'todos') {
+      loadSeqRef.current += 1;
+      const novoId = extrairCondominioIdDeEvento(e) || getCondominioAtivoId(usuarioLogado);
+      if (isValidCondominioId(novoId) && canAccessCondominio(usuarioLogado, novoId)) {
         setCondId(novoId);
       } else {
-        setCondId(getCondominioAtivoId(usuarioLogado));
+        setCondId('');
       }
+      setOcorrencias([]);
+      setOcorrenciaRecente(null);
+      setModalNova(false);
     };
     window.addEventListener('infport:condominio_alterado', handleCondoChange);
     return () => window.removeEventListener('infport:condominio_alterado', handleCondoChange);
   }, [usuarioLogado]);
 
   useEffect(() => {
-    if (!condId || condId === 'global' || condId === 'todos') {
+    if (!isValidCondominioId(condId) || !canAccessCondominio(usuarioLogado, condId)) {
       setOcorrencias([]);
       return;
     }
@@ -89,10 +100,10 @@ export default function Ocorrencias({ usuarioLogado }: OcorrenciasProps) {
     }
     carregarOcorrencias();
 
-    // 2. Assina atualizações em tempo real vindas de outros dispositivos
+    // 2. Assina atualizações em tempo real vindas de outros dispositivos (filtrado por condominioId)
     const unsubscribeRealtime = subscreverTabelaRealtime('ocorrencias', () => {
       carregarOcorrencias();
-    });
+    }, condId);
 
     const handleSync = () => carregarOcorrencias();
     window.addEventListener('infport_sincronizar_dados_global', handleSync);
@@ -106,7 +117,8 @@ export default function Ocorrencias({ usuarioLogado }: OcorrenciasProps) {
   }, [filtroTipo, filtroStatus, condId]);
 
   const carregarOcorrencias = async () => {
-    if (!condId || condId === 'global' || condId === 'todos') {
+    const seq = ++loadSeqRef.current;
+    if (!isValidCondominioId(condId) || !canAccessCondominio(usuarioLogado, condId)) {
       setOcorrencias([]);
       return;
     }
@@ -130,6 +142,7 @@ export default function Ocorrencias({ usuarioLogado }: OcorrenciasProps) {
       }
 
       const { data, error } = await query;
+      if (seq !== loadSeqRef.current) return;
       if (error) throw error;
 
       if (data) {
@@ -144,6 +157,7 @@ export default function Ocorrencias({ usuarioLogado }: OcorrenciasProps) {
         salvarCacheLocal('ocorrencias', normalizadas, condId, 60);
       }
     } catch (err: any) {
+      if (seq !== loadSeqRef.current) return;
       console.warn('[Ocorrencias] Falha ao carregar da nuvem, verificando cache local:', err);
       const fallback = obterCacheLocal<any[]>('ocorrencias', condId, []);
       if (fallback && fallback.length > 0) {
@@ -159,7 +173,9 @@ export default function Ocorrencias({ usuarioLogado }: OcorrenciasProps) {
         setMensagem({ tipo: 'erro', texto: 'Modo offline: exibindo dados armazenados localmente.' });
       }
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -171,6 +187,7 @@ export default function Ocorrencias({ usuarioLogado }: OcorrenciasProps) {
       const { publicUrl, tamanhoOriginalKb, tamanhoComprimidoKb, taxaReducaoPct } = await uploadFotoComprimidaStorage({
         file,
         pasta: 'ocorrencias',
+        condominioId: condId,
         maxWidth: 1000,
         maxHeight: 1000,
         qualidade: 0.75

@@ -57,6 +57,19 @@ export default function BotaoNotificacoesLembretes({
   };
 
   useEffect(() => {
+    if (!condominioId || condominioId === 'global' || condominioId === 'todos') {
+      setStatusContagem({
+        total: 0,
+        totalAtivos: 0,
+        pendentesNaoLidos: 0,
+        pendentesCientes: 0,
+        ativosAdm: 0,
+        finalizados: 0,
+        corAlerta: 'neutro'
+      });
+      return;
+    }
+
     carregarContagem(false);
     setAlarmeTrocaAtivo(isAlarmeTrocaPlantaoAtivo());
     retomarAlarmeSeAtivo();
@@ -90,8 +103,8 @@ export default function BotaoNotificacoesLembretes({
     };
     window.addEventListener('alarme_troca_plantao_mudou', handleAlarmeTroca);
 
-    // Configura canal Realtime do Supabase com NOME ESTÁTICO (sem Date.now() para não poluir logs)
-    const channelName = `realtime_lembretes_${condominioId || 'global'}`;
+    // Configura canal Realtime isolado estritamente pelo condomínio ativo
+    const channelName = `realtime_lembretes_${condominioId}`;
     const channel = supabase
       .channel(channelName)
       .on(
@@ -99,13 +112,15 @@ export default function BotaoNotificacoesLembretes({
         {
           event: '*',
           schema: 'public',
-          table: 'lembretes_portaria'
+          table: 'lembretes_portaria',
+          filter: `condominio_id=eq.${condominioId}`
         },
         (payload) => {
-          const novoLembrete = payload.new as Partial<LembretePortaria> | null;
-          if (!novoLembrete || !novoLembrete.condominio_id || novoLembrete.condominio_id === condominioId) {
-            carregarContagem(true);
+          const novoLembrete = (payload.new || payload.old) as Partial<LembretePortaria> | null;
+          if (!novoLembrete || (novoLembrete.condominio_id && novoLembrete.condominio_id !== condominioId)) {
+            return;
           }
+          carregarContagem(true);
         }
       )
       .subscribe();

@@ -349,6 +349,7 @@ export default function Rondas({ usuarioLogado }: RondasProps) {
       const { publicUrl, tamanhoOriginalKb, tamanhoComprimidoKb, taxaReducaoPct } = await uploadFotoComprimidaStorage({
         file,
         pasta: 'rondas_evidencias',
+        condominioId: usuarioLogado?.condominio_id || '',
         maxWidth: 1000,
         maxHeight: 1000,
         qualidade: 0.75

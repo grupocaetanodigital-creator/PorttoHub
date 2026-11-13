@@ -7,9 +7,76 @@
  */
 
 import { supabase } from './supabase';
-import { cachedQuery } from './redisCacheService';
-import { isUUID } from './condominioService';
+import { cachedQuery, invalidarCacheTabela } from './redisCacheService';
+import {
+  isUUID,
+  saoUnidadesEquivalentes,
+  saoBlocosCompativeis,
+  getCondominioConfigLocal
+} from './condominioService';
 import { salvarLoteItensLocal } from './porttoHubDb';
+
+/**
+ * Resolve o morador destinatário de uma encomenda seguindo hierarquia estrita:
+ * 1ª opção (prioridade absoluta): localizar exclusivamente pelo morador_id gravado na encomenda.
+ *   Se morador_id existir e não for encontrado, NÃO substitui silenciosamente por outro morador da mesma unidade.
+ * 2ª opção (somente quando não houver morador_id): busca controlada por condominio_id + bloco + unidade,
+ *   retornando associação apenas quando houver EXATAMENTE UM morador correspondente.
+ */
+export function resolverMoradorDaEncomenda(
+  item: {
+    morador_id?: string | null;
+    condominio_id?: string | null;
+    bloco?: string | null;
+    unidade?: string | null;
+  } | null | undefined,
+  listaMoradores: any[],
+  tipoEstrutura?: string
+): any | null {
+  if (!item || !Array.isArray(listaMoradores) || listaMoradores.length === 0) {
+    return null;
+  }
+
+  const itemCondoId = item.condominio_id ? String(item.condominio_id).trim() : '';
+
+  if (item.morador_id) {
+    const encontradoPorId = listaMoradores.find((mor: any) => {
+      if (!mor || mor.id !== item.morador_id) return false;
+      if (itemCondoId && mor.condominio_id && String(mor.condominio_id).trim() !== itemCondoId) {
+        return false;
+      }
+      return true;
+    });
+    return encontradoPorId || null;
+  }
+
+  if (!item.unidade || !String(item.unidade).trim()) {
+    return null;
+  }
+
+  const correspondentes = listaMoradores.filter((mor: any) => {
+    if (!mor) return false;
+    if (itemCondoId && mor.condominio_id && String(mor.condominio_id).trim() !== itemCondoId) {
+      return false;
+    }
+    if (!saoUnidadesEquivalentes(mor.unidade, item.unidade)) {
+      return false;
+    }
+    return saoBlocosCompativeis(mor.bloco, item.bloco, tipoEstrutura);
+  });
+
+  return correspondentes.length === 1 ? correspondentes[0] : null;
+}
+
+/**
+ * Obtém o nome de exibição do destinatário priorizando o registro histórico gravado na encomenda (`destinatario`).
+ */
+export function obterNomeDestinatarioExibicao(item: any): string {
+  const nomeHistorico = typeof item?.destinatario === 'string' ? item.destinatario.trim() : '';
+  if (nomeHistorico) return nomeHistorico;
+  const nomeMorador = typeof item?.moradores?.nome === 'string' ? item.moradores.nome.trim() : '';
+  return nomeMorador;
+}
 
 export interface EncomendasCacheBundle {
   condominioId: string;
@@ -23,7 +90,7 @@ export interface EncomendasCacheBundle {
 }
 
 const CHAVE_PREFIXO_STORAGE = 'infport_cache_encomendas_bundle_v2_';
-const TTL_CACHE_MS = 3 * 60 * 1000; // 3 minutos de validade antes de revalidação em background
+const TTL_CACHE_MS = 3 * 60 * 1000; // 3 minutos de validade antes de revalidação em segundo plano
 
 // Armazenamento em memória RAM global no navegador (acesso instantâneo em 0ms)
 const memoriaEncomendas = new Map<string, EncomendasCacheBundle>();
@@ -100,14 +167,16 @@ export async function carregarEPreaquecerEncomendas(
     return cacheAtual;
   }
 
-  // Deduplicação de requisições concorrentes (Thundering Herd)
-  if (promessasCarregamento.has(condominioId)) {
-    return promessasCarregamento.get(condominioId)!;
+  // Deduplicação de requisições concorrentes (não reaproveita carga normal quando forcar=true)
+  const chavePromessa = `${condominioId}:${forcar ? 'force' : 'normal'}`;
+  if (promessasCarregamento.has(chavePromessa)) {
+    return promessasCarregamento.get(chavePromessa)!;
   }
 
   const tarefa = (async () => {
     try {
       const condoFiltros = [{ field: 'condominio_id', op: 'eq' as const, value: condominioId }];
+      const tipoEstrutura = getCondominioConfigLocal(condominioId)?.tipo_estrutura;
 
       // Dispara todas as consultas críticas em paralelo (1 único roundtrip de rede!)
       const [
@@ -125,6 +194,7 @@ export async function carregarEPreaquecerEncomendas(
           filters: condoFiltros,
           orderBy: { field: 'nome', ascending: true },
           ttlSeconds: 300,
+          forceRefresh: forcar,
           condominioId
         }).catch(() => []),
 
@@ -153,6 +223,7 @@ export async function carregarEPreaquecerEncomendas(
           filters: condoFiltros,
           orderBy: { field: 'nome', ascending: true },
           ttlSeconds: 300,
+          forceRefresh: forcar,
           condominioId
         }).catch(() => []),
 
@@ -166,6 +237,7 @@ export async function carregarEPreaquecerEncomendas(
           ],
           orderBy: { field: 'created_at', ascending: false },
           ttlSeconds: 120,
+          forceRefresh: forcar,
           condominioId
         }).catch(() => []),
 
@@ -200,24 +272,23 @@ export async function carregarEPreaquecerEncomendas(
         };
       });
 
-      // Enriquecimento dos itens retidos
+      // Enriquecimento dos itens retidos com hierarquia estrita de identificação
       let itensRetidosFinal: any[] = [];
       const itensRaw = Array.isArray(rawItensRetidos) ? rawItensRetidos : [];
 
       if (itensRaw.length > 0) {
-        itensRetidosFinal = itensRaw.map((item: any) => {
-          const m = listaMoradores.find((mor: any) =>
-            mor.id === item.morador_id ||
-            (mor.unidade && String(mor.unidade).trim() === String(item.unidade).trim() && (!item.bloco || mor.bloco === item.bloco))
-          );
-          const l = todosLotesEnriquecidos.find((lt: any) => lt.id === item.lote_re_id);
+        itensRetidosFinal = itensRaw
+          .filter((item: any) => !item?.condominio_id || item.condominio_id === condominioId)
+          .map((item: any) => {
+            const m = resolverMoradorDaEncomenda(item, listaMoradores, tipoEstrutura);
+            const l = todosLotesEnriquecidos.find((lt: any) => lt.id === item.lote_re_id);
           return {
             ...item,
             codigo_barras: item.codigo_barras || item.codigo_rastreio || '',
             codigo_rastreio: item.codigo_rastreio || item.codigo_barras || '',
             foto_etiqueta: item.foto_etiqueta || item.foto_etiqueta_url || '',
             operador_baixa: item.operador_baixa || item.operador_baixa_nome || '',
-            moradores: m ? { nome: m.nome, telefone: m.telefone, bloco: m.bloco, unidade: m.unidade } : (item.moradores || null),
+            moradores: m ? { nome: m.nome, telefone: m.telefone, bloco: m.bloco, unidade: m.unidade } : null,
             lotes_re: l ? { operador_id: l.operador_id, codigo_re: l.codigo_re } : (item.lotes_re || null)
           };
         });
@@ -266,11 +337,11 @@ export async function carregarEPreaquecerEncomendas(
 
       return novoBundle;
     } finally {
-      promessasCarregamento.delete(condominioId);
+      promessasCarregamento.delete(chavePromessa);
     }
   })();
 
-  promessasCarregamento.set(condominioId, tarefa);
+  promessasCarregamento.set(chavePromessa, tarefa);
   return tarefa;
 }
 
@@ -303,9 +374,15 @@ export function inicializarRealtimeEncomendas(condominioId?: string): () => void
           table: 'encomendas_itens',
           filter: `condominio_id=eq.${condominioId}`
         },
-        () => {
-          // Revalida em background sem travar a interface
-          carregarEPreaquecerEncomendas(condominioId, true).catch(() => {});
+        (payload: any) => {
+          const payloadCondo = payload?.new?.condominio_id || payload?.old?.condominio_id;
+          if (payloadCondo && payloadCondo !== condominioId) return;
+          // Invalida L1/Redis e revalida em segundo plano sem travar a interface
+          invalidarCacheTabela('encomendas_itens', condominioId)
+            .catch(() => {})
+            .finally(() => {
+              carregarEPreaquecerEncomendas(condominioId, true).catch(() => {});
+            });
         }
       )
       .on(
@@ -316,8 +393,14 @@ export function inicializarRealtimeEncomendas(condominioId?: string): () => void
           table: 'lotes_re',
           filter: `condominio_id=eq.${condominioId}`
         },
-        () => {
-          carregarEPreaquecerEncomendas(condominioId, true).catch(() => {});
+        (payload: any) => {
+          const payloadCondo = payload?.new?.condominio_id || payload?.old?.condominio_id;
+          if (payloadCondo && payloadCondo !== condominioId) return;
+          invalidarCacheTabela('lotes_re', condominioId)
+            .catch(() => {})
+            .finally(() => {
+              carregarEPreaquecerEncomendas(condominioId, true).catch(() => {});
+            });
         }
       )
       .subscribe();
@@ -326,11 +409,27 @@ export function inicializarRealtimeEncomendas(condominioId?: string): () => void
       if (canalRealtimeEncomendas) {
         supabase.removeChannel(canalRealtimeEncomendas);
         canalRealtimeEncomendas = null;
+        condominoMonitoradoId = '';
       }
     };
   } catch (err) {
     console.warn('[encomendasService] Falha ao conectar Realtime:', err);
     return () => {};
+  }
+}
+
+export function limparCacheMemoriaEncomendas(condominioId?: string): void {
+  if (condominioId) {
+    memoriaEncomendas.delete(condominioId);
+  } else {
+    memoriaEncomendas.clear();
+    if (canalRealtimeEncomendas) {
+      try {
+        supabase.removeChannel(canalRealtimeEncomendas);
+      } catch {}
+      canalRealtimeEncomendas = null;
+      condominoMonitoradoId = '';
+    }
   }
 }
 
@@ -345,10 +444,10 @@ export function atualizarItemRetidoCache(
 ): void {
   if (!condominioId) return;
 
-  const bundle = memoriaEncomendas.get(condominioId);
-  if (!bundle) return;
+  const bundle = memoriaEncomendas.get(condominioId) || obterCacheEncomendas(condominioId);
+  if (!bundle || !bundle.condominioId) return;
 
-  let novaLista = [...bundle.itensRetidos];
+  let novaLista = [...(bundle.itensRetidos || [])];
   if (acao === 'delete') {
     novaLista = novaLista.filter(it => it.id !== itemId);
   } else if (novoItem) {

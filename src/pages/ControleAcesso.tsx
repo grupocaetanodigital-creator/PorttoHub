@@ -173,12 +173,21 @@ export default function ControleAcesso({ usuarioLogado }: ControleAcessoProps) {
   // Monitora troca global de condomínio
   useEffect(() => {
     const handleCondoChange = (e: any) => {
-      const novoId = e?.detail?.id;
+      const novoId = e?.detail?.id || e?.detail?.condominioId;
       if (novoId && novoId !== 'global' && novoId !== 'todos') {
         setCondId(novoId);
       } else {
         setCondId(getCondominioAtivoId(usuarioLogado));
       }
+      setPontosAcesso([]);
+      setRegistros([]);
+      setPassesVirtuais([]);
+      setBlacklist([]);
+      setMoradoresBase([]);
+      setUnidadesBase([]);
+      setMoradorVinculadoPlaca(null);
+      setModalNovoPasse(false);
+      setModalNovoBloqueio(false);
     };
     window.addEventListener('infport:condominio_alterado', handleCondoChange);
     return () => window.removeEventListener('infport:condominio_alterado', handleCondoChange);

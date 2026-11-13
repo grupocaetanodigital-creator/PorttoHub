@@ -18,36 +18,35 @@ export default function AlertaNoCondominioTopo({
   const listaAcessosRef = useRef<any[]>([]);
 
   const carregarContagem = async () => {
+    if (!condominioId || condominioId === 'global' || condominioId === 'todos') {
+      listaAcessosRef.current = [];
+      setTotalNoCondominio(0);
+      setTotalEstourados(0);
+      return;
+    }
+
     try {
       // REGRA: Controle de permanência e alertas aplicam-se EXCLUSIVAMENTE a prestadores de serviço e obras.
       // Visitantes e familiares possuem circulação livre e não requerem controle de tempo/saída.
-      let queryAcessos = supabase
+      const { data: acessosDb, error: errAcessos } = await supabase
         .from('prestadores_acessos')
         .select('id, data_hora_entrada, limite_permanencia_ate, perfil_acesso, status_acesso')
+        .eq('condominio_id', condominioId)
         .neq('perfil_acesso', 'autorizado')
         .eq('status_acesso', 'DENTRO');
-
-      if (condominioId) {
-        queryAcessos = queryAcessos.eq('condominio_id', condominioId);
-      }
-
-      const { data: acessosDb, error: errAcessos } = await queryAcessos;
 
       let lista: any[] = [];
       if (!errAcessos && acessosDb && acessosDb.length > 0) {
         lista = acessosDb.filter((item: any) => item.perfil_acesso !== 'autorizado');
       } else {
         // Fallback para tabela prestadores com status 'DENTRO' ou 'EM_ANDAMENTO' excluindo visitantes/família
-        let qPrest = supabase
+        const { data: prestDb } = await supabase
           .from('prestadores')
           .select('id, data_hora_entrada, limite_permanencia_ate, perfil_acesso, status_acesso')
+          .eq('condominio_id', condominioId)
           .neq('perfil_acesso', 'autorizado')
           .in('status_acesso', ['DENTRO', 'EM_ANDAMENTO']);
 
-        if (condominioId) {
-          qPrest = qPrest.eq('condominio_id', condominioId);
-        }
-        const { data: prestDb } = await qPrest;
         lista = (prestDb || []).filter((item: any) => item.perfil_acesso !== 'autorizado');
       }
 
@@ -81,6 +80,13 @@ export default function AlertaNoCondominioTopo({
   };
 
   useEffect(() => {
+    if (!condominioId || condominioId === 'global' || condominioId === 'todos') {
+      listaAcessosRef.current = [];
+      setTotalNoCondominio(0);
+      setTotalEstourados(0);
+      return;
+    }
+
     carregarContagem();
 
     // Eventos locais disparados dentro do próprio app
@@ -90,8 +96,8 @@ export default function AlertaNoCondominioTopo({
     window.addEventListener('prestadores_atualizados', handleEventoLocal);
     window.addEventListener('infport_sincronizar_dados_global', handleEventoLocal);
 
-    // Canal Realtime do Supabase com NOME ESTÁTICO (sem Date.now() para não poluir conexões e logs)
-    const channelName = `realtime_acessos_${condominioId || 'global'}`;
+    // Canal Realtime isolado estritamente pelo condomínio ativo
+    const channelName = `realtime_acessos_${condominioId}`;
     const channel = supabase
       .channel(channelName)
       .on(
@@ -99,9 +105,12 @@ export default function AlertaNoCondominioTopo({
         {
           event: '*',
           schema: 'public',
-          table: 'prestadores_acessos'
+          table: 'prestadores_acessos',
+          filter: `condominio_id=eq.${condominioId}`
         },
-        () => {
+        (payload: any) => {
+          const pCondo = payload?.new?.condominio_id || payload?.old?.condominio_id;
+          if (pCondo && pCondo !== condominioId) return;
           carregarContagem();
         }
       )
@@ -110,9 +119,12 @@ export default function AlertaNoCondominioTopo({
         {
           event: '*',
           schema: 'public',
-          table: 'prestadores'
+          table: 'prestadores',
+          filter: `condominio_id=eq.${condominioId}`
         },
-        () => {
+        (payload: any) => {
+          const pCondo = payload?.new?.condominio_id || payload?.old?.condominio_id;
+          if (pCondo && pCondo !== condominioId) return;
           carregarContagem();
         }
       )

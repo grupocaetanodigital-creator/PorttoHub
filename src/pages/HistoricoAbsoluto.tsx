@@ -11,6 +11,12 @@ import {
 } from '../services/auditoriaService';
 import { verificarPermissao } from '../services/permissoesService';
 import { purgarCachesLocaisInfport } from '../services/cacheLimpezaService';
+import {
+  isVerifiedGlobalAdmin,
+  canSwitchCondominio,
+  canAccessCondominio,
+  isValidCondominioId
+} from '../services/tenantAuthService';
 import { 
   History, 
   Activity, 
@@ -46,29 +52,23 @@ interface HistoricoAbsolutoProps {
 }
 
 export default function HistoricoAbsoluto({ operadorLogado, condominioAtivo, listaCondominios = [] }: HistoricoAbsolutoProps) {
-  // PRIVACIDADE ESTRITA: Apenas o Super Administrador Geral da Plataforma (sem condomínio fixo vinculado) tem visão multi-condomínio
-  // Qualquer operador, síndico ou administrador vinculado a um condomínio específico FICA RIGIDAMENTE BLOQUEADO no seu condomínio
-  const eAdminGlobal = Boolean(
-    operadorLogado?.eSuperAdminGlobal ||
-    ((operadorLogado?.login === 'admin' || operadorLogado?.perfil === 'admin_geral') && 
-     (!operadorLogado?.condominio_id || operadorLogado?.condominio_id === 'global'))
-  );
+  // PRIVACIDADE ESTRITA: Apenas Super Administrador Global verificado no servidor possui visão multi-condomínio
+  const eAdminGlobal = isVerifiedGlobalAdmin(operadorLogado);
 
   // Administrador ou Síndico dentro do seu escopo
   const eAdmin = operadorLogado?.perfil === 'admin' || operadorLogado?.nivel_acesso === 0 || operadorLogado?.perfil === 'master' || operadorLogado?.nivel_acesso === 1;
 
   // Condomínio obrigatório para operadores, porteiros, supervisores e síndicos
-  const idCondominioRestrito = operadorLogado?.condominio_id || condominioAtivo?.id || '';
+  const idCondominioRestrito = condominioAtivo?.id || operadorLogado?.condominio_id || '';
 
   // Permissões granulares do módulo Histórico Absoluto
-  const podeVisualizar = eAdmin || 
+  const podeVisualizar = eAdminGlobal || eAdmin || 
                          verificarPermissao(operadorLogado, 'historico_absoluto', 'visualizar') || 
                          verificarPermissao(operadorLogado, 'historico_absoluto', 'ver_feed');
 
   const podeExcluirDados = Boolean(
     eAdminGlobal || 
     eAdmin || 
-    operadorLogado?.login === 'admin' || 
     operadorLogado?.perfil === 'admin' || 
     operadorLogado?.perfil === 'master' ||
     operadorLogado?.nivel_acesso === 0 ||
@@ -77,17 +77,9 @@ export default function HistoricoAbsoluto({ operadorLogado, condominioAtivo, lis
     verificarPermissao(operadorLogado, 'historico_absoluto', 'excluir')
   );
 
-  // Permite selecionar condomínio ou visão geral de todos quando for Administrador
+  // Apenas Super Admin Global verificado ou usuário com múltiplos condomínios autorizados pode alternar filtro
   const podeFiltrarCondominios = Boolean(
-    eAdminGlobal || 
-    eAdmin || 
-    operadorLogado?.login === 'admin' || 
-    operadorLogado?.perfil === 'admin' || 
-    operadorLogado?.perfil === 'admin_geral' ||
-    operadorLogado?.perfil === 'master' ||
-    operadorLogado?.nivel_acesso === 0 ||
-    operadorLogado?.nivel_acesso === 1 ||
-    (listaCondominios && listaCondominios.length > 0)
+    eAdminGlobal || canSwitchCondominio(operadorLogado)
   );
 
   const [abaAtiva, setAbaAtiva] = useState<'feed' | 'limpeza' | 'sql' | 'metricas'>('feed');
@@ -95,9 +87,9 @@ export default function HistoricoAbsoluto({ operadorLogado, condominioAtivo, lis
   const [loading, setLoading] = useState(false);
   const [fonteDados, setFonteDados] = useState<'supabase' | 'cache_local'>('supabase');
 
-  // Filtros do Feed - se for ADM, permite 'todos' ou selecionar qualquer condomínio
+  // Filtros do Feed - isolado no condomínio ativo quando não for Global Admin verificado
   const [filtroCondominio, setFiltroCondominio] = useState<string>(
-    podeFiltrarCondominios ? 'todos' : (idCondominioRestrito || 'todos')
+    eAdminGlobal ? 'todos' : (idCondominioRestrito || '')
   );
   const [filtroModulo, setFiltroModulo] = useState('todos');
   const [filtroAcao, setFiltroAcao] = useState('todas');
@@ -165,7 +157,7 @@ export default function HistoricoAbsoluto({ operadorLogado, condominioAtivo, lis
 
   const [tabelaSelecionada, setTabelaSelecionada] = useState('todas_tabelas');
   const [escopoCondominioLimpeza, setEscopoCondominioLimpeza] = useState<string>(
-    podeFiltrarCondominios ? 'todos' : (idCondominioRestrito || 'todos')
+    eAdminGlobal ? 'todos' : (idCondominioRestrito || '')
   );
   const [detalhesPorTabelaLimpeza, setDetalhesPorTabelaLimpeza] = useState<{ id: string; nomeAmigavel: string; modulo: string; total: number; campoData: string }[]>([]);
   const [detalheRemocaoConsolidada, setDetalheRemocaoConsolidada] = useState<Record<string, number> | null>(null);
@@ -218,14 +210,24 @@ export default function HistoricoAbsoluto({ operadorLogado, condominioAtivo, lis
   // Estado da cópia SQL
   const [copiadoSql, setCopiadoSql] = useState(false);
 
-  // Carrega feed de auditoria
+  // Carrega feed de auditoria com isolamento estrito
   const carregarFeed = async () => {
     setLoading(true);
     try {
-      // Se for ADM, respeita o filtro de condomínio ('todos' para visão geral ou específico)
-      const condoIdBusca = !podeFiltrarCondominios
-        ? (idCondominioRestrito || undefined)
-        : (filtroCondominio === 'todos' ? undefined : (filtroCondominio || undefined));
+      let condoIdBusca: string | undefined;
+      if (eAdminGlobal) {
+        condoIdBusca = filtroCondominio === 'todos' ? undefined : (isValidCondominioId(filtroCondominio) ? filtroCondominio : idCondominioRestrito);
+      } else {
+        const alvo = (podeFiltrarCondominios && isValidCondominioId(filtroCondominio) && canAccessCondominio(operadorLogado, filtroCondominio))
+          ? filtroCondominio
+          : idCondominioRestrito;
+        if (!isValidCondominioId(alvo) || !canAccessCondominio(operadorLogado, alvo)) {
+          setRegistros([]);
+          setLoading(false);
+          return;
+        }
+        condoIdBusca = alvo;
+      }
 
       const res = await buscarHistoricoAbsoluto({
         condominio_id: condoIdBusca,
@@ -244,27 +246,46 @@ export default function HistoricoAbsoluto({ operadorLogado, condominioAtivo, lis
   };
 
   useEffect(() => {
+    if (!eAdminGlobal && isValidCondominioId(idCondominioRestrito)) {
+      setFiltroCondominio(idCondominioRestrito);
+      setEscopoCondominioLimpeza(idCondominioRestrito);
+    }
+  }, [idCondominioRestrito, eAdminGlobal]);
+
+  useEffect(() => {
     carregarFeed();
 
     // Listener para novos eventos gerados na aplicação em tempo real
     const handleNovoHistorico = (e: any) => {
       const novo = e.detail;
-      if (novo) {
-        setRegistros(prev => [novo, ...prev.filter(r => r.id !== novo.id)]);
-      }
+      if (!novo) return;
+      if (!eAdminGlobal && novo.condominio_id && novo.condominio_id !== idCondominioRestrito) return;
+      setRegistros(prev => [novo, ...prev.filter(r => r.id !== novo.id)]);
     };
 
     window.addEventListener('infport_historico_novo', handleNovoHistorico);
 
-    // Canal Realtime do Supabase com NOME ESTÁTICO (sem Date.now() para não poluir conexões e logs)
+    // Canal Realtime isolado por condomínio quando não for Admin Global
     let canal: any = null;
     try {
-      canal = supabase
-        .channel('historico_absoluto_feed')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'historico_absoluto' }, () => {
-          carregarFeed();
-        })
-        .subscribe();
+      const condoRealtime = eAdminGlobal
+        ? (isValidCondominioId(filtroCondominio) ? filtroCondominio : '')
+        : idCondominioRestrito;
+      const channelName = condoRealtime ? `historico_absoluto_${condoRealtime}` : 'historico_absoluto_feed_global';
+      const pgConfig: any = { event: '*', schema: 'public', table: 'historico_absoluto' };
+      if (condoRealtime && isValidCondominioId(condoRealtime)) {
+        pgConfig.filter = `condominio_id=eq.${condoRealtime}`;
+      }
+      if (eAdminGlobal || isValidCondominioId(condoRealtime)) {
+        canal = supabase
+          .channel(channelName)
+          .on('postgres_changes', pgConfig, (payload: any) => {
+            const pCondo = payload?.new?.condominio_id || payload?.old?.condominio_id;
+            if (!eAdminGlobal && pCondo && pCondo !== condoRealtime) return;
+            carregarFeed();
+          })
+          .subscribe();
+      }
     } catch (e) {
       console.warn('Realtime Supabase não disponível:', e);
     }
@@ -273,7 +294,7 @@ export default function HistoricoAbsoluto({ operadorLogado, condominioAtivo, lis
       window.removeEventListener('infport_historico_novo', handleNovoHistorico);
       if (canal) supabase.removeChannel(canal);
     };
-  }, [condominioAtivo?.id, filtroCondominio, filtroModulo, filtroAcao, dataInicio, dataFim]);
+  }, [condominioAtivo?.id, filtroCondominio, filtroModulo, filtroAcao, dataInicio, dataFim, eAdminGlobal]);
 
   // Consulta quantidade de registros na tabela antes de limpar
   const handleConsultarPeriodo = async () => {

@@ -55,16 +55,22 @@ CREATE INDEX IF NOT EXISTS idx_hist_abs_acao ON public.historico_absoluto(acao);
 CREATE INDEX IF NOT EXISTS idx_hist_abs_operador ON public.historico_absoluto(operador_id);
 CREATE INDEX IF NOT EXISTS idx_hist_abs_criado_em ON public.historico_absoluto(criado_em DESC);
 
--- Habilitar RLS (Row Level Security)
+-- Habilitar RLS (Row Level Security) com isolamento por condomínio
 ALTER TABLE public.historico_absoluto ENABLE ROW LEVEL SECURITY;
 
--- Política de Acesso Total para a Portaria
 DROP POLICY IF EXISTS "Acesso total portaria historico_absoluto" ON public.historico_absoluto;
-CREATE POLICY "Acesso total portaria historico_absoluto" 
-  ON public.historico_absoluto 
-  FOR ALL 
-  USING (true) 
-  WITH CHECK (true);
+DROP POLICY IF EXISTS "tenant_select_historico_absoluto" ON public.historico_absoluto;
+DROP POLICY IF EXISTS "tenant_insert_historico_absoluto" ON public.historico_absoluto;
+
+CREATE POLICY "tenant_select_historico_absoluto"
+  ON public.historico_absoluto
+  FOR SELECT TO authenticated
+  USING (public.auth_has_condo_access(condominio_id));
+
+CREATE POLICY "tenant_insert_historico_absoluto"
+  ON public.historico_absoluto
+  FOR INSERT TO authenticated
+  WITH CHECK (public.auth_has_condo_access(condominio_id));
 
 -- Habilitar Realtime do Supabase com proteção contra duplicação
 DO $$
@@ -464,7 +470,7 @@ export async function buscarHistoricoAbsoluto(filtros: {
       try {
         const itens = await consultarTabelaResiliente('encomendas_itens', ['created_at', 'data_recebimento', 'criado_em']);
         itens.forEach((item: any) => {
-          const rastreio = item.codigo_barras || item.codigo_rastreio || item.rastreio || 'S/ Rastreio';
+          const rastreio = item.codigo_barras || item.codigo_rastreio || item.rastreio || 'Sem rastreio';
           const dest = item.destinatario || item.nome_morador || 'Morador';
           const apFormatado = `Ap. ${item.unidade || ''} ${item.bloco ? '• Bl ' + item.bloco : ''}`.trim();
 

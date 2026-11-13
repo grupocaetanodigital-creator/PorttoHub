@@ -1004,7 +1004,7 @@ export default function TabelasResumoPosto({
                       <tr key={a.id}>
                         <td className="p-2 font-bold">{a.nome}</td>
                         <td className="p-2">{a.categoria}</td>
-                        <td className="p-2 font-mono">{a.codigoPatrimonio || 'S/N'}</td>
+                        <td className="p-2 font-mono">{a.codigoPatrimonio || 'Sem número'}</td>
                         <td className="p-2 font-medium italic">{a.observacao || a.estado}</td>
                       </tr>
                     ))}

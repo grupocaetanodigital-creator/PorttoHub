@@ -67,6 +67,12 @@ import {
   formatarLinkWhatsApp 
 } from '../services/configWhatsappService';
 import { isUUID } from '../services/condominioService';
+import {
+  isVerifiedGlobalAdmin,
+  obterCondominiosAutorizadosIds,
+  canAccessCondominio,
+  isValidCondominioId
+} from '../services/tenantAuthService';
 
 export interface LocalArmazenamento {
   id: string;
@@ -468,10 +474,21 @@ export default function Configuracoes({ usuarioLogado, onConfigSalva }: Configur
 
   const carregarCondominios = async () => {
     try {
-      const { data, error } = await supabase
+      const idsAutorizados = obterCondominiosAutorizadosIds(usuarioLogado);
+      let query = supabase
         .from('condominios')
         .select('*')
         .order('nome', { ascending: true });
+
+      if (!isVerifiedGlobalAdmin(usuarioLogado)) {
+        if (idsAutorizados.length === 0) {
+          setListaCondominios([]);
+          return;
+        }
+        query = query.in('id', idsAutorizados);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setListaCondominios(data || []);
@@ -482,7 +499,7 @@ export default function Configuracoes({ usuarioLogado, onConfigSalva }: Configur
       }
 
       if (!condominioBackupId && data && data.length > 0) {
-        setCondominioBackupId(data[0].id);
+        setCondominioBackupId(usuarioLogado?.condominio_id || data[0].id);
       }
     } catch (err) {
       console.error('Erro ao carregar lista de condomínios:', err);
@@ -969,10 +986,21 @@ export default function Configuracoes({ usuarioLogado, onConfigSalva }: Configur
       const condoObj = listaCondominios.find(c => c.id === targetCondoId);
       const condoNome = condoObj ? condoObj.nome.replace(/[^a-zA-Z0-9]/g, '_') : 'TODOS_OS_CONDOMINIOS';
 
+      const eGlobalAdminVerificado = isVerifiedGlobalAdmin(usuarioLogado);
+      const condoAlvoSeguro = (!targetCondoId || targetCondoId === 'TODOS' || targetCondoId === 'todos')
+        ? (eGlobalAdminVerificado ? 'TODOS' : (usuarioLogado?.condominio_id || ''))
+        : targetCondoId;
+
+      if (!eGlobalAdminVerificado && (!isValidCondominioId(condoAlvoSeguro) || !canAccessCondominio(usuarioLogado, condoAlvoSeguro))) {
+        setMensagem({ tipo: 'erro', texto: 'Acesso negado ao exportar backup deste condomínio.' });
+        setExportando(false);
+        return;
+      }
+
       const buscarTabela = async (tabela: string) => {
         let query = supabase.from(tabela).select('*');
-        if (targetCondoId && targetCondoId !== 'TODOS' && targetCondoId !== 'todos' && isUUID(targetCondoId)) {
-          query = query.eq('condominio_id', targetCondoId);
+        if (condoAlvoSeguro !== 'TODOS' && isUUID(condoAlvoSeguro)) {
+          query = query.eq('condominio_id', condoAlvoSeguro);
         }
         const { data, error } = await query;
         if (error) console.warn(`Aviso ao buscar tabela ${tabela}:`, error.message);
@@ -998,8 +1026,8 @@ export default function Configuracoes({ usuarioLogado, onConfigSalva }: Configur
         templatesData,
         agendaData
       ] = await Promise.all([
-        targetCondoId && targetCondoId !== 'TODOS' 
-          ? supabase.from('condominios').select('*').eq('id', targetCondoId).then(r => r.data || [])
+        condoAlvoSeguro !== 'TODOS' && isUUID(condoAlvoSeguro)
+          ? supabase.from('condominios').select('*').eq('id', condoAlvoSeguro).then(r => r.data || [])
           : supabase.from('condominios').select('*').then(r => r.data || []),
         buscarTabela('operadores'),
         buscarTabela('moradores'),
@@ -1071,8 +1099,7 @@ export default function Configuracoes({ usuarioLogado, onConfigSalva }: Configur
 
   const nivelNum = Number(usuarioLogado?.nivel_acesso ?? usuarioLogado?.nivel ?? 3);
   const ehNivel0 = Boolean(
-    usuarioLogado?.eSuperAdminGlobal ||
-    usuarioLogado?.login?.toLowerCase() === 'admin' ||
+    isVerifiedGlobalAdmin(usuarioLogado) ||
     usuarioLogado?.perfil?.toLowerCase() === 'admin' ||
     usuarioLogado?.perfil?.toLowerCase() === 'admin_geral' ||
     nivelNum === 0 ||

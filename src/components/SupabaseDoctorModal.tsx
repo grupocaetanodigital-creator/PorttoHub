@@ -42,14 +42,18 @@ import {
   CacheTelemetry
 } from '../services/redisCacheService';
 
+import { obterCondominiosAutorizadosIds, isValidCondominioId, isVerifiedGlobalAdmin } from '../services/tenantAuthService';
+
 interface SupabaseDoctorModalProps {
   isOpen: boolean;
   onClose: () => void;
   abaInicial?: 'condominios' | 'auditoria' | 'script' | 'storage' | 'redis';
   onAbrirMigrador?: () => void;
+  usuarioLogado?: any;
+  condominioAtivoId?: string;
 }
 
-export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'condominios', onAbrirMigrador }: SupabaseDoctorModalProps) {
+export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'condominios', onAbrirMigrador, usuarioLogado, condominioAtivoId }: SupabaseDoctorModalProps) {
   const [loading, setLoading] = useState(false);
   const [diagnostics, setDiagnostics] = useState<TableDiagnostic[]>(CANONICAL_SCHEMA_MAP);
   const [orphanedCount, setOrphanedCount] = useState(0);
@@ -95,9 +99,15 @@ export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'con
     setLoading(true);
     setMensagemCondo(null);
     try {
+      const autorizados = isVerifiedGlobalAdmin(usuarioLogado)
+        ? undefined
+        : obterCondominiosAutorizadosIds(usuarioLogado);
+      const alvoFallback = (!autorizados || autorizados.length === 0) && isValidCondominioId(condominioAtivoId)
+        ? [String(condominioAtivoId)]
+        : autorizados;
       const [resultAudit, resultCondos] = await Promise.all([
         runDatabaseAudit(),
-        auditCondominiosConfigs()
+        auditCondominiosConfigs(alvoFallback)
       ]);
       setDiagnostics(resultAudit.diagnostics);
       setOrphanedCount(resultAudit.orphanedTablesFound.length);
@@ -141,7 +151,15 @@ export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'con
     setMensagemRedis(null);
     try {
       const res = await executarBenchmarkVelocidade();
-      setBenchmarkResult(res);
+      if (!res) {
+        setBenchmarkResult(null);
+        setMensagemRedis({
+          tipo: 'erro',
+          texto: 'Benchmark indisponível sem sessão autenticada com condomínio ativo.'
+        });
+      } else {
+        setBenchmarkResult(res);
+      }
       await carregarStatsRedis();
     } catch (e: any) {
       setMensagemRedis({ tipo: 'erro', texto: `Falha no benchmark: ${e.message}` });
@@ -154,7 +172,9 @@ export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'con
     setLoadingWarmup(true);
     setMensagemRedis(null);
     try {
-      const condoAtivo = typeof window !== 'undefined' ? (window as any).idCondominioAtivo : '';
+      const condoAtivo = isValidCondominioId(condominioAtivoId)
+        ? String(condominioAtivoId)
+        : (typeof window !== 'undefined' ? (window as any).idCondominioAtivo : '');
       const res = await aquecerCacheCondominio(condoAtivo);
       if (res.sucesso) {
         setMensagemRedis({ tipo: 'sucesso', texto: `Cache pré-aquecido com sucesso em ${res.tempoTotalMs}ms!` });
@@ -173,7 +193,7 @@ export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'con
     setMensagemRedis(null);
     try {
       await limparTodoCache();
-      setMensagemRedis({ tipo: 'sucesso', texto: 'Cache Redis limpo com sucesso.' });
+      setMensagemRedis({ tipo: 'sucesso', texto: 'Cache limpo com sucesso.' });
       await carregarStatsRedis();
     } catch (e: any) {
       setMensagemRedis({ tipo: 'erro', texto: e.message });
@@ -190,7 +210,10 @@ export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'con
           tipo: 'sucesso', 
           texto: `Configuração do condomínio "${condoDiag.condominioNome}" foi corrigida e sincronizada com sucesso!` 
         });
-        const updated = await auditCondominiosConfigs();
+        const autorizados = isVerifiedGlobalAdmin(usuarioLogado)
+          ? undefined
+          : obterCondominiosAutorizadosIds(usuarioLogado);
+        const updated = await auditCondominiosConfigs(autorizados);
         setCondoDiagnostics(updated);
       } else {
         setMensagemCondo({ tipo: 'erro', texto: `Falha ao reparar: ${res.error}` });
@@ -218,7 +241,10 @@ export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'con
           texto: `${res.totalRepaired} reparados com sucesso, mas ${res.totalErrors} tiveram erro: ${res.errors.join('; ')}` 
         });
       }
-      const updated = await auditCondominiosConfigs();
+      const autorizados = isVerifiedGlobalAdmin(usuarioLogado)
+        ? undefined
+        : obterCondominiosAutorizadosIds(usuarioLogado);
+      const updated = await auditCondominiosConfigs(autorizados);
       setCondoDiagnostics(updated);
     } catch (err: any) {
       setMensagemCondo({ tipo: 'erro', texto: err.message || 'Erro inesperado' });
@@ -690,9 +716,9 @@ export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'con
           {abaAtiva === 'storage' && (
             <div className="space-y-4">
               <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-xs text-slate-700 space-y-3">
-                <h4 className="font-bold text-slate-900 text-sm">Situação dos Buckets de Storage (Prints 2, 3 e 5)</h4>
+                <h4 className="font-bold text-slate-900 text-sm">Situação dos Buckets de Storage (Isolamento Multi-Condomínio)</h4>
                 <p>
-                  No seu Supabase Storage existem atualmente dois buckets:
+                  O Storage de imagens utiliza prefixos isolados por condomínio em <code>condominios/&lt;condominio_id&gt;/...</code> com bucket privado e URLs assinadas temporárias:
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
@@ -700,37 +726,37 @@ export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'con
                     <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
                       Bucket Ativo no Código
                     </span>
-                    <h5 className="font-bold text-sm text-slate-900 mt-1 font-mono">encomendas (Public)</h5>
+                    <h5 className="font-bold text-sm text-slate-900 mt-1 font-mono">encomendas (Privado / RLS Tenant)</h5>
                     <p className="text-[11px] text-slate-500">
-                      Possui 3 Policies públicas e armazena todas as subpastas operacionais:
+                      Restrito a usuários autenticados com vínculo no condomínio do prefixo:
                     </p>
                     <div className="flex flex-wrap gap-1 pt-1 text-[10px] font-mono text-slate-700">
-                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/avarias_materiais</span>
-                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/chaves_devolucao</span>
-                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/chaves_retirada</span>
-                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/checklist_fotos</span>
-                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/comprovantes_baixa</span>
-                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/custodia_entrada</span>
-                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/custodia_saida</span>
-                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/etiquetas</span>
-                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/ocorrencias</span>
-                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/rondas_evidencias</span>
+                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/condominios/&lt;id&gt;/avarias_materiais</span>
+                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/condominios/&lt;id&gt;/chaves_devolucao</span>
+                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/condominios/&lt;id&gt;/chaves_retirada</span>
+                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/condominios/&lt;id&gt;/checklist_fotos</span>
+                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/condominios/&lt;id&gt;/comprovantes_baixa</span>
+                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/condominios/&lt;id&gt;/custodia_entrada</span>
+                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/condominios/&lt;id&gt;/custodia_saida</span>
+                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/condominios/&lt;id&gt;/etiquetas</span>
+                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/condominios/&lt;id&gt;/ocorrencias</span>
+                      <span className="bg-slate-100 px-1.5 py-0.5 rounded">/condominios/&lt;id&gt;/rondas_evidencias</span>
                     </div>
                   </div>
 
                   <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm space-y-1 opacity-75">
                     <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-200 text-slate-700 px-2 py-0.5 rounded">
-                      Bucket Vazio / Opcional
+                      Compatibilidade Legada
                     </span>
-                    <h5 className="font-bold text-sm text-slate-900 mt-1 font-mono">fotos-infport (Public)</h5>
+                    <h5 className="font-bold text-sm text-slate-900 mt-1 font-mono">Mídias anteriores à migração</h5>
                     <p className="text-[11px] text-slate-500">
-                      Criado sem policies e atualmente vazio. Pode ser mantido como reserva ou excluído se desejar manter tudo centralizado em <code>encomendas</code>.
+                      Objetos legados continuam sendo exibidos com fallback seguro enquanto novos envios seguem o namespace <code>condominios/&lt;condominio_id&gt;/...</code>.
                     </p>
                   </div>
                 </div>
 
                 <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-emerald-900 text-[11px]">
-                  ✅ <strong>Tudo OK no Storage:</strong> O aplicativo já está configurado para salvar todas as fotos dos módulos (chaves, rondas, encomendas, avarias, etc.) no bucket público <code>encomendas</code>, mantendo links seguros e acessíveis sem quebras de imagem.
+                  ✅ <strong>Isolamento de Storage Ativo:</strong> Todos os novos uploads utilizam caminho particionado por condomínio e políticas autenticadas no bucket <code>encomendas</code>.
                 </div>
               </div>
             </div>

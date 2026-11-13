@@ -104,14 +104,22 @@ export default function Chaves({ usuarioLogado }: ChavesProps) {
   const rotuloBloco = getNomeRotuloBloco(condoConfig?.tipo_estrutura);
   const rotuloUnidade = getNomeRotuloUnidade(condoConfig?.tipo_estrutura);
 
+  const loadSeqRef = React.useRef(0);
+
   useEffect(() => {
     const handleCondoChange = (e: any) => {
-      const novoId = e?.detail?.id;
+      loadSeqRef.current += 1;
+      const novoId = e?.detail?.id || e?.detail?.condominioId;
       if (novoId && novoId !== 'global' && novoId !== 'todos') {
         setCondId(novoId);
       } else {
         setCondId(getCondominioAtivoId(usuarioLogado));
       }
+      setChaves([]);
+      setMovimentacoesAtivas([]);
+      setMoradores([]);
+      setColaboradores([]);
+      setTerceirosAtivos([]);
     };
     window.addEventListener('infport:condominio_alterado', handleCondoChange);
     return () => window.removeEventListener('infport:condominio_alterado', handleCondoChange);
@@ -122,6 +130,7 @@ export default function Chaves({ usuarioLogado }: ChavesProps) {
   }, [condId]);
 
   const carregarQuadroChaves = async () => {
+    const seq = ++loadSeqRef.current;
     if (!condId || condId === 'global' || condId === 'todos') {
       setChaves([]);
       setMovimentacoesAtivas([]);
@@ -166,7 +175,7 @@ export default function Chaves({ usuarioLogado }: ChavesProps) {
 
       let mList = (morData && morData.length > 0) ? morData : [];
       if (mList.length === 0) {
-        const local = obterCacheLocal<any[]>('moradores', condId, []) || obterCacheLocal<any[]>('moradores', 'global', []);
+        const local = obterCacheLocal<any[]>('moradores', condId, []);
         if (local && local.length > 0) {
           mList = local;
         } else {
@@ -288,12 +297,17 @@ export default function Chaves({ usuarioLogado }: ChavesProps) {
         };
       });
 
+      if (seq !== loadSeqRef.current) return;
       setChaves(chavesData || []);
       setMovimentacoesAtivas(movsComStatus);
     } catch (err: any) {
-      setMensagem({ tipo: 'erro', texto: err.message });
+      if (seq === loadSeqRef.current) {
+        setMensagem({ tipo: 'erro', texto: err.message });
+      }
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -306,6 +320,7 @@ export default function Chaves({ usuarioLogado }: ChavesProps) {
       const { publicUrl, tamanhoOriginalKb, tamanhoComprimidoKb, taxaReducaoPct } = await uploadFotoComprimidaStorage({
         file,
         pasta,
+        condominioId: condId,
         maxWidth: 1000,
         maxHeight: 1000,
         qualidade: 0.75

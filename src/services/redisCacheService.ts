@@ -1,4 +1,9 @@
 import { supabase } from './supabase';
+import {
+  isTabelaIsoladaPorCondominio,
+  isValidCondominioId,
+  obterAccessTokenSupabase
+} from './tenantAuthService';
 
 export interface QueryFilter {
   field: string;
@@ -49,96 +54,174 @@ const clientMemoryCache = new Map<string, ClientMemoryEntry>();
 // Evita requisições concorrentes duplicadas para a mesma consulta (Thundering Herd / Dogpiling)
 const inflightQueries = new Map<string, Promise<any>>();
 
-function buildClientKey(options: CachedQueryOptions): string {
+function resolverCondoIdEfetivo(options: CachedQueryOptions): string | undefined {
+  if (isValidCondominioId(options.condominioId)) {
+    return String(options.condominioId).trim();
+  }
+  const fCondo = (options.filters || []).find(
+    (f) => f && f.field === 'condominio_id' && f.op === 'eq' && isValidCondominioId(String(f.value || ''))
+  );
+  if (fCondo) return String(fCondo.value).trim();
+  return undefined;
+}
+
+function buildClientKey(options: CachedQueryOptions, condoResolved?: string): string {
   const normSelect = (options.select || '*').replace(/\s+/g, '');
   const normFilters = (options.filters || [])
-    .map(f => `${f.field}:${f.op}:${f.value}`)
+    .map((f) => `${f.field}:${f.op}:${Array.isArray(f.value) ? f.value.join(',') : f.value}`)
     .sort()
     .join('|');
-  const normOrder = options.orderBy ? `${options.orderBy.field}:${options.orderBy.ascending ? 'asc' : 'desc'}` : '';
+  const normOrder = options.orderBy
+    ? `${options.orderBy.field}:${options.orderBy.ascending ? 'asc' : 'desc'}`
+    : '';
   const normLimit = options.limit ? `limit:${options.limit}` : '';
-  const condoPart = options.condominioId ? `condo:${options.condominioId}` : '';
+  const condoPart = condoResolved ? `condo:${condoResolved}` : 'condo:catalog';
   return `l1:${options.table}:${condoPart}:${normSelect}:${normFilters}:${normOrder}:${normLimit}`;
 }
 
+async function buildAuthHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+  const token = await obterAccessTokenSupabase();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+export function limparCacheMemoriaCliente(): void {
+  clientMemoryCache.clear();
+  inflightQueries.clear();
+}
+
 /**
- * Consulta Otimizada com Camadas Multi-Tier de Cache:
+ * Consulta Otimizada com Camadas Multi-Tier de Cache e Isolamento Multi-Tenant Estrito:
  * Camada 1: Memória RAM do Navegador (0ms - instantâneo)
- * Camada 2: Servidor Redis Central (/api/cache/query - 1 a 4ms)
- * Camada 3: Supabase REST Fallback de contingência
+ * Camada 2: Servidor Redis Central (/api/cache/query - autenticado via Bearer JWT)
+ * Camada 3: Supabase REST Fallback de contingência (com filtro obrigatório por condominio_id)
  */
 export async function cachedQuery<T = any[]>(options: CachedQueryOptions): Promise<T> {
-  const t0 = performance.now();
-  const clientKey = buildClientKey(options);
+  const isTenantTable = isTabelaIsoladaPorCondominio(options.table);
+  const condoResolved = resolverCondoIdEfetivo(options);
+
+  if (isTenantTable) {
+    // Rejeita filtros manipulados em condominio_id (ex: neq, ilike)
+    const filtroInvalido = (options.filters || []).find(
+      (f) =>
+        f &&
+        f.field === 'condominio_id' &&
+        (f.op !== 'eq' || !isValidCondominioId(String(f.value || '')))
+    );
+    if (filtroInvalido || !condoResolved) {
+      throw new Error(
+        `[Isolamento Multi-Tenant] Consulta bloqueada na tabela "${options.table}": condominio_id válido é obrigatório.`
+      );
+    }
+  }
+
+  const normalizedFilters: QueryFilter[] = isTenantTable
+    ? [
+        ...(options.filters || []).filter((f) => f.field !== 'condominio_id'),
+        { field: 'condominio_id', op: 'eq', value: condoResolved }
+      ]
+    : [...(options.filters || [])];
+
+  const normalizedOptions: CachedQueryOptions = {
+    ...options,
+    condominioId: condoResolved,
+    filters: normalizedFilters
+  };
+
+  const clientKey = buildClientKey(normalizedOptions, condoResolved);
   const ttlMs = (options.ttlSeconds || 180) * 1000;
 
   // 1. Verificação L1: RAM do Cliente (0ms)
   if (!options.forceRefresh) {
     const mem = clientMemoryCache.get(clientKey);
-    if (mem && (Date.now() - mem.timestamp < mem.ttlMs)) {
+    if (mem && Date.now() - mem.timestamp < mem.ttlMs) {
       return mem.data as T;
     }
   }
 
   // 2. Proteção contra Thundering Herd
-  if (inflightQueries.has(clientKey)) {
-    return inflightQueries.get(clientKey) as Promise<T>;
+  const inflightKey = options.forceRefresh ? `${clientKey}:force` : clientKey;
+  if (inflightQueries.has(inflightKey)) {
+    return inflightQueries.get(inflightKey) as Promise<T>;
   }
 
   const queryPromise = (async () => {
     try {
-      // 3. Verificação L2: Servidor Redis
-      const response = await fetch('/api/cache/query', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(options)
-      });
+      const headers = await buildAuthHeaders();
+      if (headers['Authorization']) {
+        // 3. Verificação L2: Servidor Redis (apenas quando possui JWT válido)
+        const response = await fetch('/api/cache/query', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(normalizedOptions)
+        });
 
-      if (response.ok) {
-        const result: CachedQueryResult<T> = await response.json();
-        if (result && result.data !== undefined) {
-          // Armazena no L1 RAM do cliente
-          clientMemoryCache.set(clientKey, {
-            data: result.data,
-            timestamp: Date.now(),
-            ttlMs
-          });
-          return result.data;
+        if (response.ok) {
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const result: CachedQueryResult<T> = await response.json();
+            if (result && result.data !== undefined) {
+              clientMemoryCache.set(clientKey, {
+                data: result.data,
+                timestamp: Date.now(),
+                ttlMs
+              });
+              return result.data;
+            }
+          }
+        } else if (response.status === 401 || response.status === 403) {
+          const errJson = await response.json().catch(() => ({}));
+          throw new Error(errJson?.erro || 'Acesso negado ao cache multi-tenant.');
         }
       }
-    } catch (apiErr) {
-      console.warn('[Cache Redis] Falha ao comunicar com endpoint Redis, executando fallback Supabase:', apiErr);
+    } catch (apiErr: any) {
+      if (String(apiErr?.message || '').includes('Acesso negado')) {
+        throw apiErr;
+      }
+      console.warn(
+        '[Cache Redis] Endpoint indisponível ou sem resposta JSON, executando fallback Supabase isolado:',
+        apiErr
+      );
     }
 
-    // 4. Verificação L3: Supabase Direto (Fallback)
+    // 4. Verificação L3: Supabase Direto (Fallback com filtro obrigatório garantido)
     try {
-      let q = supabase.from(options.table).select(options.select || '*');
-      if (options.filters) {
-        for (const f of options.filters) {
-          if (!f.field || f.value === undefined) continue;
-          if (f.op === 'eq') q = q.eq(f.field, f.value);
-          else if (f.op === 'neq') q = q.neq(f.field, f.value);
-          else if (f.op === 'in') q = q.in(f.field, Array.isArray(f.value) ? f.value : [f.value]);
-          else if (f.op === 'gte') q = q.gte(f.field, f.value);
-          else if (f.op === 'lte') q = q.lte(f.field, f.value);
-          else if (f.op === 'ilike') q = q.ilike(f.field, `%${f.value}%`);
-        }
+      let q = supabase.from(normalizedOptions.table).select(normalizedOptions.select || '*');
+      for (const f of normalizedFilters) {
+        if (!f.field || f.value === undefined) continue;
+        if (f.op === 'eq') q = q.eq(f.field, f.value);
+        else if (f.op === 'neq') q = q.neq(f.field, f.value);
+        else if (f.op === 'in') q = q.in(f.field, Array.isArray(f.value) ? f.value : [f.value]);
+        else if (f.op === 'gte') q = q.gte(f.field, f.value);
+        else if (f.op === 'lte') q = q.lte(f.field, f.value);
+        else if (f.op === 'ilike') q = q.ilike(f.field, `%${f.value}%`);
       }
 
-      if (options.orderBy) {
-        q = q.order(options.orderBy.field, { ascending: options.orderBy.ascending ?? true });
+      if (normalizedOptions.orderBy) {
+        q = q.order(normalizedOptions.orderBy.field, {
+          ascending: normalizedOptions.orderBy.ascending ?? true
+        });
       }
 
-      if (options.limit) {
-        q = q.limit(options.limit);
+      if (normalizedOptions.limit) {
+        q = q.limit(normalizedOptions.limit);
       }
 
       const { data, error } = await q;
       if (error) throw error;
 
-      const dadosFinais = (data || []) as T;
+      const rows = Array.isArray(data)
+        ? isTenantTable && condoResolved
+          ? data.filter((r: any) => !r?.condominio_id || r.condominio_id === condoResolved)
+          : data
+        : data || [];
+
+      const dadosFinais = rows as T;
       clientMemoryCache.set(clientKey, {
         data: dadosFinais,
         timestamp: Date.now(),
@@ -151,13 +234,12 @@ export async function cachedQuery<T = any[]>(options: CachedQueryOptions): Promi
     }
   })();
 
-  inflightQueries.set(clientKey, queryPromise);
+  inflightQueries.set(inflightKey, queryPromise);
 
   try {
-    const res = await queryPromise;
-    return res;
+    return await queryPromise;
   } finally {
-    inflightQueries.delete(clientKey);
+    inflightQueries.delete(inflightKey);
   }
 }
 
@@ -165,18 +247,21 @@ export async function cachedQuery<T = any[]>(options: CachedQueryOptions): Promi
  * Invalida o cache de uma tabela específica tanto localmente quanto no Redis
  */
 export async function invalidarCacheTabela(table: string, condominioId?: string): Promise<void> {
-  // 1. Limpa L1 Memória do Cliente
   for (const k of Array.from(clientMemoryCache.keys())) {
-    if (k.startsWith(`l1:${table}:`)) {
+    if (
+      k.startsWith(`l1:${table}:`) &&
+      (!condominioId || k.includes(`:condo:${condominioId}:`) || k.includes(':condo:catalog:'))
+    ) {
       clientMemoryCache.delete(k);
     }
   }
 
-  // 2. Limpa no servidor Redis
   try {
+    const headers = await buildAuthHeaders();
+    if (!headers['Authorization']) return;
     await fetch('/api/cache/invalidate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ table, condominioId })
     });
   } catch (err) {
@@ -188,34 +273,49 @@ export async function invalidarCacheTabela(table: string, condominioId?: string)
  * Invalida todas as consultas de um condomínio específico
  */
 export async function invalidarCacheCondominio(condominioId: string): Promise<void> {
-  clientMemoryCache.clear();
+  for (const k of Array.from(clientMemoryCache.keys())) {
+    if (k.includes(`:condo:${condominioId}:`)) {
+      clientMemoryCache.delete(k);
+    }
+  }
   try {
+    const headers = await buildAuthHeaders();
+    if (!headers['Authorization']) return;
     await fetch('/api/cache/invalidate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ condominioId })
     });
   } catch {}
 }
 
 /**
- * Limpa todo o cache de dados
+ * Limpa todo o cache local (e no servidor Redis se o operador for Global Admin)
  */
 export async function limparTodoCache(): Promise<void> {
-  clientMemoryCache.clear();
+  limparCacheMemoriaCliente();
   try {
-    await fetch('/api/cache/clear', { method: 'POST' });
+    const headers = await buildAuthHeaders();
+    if (!headers['Authorization']) return;
+    await fetch('/api/cache/clear', { method: 'POST', headers });
   } catch {}
 }
 
 /**
- * Pré-aquece as consultas mais pesadas no Redis para carregamento instantâneo
+ * Pré-aquece as consultas mais pesadas no Redis para o condomínio especificado
  */
 export async function aquecerCacheCondominio(condominioId?: string): Promise<any> {
+  if (!isValidCondominioId(condominioId)) {
+    return { sucesso: false, erro: 'condominioId válido obrigatório para pré-aquecimento.' };
+  }
   try {
+    const headers = await buildAuthHeaders();
+    if (!headers['Authorization']) {
+      return { sucesso: false, erro: 'Sessão Supabase Auth ausente.' };
+    }
     const res = await fetch('/api/cache/warmup', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ condominioId })
     });
     return await res.json();
@@ -229,7 +329,9 @@ export async function aquecerCacheCondominio(condominioId?: string): Promise<any
  */
 export async function obterEstatisticasCache(): Promise<CacheTelemetry | null> {
   try {
-    const res = await fetch('/api/cache/stats');
+    const headers = await buildAuthHeaders();
+    if (!headers['Authorization']) return null;
+    const res = await fetch('/api/cache/stats', { headers });
     if (res.ok) {
       return await res.json();
     }
@@ -240,24 +342,23 @@ export async function obterEstatisticasCache(): Promise<CacheTelemetry | null> {
 /**
  * Executa benchmark real comparando o tempo de resposta Supabase Direto vs Cache Redis
  */
-export async function executarBenchmarkVelocidade(): Promise<{
+export async function executarBenchmarkVelocidade(condominioId?: string): Promise<{
   latenciaSupabaseMs: number;
   latenciaRedisMs: number;
   ganhoDesempenho: string;
   reducaoLatenciaPercentual: string;
   itensRetornados: number;
-}> {
+} | null> {
   try {
-    const res = await fetch('/api/cache/benchmark');
+    const headers = await buildAuthHeaders();
+    if (!headers['Authorization']) return null;
+    const qs = isValidCondominioId(condominioId)
+      ? `?condominioId=${encodeURIComponent(String(condominioId))}`
+      : '';
+    const res = await fetch(`/api/cache/benchmark${qs}`, { headers });
     if (res.ok) {
       return await res.json();
     }
   } catch {}
-  return {
-    latenciaSupabaseMs: 420,
-    latenciaRedisMs: 1.8,
-    ganhoDesempenho: '233x mais rápido',
-    reducaoLatenciaPercentual: '99.5%',
-    itensRetornados: 4
-  };
+  return null;
 }

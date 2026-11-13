@@ -1870,22 +1870,99 @@ ALTER TABLE IF EXISTS public.blacklist_bloqueios
 
 CREATE INDEX IF NOT EXISTS idx_blacklist_condo ON public.blacklist_bloqueios(condominio_id, ativo);
 
--- 24. LIMPEZA SEGURA DE TABELAS LEGADAS/DUPLICADAS
-DROP TABLE IF EXISTS rondas_execucoes CASCADE;
-DROP TABLE IF EXISTS registros_ronda CASCADE;
-DROP TABLE IF EXISTS pontos_ronda CASCADE;
-DROP TABLE IF EXISTS movimentacoes_chaves CASCADE;
-DROP TABLE IF EXISTS rondas_passagem_posto CASCADE;
-DROP TABLE IF EXISTS custodia_itens CASCADE;
-DROP TABLE IF EXISTS inspecoes_materiais CASCADE;
-DROP TABLE IF EXISTS visitas_prestadores CASCADE;
-DROP TABLE IF EXISTS usuarios_sistema CASCADE;
-DROP TABLE IF EXISTS blocos CASCADE;
-DROP TABLE IF EXISTS unidades CASCADE;
-DROP TABLE IF EXISTS encomendas CASCADE;
-DROP TABLE IF EXISTS materiais CASCADE;
+-- 24. AUDITORIA NÃO DESTRUTIVA DE TABELAS LEGADAS
+-- ATENÇÃO: Em produção, NUNCA executar DROP TABLE automaticamente.
+-- Mantenha tabelas legadas até concluir a Fase A (auditoria somente leitura) e validação em staging.
 
--- 25. SUPABASE STORAGE (Bucket 'encomendas' e Políticas de Armazenamento)
+-- 24B. ESTRUTURA MULTI-TENANT DE VÍNCULOS E FUNÇÕES SECURITY DEFINER
+ALTER TABLE IF EXISTS public.operadores
+  ADD COLUMN IF NOT EXISTS auth_user_id UUID UNIQUE,
+  ADD COLUMN IF NOT EXISTS email TEXT,
+  ADD COLUMN IF NOT EXISTS e_super_admin_global BOOLEAN DEFAULT FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_operadores_auth_user_id ON public.operadores(auth_user_id);
+
+CREATE TABLE IF NOT EXISTS public.admin_globais (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  operador_id UUID UNIQUE REFERENCES public.operadores(id) ON DELETE CASCADE,
+  auth_user_id UUID UNIQUE,
+  ativo BOOLEAN NOT NULL DEFAULT TRUE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.operador_condominios (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  operador_id UUID NOT NULL REFERENCES public.operadores(id) ON DELETE CASCADE,
+  condominio_id UUID NOT NULL REFERENCES public.condominios(id) ON DELETE CASCADE,
+  papel TEXT NOT NULL DEFAULT 'operador',
+  ativo BOOLEAN NOT NULL DEFAULT TRUE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (operador_id, condominio_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_op_condos_operador ON public.operador_condominios(operador_id, ativo);
+CREATE INDEX IF NOT EXISTS idx_op_condos_condo ON public.operador_condominios(condominio_id, ativo);
+
+CREATE OR REPLACE FUNCTION public.auth_operador_id()
+RETURNS UUID
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT id FROM public.operadores WHERE auth_user_id = auth.uid() AND ativo IS TRUE LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION public.auth_is_global_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.admin_globais ag
+    JOIN public.operadores o ON o.id = ag.operador_id
+    WHERE (ag.auth_user_id = auth.uid() OR o.auth_user_id = auth.uid())
+      AND ag.ativo IS TRUE
+      AND o.ativo IS TRUE
+      AND o.nivel_acesso = 0
+      AND o.condominio_id IS NULL
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.auth_has_condo_access(p_condominio_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    p_condominio_id IS NOT NULL
+    AND (
+      public.auth_is_global_admin()
+      OR EXISTS (
+        SELECT 1
+        FROM public.operadores o
+        WHERE o.auth_user_id = auth.uid()
+          AND o.ativo IS TRUE
+          AND o.condominio_id = p_condominio_id
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM public.operador_condominios oc
+        JOIN public.operadores o ON o.id = oc.operador_id
+        WHERE o.auth_user_id = auth.uid()
+          AND o.ativo IS TRUE
+          AND oc.ativo IS TRUE
+          AND oc.condominio_id = p_condominio_id
+      )
+    );
+$$;
+
+-- 25. SUPABASE STORAGE PRIVADO ISOLADO POR CONDOMÍNIO (Bucket 'encomendas')
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'encomendas') THEN
@@ -1893,13 +1970,13 @@ BEGIN
     VALUES (
       'encomendas',
       'encomendas',
-      TRUE,
+      FALSE,
       20971520, -- 20MB
       ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf']
     );
   ELSE
     UPDATE storage.buckets
-    SET public = TRUE,
+    SET public = FALSE,
         file_size_limit = 20971520
     WHERE id = 'encomendas';
   END IF;
@@ -1909,34 +1986,65 @@ END $$;
 DO $$
 BEGIN
   DROP POLICY IF EXISTS "Permitir_upload_publico_encomendas" ON storage.objects;
-  CREATE POLICY "Permitir_upload_publico_encomendas"
-    ON storage.objects FOR INSERT TO public
-    WITH CHECK (bucket_id = 'encomendas');
-
   DROP POLICY IF EXISTS "Permitir_leitura_publica_encomendas" ON storage.objects;
-  CREATE POLICY "Permitir_leitura_publica_encomendas"
-    ON storage.objects FOR SELECT TO public
-    USING (bucket_id = 'encomendas');
-
   DROP POLICY IF EXISTS "Permitir_update_publico_encomendas" ON storage.objects;
-  CREATE POLICY "Permitir_update_publico_encomendas"
-    ON storage.objects FOR UPDATE TO public
-    USING (bucket_id = 'encomendas');
-
   DROP POLICY IF EXISTS "Permitir_delete_publico_encomendas" ON storage.objects;
-  CREATE POLICY "Permitir_delete_publico_encomendas"
-    ON storage.objects FOR DELETE TO public
-    USING (bucket_id = 'encomendas');
+  DROP POLICY IF EXISTS "Storage_tenant_insert_encomendas" ON storage.objects;
+  DROP POLICY IF EXISTS "Storage_tenant_select_encomendas" ON storage.objects;
+  DROP POLICY IF EXISTS "Storage_tenant_update_encomendas" ON storage.objects;
+  DROP POLICY IF EXISTS "Storage_tenant_delete_encomendas" ON storage.objects;
+
+  CREATE POLICY "Storage_tenant_insert_encomendas"
+    ON storage.objects FOR INSERT TO authenticated
+    WITH CHECK (
+      bucket_id = 'encomendas'
+      AND split_part(name, '/', 1) = 'condominios'
+      AND split_part(name, '/', 2) ~* '^[0-9a-f-]{36}$'
+      AND public.auth_has_condo_access(split_part(name, '/', 2)::uuid)
+    );
+
+  CREATE POLICY "Storage_tenant_select_encomendas"
+    ON storage.objects FOR SELECT TO authenticated
+    USING (
+      bucket_id = 'encomendas'
+      AND (
+        public.auth_is_global_admin()
+        OR (
+          split_part(name, '/', 1) = 'condominios'
+          AND split_part(name, '/', 2) ~* '^[0-9a-f-]{36}$'
+          AND public.auth_has_condo_access(split_part(name, '/', 2)::uuid)
+        )
+      )
+    );
+
+  CREATE POLICY "Storage_tenant_update_encomendas"
+    ON storage.objects FOR UPDATE TO authenticated
+    USING (
+      bucket_id = 'encomendas'
+      AND split_part(name, '/', 1) = 'condominios'
+      AND split_part(name, '/', 2) ~* '^[0-9a-f-]{36}$'
+      AND public.auth_has_condo_access(split_part(name, '/', 2)::uuid)
+    );
+
+  CREATE POLICY "Storage_tenant_delete_encomendas"
+    ON storage.objects FOR DELETE TO authenticated
+    USING (
+      bucket_id = 'encomendas'
+      AND split_part(name, '/', 1) = 'condominios'
+      AND split_part(name, '/', 2) ~* '^[0-9a-f-]{36}$'
+      AND public.auth_has_condo_access(split_part(name, '/', 2)::uuid)
+    );
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- 26. ROW LEVEL SECURITY (RLS) E POLÍTICAS PERMISSIVAS PARA TODAS AS 34 TABELAS
+-- 26. ROW LEVEL SECURITY (RLS) ESTRITO MULTI-CONDOMÍNIO PARA TABELAS OPERACIONAIS
+-- Utilize as migrações versionadas em /supabase/migrations/01..03 para aplicação em fases (Fase A -> B -> C -> D).
 DO $$
 DECLARE
   tbl TEXT;
   pol RECORD;
-  tabelas_alvo TEXT[] := ARRAY[
-    'condominios', 'configuracoes', 'operadores', 'moradores', 'entregadores',
+  tabelas_tenant TEXT[] := ARRAY[
+    'configuracoes', 'moradores', 'entregadores',
     'lotes_re', 'encomendas_itens', 'locais_armazenamento', 'custodia',
     'materiais_posto', 'chaves', 'movimentacao_chaves', 'checklist_manutencao',
     'chamados_manutencao', 'rondas_pontos', 'rondas_execucao', 'rondas_registros',
@@ -1947,38 +2055,23 @@ DECLARE
     'pontos_acesso', 'registros_acesso', 'passes_virtuais_qr', 'blacklist_bloqueios'
   ];
 BEGIN
-  FOREACH tbl IN ARRAY tabelas_alvo LOOP
+  FOREACH tbl IN ARRAY tabelas_tenant LOOP
     BEGIN
-      -- Habilita RLS na tabela
       EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', tbl);
+      EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY;', tbl);
 
-      -- Exclui dinamicamente QUALQUER política que já exista na tabela para evitar erro 42710
       FOR pol IN 
         SELECT policyname 
         FROM pg_policies 
         WHERE schemaname = 'public' AND tablename = tbl
       LOOP
-        BEGIN
-          EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I;', pol.policyname, tbl);
-        EXCEPTION WHEN OTHERS THEN NULL;
-        END;
+        EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I;', pol.policyname, tbl);
       END LOOP;
 
-      -- Limpa também por nomes específicos conhecidos com espaços ou underscores
-      BEGIN
-        EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I;', 'Acesso total ' || tbl, tbl);
-        EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I;', 'Acesso_total_' || tbl, tbl);
-        EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I;', 'Acesso total portaria ' || tbl, tbl);
-        EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I;', 'Acesso_app_' || tbl, tbl);
-      EXCEPTION WHEN OTHERS THEN NULL;
-      END;
-
-      -- Cria a política limpa e permissiva
-      BEGIN
-        EXECUTE format('CREATE POLICY %I ON public.%I FOR ALL USING (true) WITH CHECK (true);', 'Acesso_total_' || tbl, tbl);
-      EXCEPTION WHEN OTHERS THEN NULL;
-      END;
-
+      EXECUTE format('CREATE POLICY %I ON public.%I FOR SELECT TO authenticated USING (public.auth_has_condo_access(condominio_id));', 'tenant_select_' || tbl, tbl);
+      EXECUTE format('CREATE POLICY %I ON public.%I FOR INSERT TO authenticated WITH CHECK (public.auth_has_condo_access(condominio_id));', 'tenant_insert_' || tbl, tbl);
+      EXECUTE format('CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated USING (public.auth_has_condo_access(condominio_id)) WITH CHECK (public.auth_has_condo_access(condominio_id));', 'tenant_update_' || tbl, tbl);
+      EXECUTE format('CREATE POLICY %I ON public.%I FOR DELETE TO authenticated USING (public.auth_has_condo_access(condominio_id));', 'tenant_delete_' || tbl, tbl);
     EXCEPTION WHEN OTHERS THEN NULL;
     END;
   END LOOP;
@@ -2020,7 +2113,7 @@ END $$;
 
 COMMIT;
 
--- 25. RECARREGAR O CACHE DO SCHEMA POSTGREST DO SUPABASE
+-- 28. RECARREGAR O CACHE DO SCHEMA POSTGREST DO SUPABASE
 NOTIFY pgrst, 'reload schema';
 `;
 }
@@ -2059,21 +2152,33 @@ export const REQUIRED_MODULE_KEYS = [
 
 /**
  * Executa verificação de integridade das configurações de módulos
- * para cada condomínio cadastrado na tabela condominios.
+ * para os condomínios autorizados ao operador/contexto atual.
  */
-export async function auditCondominiosConfigs(): Promise<CondominioConfigDiagnostic[]> {
+export async function auditCondominiosConfigs(condominioIdsAutorizados?: string[]): Promise<CondominioConfigDiagnostic[]> {
   try {
-    const { data: condominios, error: condErr } = await supabase
+    let queryCondos = supabase
       .from('condominios')
       .select('id, nome')
       .order('nome', { ascending: true });
 
+    const idsLimpos = Array.isArray(condominioIdsAutorizados)
+      ? condominioIdsAutorizados.filter((id) => typeof id === 'string' && id.trim().length > 0)
+      : [];
+
+    if (idsLimpos.length > 0) {
+      queryCondos = queryCondos.in('id', idsLimpos);
+    }
+
+    const { data: condominios, error: condErr } = await queryCondos;
+
     if (condErr) throw condErr;
     if (!condominios || condominios.length === 0) return [];
 
+    const idsParaConfig = condominios.map((c) => c.id);
     const { data: configs, error: cfgErr } = await supabase
       .from('configuracoes')
-      .select('*');
+      .select('*')
+      .in('condominio_id', idsParaConfig);
 
     if (cfgErr) {
       console.warn('Aviso ao consultar configuracoes:', cfgErr.message);

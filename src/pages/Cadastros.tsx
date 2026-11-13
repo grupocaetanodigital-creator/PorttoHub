@@ -101,6 +101,14 @@ import {
 import { salvarCacheLocal, obterCacheLocal } from '../services/offlineStorageService';
 import { cachedQuery, invalidarCacheTabela } from '../services/redisCacheService';
 import { ImagemOtimizada } from '../components/ImagemOtimizada';
+import {
+  isVerifiedGlobalAdmin,
+  obterCondominiosAutorizadosIds,
+  canAccessCondominio,
+  isValidCondominioId,
+  dispatchCondominioAlterado,
+  extrairCondominioIdDeEvento
+} from '../services/tenantAuthService';
 
 export interface FuncaoOperacionalItem {
   id: string;
@@ -257,10 +265,11 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
   const loginStr = (usuarioLogado?.login || '').toLowerCase();
   const nomeStr = (usuarioLogado?.nome || '').toLowerCase();
 
+  const eSuperAdminGlobal = isVerifiedGlobalAdmin(usuarioLogado);
+
   // Detecção estrita de Síndica Login Lvl 1 (ou perfil Síndico)
   const ehSindicaLvl1 = Boolean(
-    !usuarioLogado?.eSuperAdminGlobal &&
-    loginStr !== 'admin' &&
+    !eSuperAdminGlobal &&
     (
       perfilStr.includes('sind') ||
       Boolean(usuarioLogado?.eSindico) ||
@@ -274,13 +283,12 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
   );
   
   const eAdmin = !ehSindicaLvl1 && Boolean(
-    usuarioLogado?.eSuperAdminGlobal ||
-    loginStr === 'admin' ||
+    eSuperAdminGlobal ||
     perfilStr === 'admin' ||
     perfilStr === 'admin_geral' ||
     nivelNum === 0
   );
-  const eMaster = !ehSindicaLvl1 && (perfilStr === 'master' || nivelNum === 1 || nivelNum === 0 || Boolean(usuarioLogado?.eSuperAdminGlobal));
+  const eMaster = !ehSindicaLvl1 && (perfilStr === 'master' || nivelNum === 1 || nivelNum === 0 || eSuperAdminGlobal);
   const eSupervisor = !ehSindicaLvl1 && (perfilStr === 'supervisor' || nivelNum === 2);
   const eOperador = (perfilStr === 'operador' || perfilStr === 'porteiro' || nivelNum >= 3) && !eAdmin && !eSupervisor && !ehSindicaLvl1;
   const eSindico = ehSindicaLvl1 || perfilStr === 'sindico' || perfilStr === 'síndico' || nivelNum === 4;
@@ -337,17 +345,14 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
   const [modalModulosCondoAberto, setModalModulosCondoAberto] = useState(false);
   const [condominioModulosAlvo, setCondominioModulosAlvo] = useState<any | null>(null);
 
-  // Sincronismo global obrigatório de condomínio ativo
+  // Sincronismo global obrigatório de condomínio ativo com verificação de vínculo
   const sincronizarCondominioGlobal = (c: any) => {
-    if (!c?.id) return;
+    if (!c?.id || !isValidCondominioId(c.id)) return;
+    if (usuarioLogado && !canAccessCondominio(usuarioLogado, c.id)) return;
     try {
-      localStorage.setItem('infport_condominio_ativo_id', c.id);
+      dispatchCondominioAlterado(c.id, c, usuarioLogado);
       if (typeof window !== 'undefined') {
-        (window as any).idCondominioAtivo = c.id;
-        window.dispatchEvent(new CustomEvent('infport:condominio_alterado', { 
-          detail: { novoCondominioId: c.id, condominio: c } 
-        }));
-        window.dispatchEvent(new CustomEvent('infport_sincronizar_dados_global'));
+        window.dispatchEvent(new CustomEvent('infport_sincronizar_dados_global', { detail: { condominioId: c.id } }));
       }
       if (onTrocarCondominioGlobal) {
         onTrocarCondominioGlobal(c.id);
@@ -443,27 +448,27 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     }
   }, [eAdmin, condominios, usuarioLogado?.condominio_id]);
 
-  // Identificação do condomínio ativo em foco com isolamento estrito para não-admins
+  // Identificação do condomínio ativo em foco com isolamento estrito
   const condoAtivoId = useMemo(() => {
-    if (!eAdmin) {
-      return String(usuarioLogado?.condominio_id || condominioSelecionadoHub?.id || (condominios[0]?.id || '')).trim();
+    const autorizados = obterCondominiosAutorizadosIds(usuarioLogado);
+    const candidatoBruto =
+      (condominioFiltroAdmin && isValidCondominioId(condominioFiltroAdmin) ? condominioFiltroAdmin : '') ||
+      (condominioAtivoProp && isValidCondominioId(condominioAtivoProp) ? condominioAtivoProp : '') ||
+      (condominioSelecionadoHub?.id && isValidCondominioId(condominioSelecionadoHub.id) ? condominioSelecionadoHub.id : '') ||
+      (isValidCondominioId(usuarioLogado?.condominio_id) ? String(usuarioLogado.condominio_id) : '') ||
+      (condominios[0]?.id && isValidCondominioId(condominios[0].id) ? condominios[0].id : '');
+
+    const limpo = String(candidatoBruto || '').trim();
+    if (!isValidCondominioId(limpo)) return '';
+    if (!eSuperAdminGlobal && usuarioLogado && autorizados.length > 0 && !autorizados.includes(limpo)) {
+      return autorizados[0] || '';
     }
-    if (condominioSelecionadoHub?.id) return String(condominioSelecionadoHub.id).trim();
-    let raw = (condominioFiltroAdmin || condominioAtivoProp || (condominios[0]?.id || usuarioLogado?.condominio_id || '')) || (condominios[0]?.id || '');
-    if (raw === 'global' || raw === 'todos') {
-      const primeiroValido = condominios.find(c => c.id && c.id !== 'global' && c.id !== 'todos')?.id;
-      return primeiroValido ? String(primeiroValido).trim() : (condominios[0]?.id ? String(condominios[0].id).trim() : '');
-    }
-    return String(raw || '').trim();
-  }, [condominioSelecionadoHub, eAdmin, condominioFiltroAdmin, condominioAtivoProp, condominios, usuarioLogado?.condominio_id]);
+    return limpo;
+  }, [condominioSelecionadoHub, eSuperAdminGlobal, condominioFiltroAdmin, condominioAtivoProp, condominios, usuarioLogado]);
 
   const condoEmFoco = useMemo(() => {
-    if (!eAdmin) {
-      return condominios.find(c => c.id === usuarioLogado?.condominio_id) || condominios[0] || null;
-    }
-    if (condominioSelecionadoHub) return condominioSelecionadoHub;
-    return condominios.find(c => c.id === condoAtivoId) || condominios[0] || null;
-  }, [eAdmin, condominioSelecionadoHub, condominios, condoAtivoId, usuarioLogado?.condominio_id]);
+    return condominios.find(c => c.id === condoAtivoId) || condominioSelecionadoHub || condominios[0] || null;
+  }, [condominioSelecionadoHub, condominios, condoAtivoId]);
 
   const configCondoAtivo = mapaConfigsCondos[condoAtivoId] || {
     id: condoAtivoId,
@@ -476,11 +481,10 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
 
   // ISOLAMENTO RIGOROSO MULTI-TENANT: Operadores pertencem exclusivamente ao condomínio em questão!
   const operadoresDoCondoAtivo = useMemo(() => {
-    if (!condoAtivoId || condoAtivoId === 'global' || condoAtivoId === 'todos') return [];
+    if (!isValidCondominioId(condoAtivoId)) return [];
     const cidNorm = String(condoAtivoId).trim().toLowerCase();
     return operadores.filter(op => {
       const opCid = String(op.condominio_id || '').trim().toLowerCase();
-      // O operador DEVE pertencer estritamente a este condomínio
       return opCid === cidNorm;
     });
   }, [operadores, condoAtivoId]);
@@ -488,9 +492,9 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
   // Lista visível de operadores filtrada por permissões e pelo condomínio ativo
   const operadoresVisiveis = useMemo(() => {
     return operadoresDoCondoAtivo.filter(op => {
-      const ehAdminMaster = op.login?.toLowerCase() === 'admin' || op.perfil === 'admin_geral';
-      if (ehAdminMaster) {
-        return usuarioLogado?.login?.toLowerCase() === 'admin';
+      const ehAdminMaster = op.e_super_admin_global === true || op.perfil === 'admin_geral';
+      if (ehAdminMaster && !eSuperAdminGlobal) {
+        return false;
       }
       const ehContaAdmin = op.perfil?.toLowerCase() === 'admin' || Number(op.nivel_acesso) === 0;
       if (ehContaAdmin && !eAdmin) {
@@ -498,9 +502,10 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
       }
       return true;
     });
-  }, [operadoresDoCondoAtivo, usuarioLogado?.login, eAdmin]);
+  }, [operadoresDoCondoAtivo, eSuperAdminGlobal, eAdmin]);
   const [loading, setLoading] = useState(false);
   const [mensagem, setMensagem] = useState({ tipo: '', texto: '' });
+  const loadSeqRef = useRef(0);
 
   // Controle de Navegação em Tela Cheia (Máquina de Estados: 'lista' | 'form')
   const [viewMode, setViewMode] = useState<'lista' | 'form'>('lista');
@@ -830,10 +835,33 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
   const [veiculoEditandoModelo, setVeiculoEditandoModelo] = useState<string>('');
 
   useEffect(() => {
-    if (usuarioLogado?.condominio_id && !condominioFiltroAdmin) {
+    const idProp = condominioAtivoProp && isValidCondominioId(condominioAtivoProp) ? condominioAtivoProp : '';
+    if (idProp && idProp !== condominioFiltroAdmin && canAccessCondominio(usuarioLogado, idProp)) {
+      setCondominioFiltroAdmin(idProp);
+      setOperadores([]);
+      setMoradores([]);
+      setUnidadeModalAberta(null);
+      setMoradorDetalheModal(null);
+    } else if (usuarioLogado?.condominio_id && isValidCondominioId(usuarioLogado.condominio_id) && !condominioFiltroAdmin) {
       setCondominioFiltroAdmin(usuarioLogado.condominio_id);
     }
-  }, [usuarioLogado?.condominio_id]);
+  }, [condominioAtivoProp, usuarioLogado?.condominio_id]);
+
+  useEffect(() => {
+    const handleCondoGlobalAlterado = (e: any) => {
+      const novoId = extrairCondominioIdDeEvento(e);
+      if (!novoId || !canAccessCondominio(usuarioLogado, novoId)) return;
+      setOperadores([]);
+      setMoradores([]);
+      setUnidadeModalAberta(null);
+      setMoradorDetalheModal(null);
+      setCondominioFiltroAdmin(novoId);
+      setCondominioSelecionadoHub(e.detail?.condominio || null);
+      carregarDados(novoId);
+    };
+    window.addEventListener('infport:condominio_alterado', handleCondoGlobalAlterado as EventListener);
+    return () => window.removeEventListener('infport:condominio_alterado', handleCondoGlobalAlterado as EventListener);
+  }, [usuarioLogado]);
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -929,8 +957,8 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
   const abrirNovoOperador = () => {
     limparFormularios();
     let targetCondo = condoAtivoId || (condominios[0]?.id || usuarioLogado?.condominio_id || '');
-    if (targetCondo === 'global' || targetCondo === 'todos') {
-      targetCondo = 'todos';
+    if (!isValidCondominioId(targetCondo)) {
+      targetCondo = condominios.find(c => isValidCondominioId(c.id))?.id || '';
     }
     setCondominioIdOperador(targetCondo);
     setUnidadeOperador('TODAS');
@@ -975,65 +1003,86 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     setViewMode('form');
   };
 
-  const carregarDados = async () => {
+  const carregarDados = async (condoOverride?: string) => {
+    const reqId = ++loadSeqRef.current;
     setLoading(true);
+    const scopeUsuarioKey = eSuperAdminGlobal
+      ? 'admin_global'
+      : `op_${usuarioLogado?.id || 'local'}`;
+    const autorizadosIds = obterCondominiosAutorizadosIds(usuarioLogado);
+
     try {
-      // 0. Garante que a lista de condomínios esteja disponível desde o primeiro carregamento
-      let listaCondos = condominios;
-      if (listaCondos.length === 0) {
-        let { data: condoData } = await supabase.from('condominios').select('*').order('nome');
-        if (condoData && condoData.length > 0) {
-          if (!eAdmin) {
-            condoData = condoData.filter(c => c.id === usuarioLogado?.condominio_id);
+      // 1. Carrega APENAS os condomínios autorizados ao operador atual (com verificação no banco)
+      let listaCondos: any[] = [];
+      let queryCondos = supabase.from('condominios').select('*').order('nome');
+      if (!eSuperAdminGlobal) {
+        if (autorizadosIds.length === 0) {
+          if (reqId === loadSeqRef.current) {
+            setCondominios([]);
+            setOperadores([]);
+            setMoradores([]);
           }
-          listaCondos = condoData;
-          setCondominios(condoData);
-          salvarCacheLocal('condominios', condoData, !eAdmin ? (usuarioLogado?.condominio_id || 'local') : 'global');
-          if (!condominioFiltroAdmin) {
-            const initialId = usuarioLogado?.condominio_id || condoData[0]?.id;
-            setCondominioFiltroAdmin(initialId);
-          }
-        } else {
-          const cacheCondos = obterCacheLocal<any[]>('condominios', !eAdmin ? (usuarioLogado?.condominio_id || 'local') : 'global', []);
-          if (cacheCondos && cacheCondos.length > 0) {
-            listaCondos = cacheCondos;
-            setCondominios(cacheCondos);
-          }
+          return;
         }
+        queryCondos = queryCondos.in('id', autorizadosIds);
       }
 
-      const activeCondoId = (eAdmin
-        ? (condominioFiltroAdmin || listaCondos[0]?.id || usuarioLogado?.condominio_id || '')
-        : (usuarioLogado?.condominio_id || listaCondos[0]?.id || '')) || (listaCondos[0]?.id || '');
+      const { data: condoData, error: condoErr } = await queryCondos;
+      if (reqId !== loadSeqRef.current) return;
 
-      // Carrega as configurações completas e atualizadas dos condomínios
+      if (!condoErr && condoData) {
+        const condosLimpos = condoData.filter(c => isValidCondominioId(c?.id));
+        listaCondos = condosLimpos;
+        setCondominios(condosLimpos);
+        salvarCacheLocal('condominios', condosLimpos, scopeUsuarioKey);
+      } else {
+        const cacheCondos = obterCacheLocal<any[]>('condominios', scopeUsuarioKey, []);
+        listaCondos = (cacheCondos || []).filter(c => isValidCondominioId(c?.id));
+        if (listaCondos.length > 0) setCondominios(listaCondos);
+      }
+
+      const candidatoCondo =
+        (condoOverride && isValidCondominioId(condoOverride) ? condoOverride : '') ||
+        (condominioFiltroAdmin && isValidCondominioId(condominioFiltroAdmin) ? condominioFiltroAdmin : '') ||
+        (condominioAtivoProp && isValidCondominioId(condominioAtivoProp) ? condominioAtivoProp : '') ||
+        (isValidCondominioId(usuarioLogado?.condominio_id) ? String(usuarioLogado.condominio_id) : '') ||
+        (listaCondos[0]?.id || '');
+
+      const activeCondoId =
+        isValidCondominioId(candidatoCondo) && canAccessCondominio(usuarioLogado, candidatoCondo)
+          ? candidatoCondo
+          : (listaCondos[0]?.id || '');
+
+      if (activeCondoId && !condominioFiltroAdmin) {
+        setCondominioFiltroAdmin(activeCondoId);
+      }
+
+      // Carrega configurações dos condomínios autorizados
       const configs: Record<string, CondominioConfig> = {};
       for (const c of listaCondos) {
         configs[c.id] = await carregarCondominioConfig(c.id, true);
       }
+      if (reqId !== loadSeqRef.current) return;
       if (activeCondoId && !configs[activeCondoId]) {
         configs[activeCondoId] = await carregarCondominioConfig(activeCondoId, true);
       }
       setMapaConfigsCondos(configs);
 
-      // 1. Carrega lista de condomínios atualizada com status de ativação (isolada para não-admins)
-      let { data: condoData, error: condoErr } = await supabase.from('condominios').select('*').order('nome');
-      if (!condoErr && condoData) {
-        if (!eAdmin) {
-          condoData = condoData.filter(c => c.id === usuarioLogado?.condominio_id);
-        }
-        setCondominios(condoData);
-        listaCondos = condoData;
-        salvarCacheLocal('condominios', condoData, !eAdmin ? (usuarioLogado?.condominio_id || 'local') : 'global');
+      if (!isValidCondominioId(activeCondoId)) {
+        setOperadores([]);
+        setMoradores([]);
+        return;
       }
 
-      // 2. Carrega operadores isolados pelo condomínio do usuário quando não for admin global
-      let { data: opData, error: opErr } = await supabase.from('operadores').select('*').order('nome');
+      // 2. Carrega operadores ESTRITAMENTE do condomínio ativo no banco
+      const { data: opData, error: opErr } = await supabase
+        .from('operadores')
+        .select('*')
+        .eq('condominio_id', activeCondoId)
+        .order('nome');
+      if (reqId !== loadSeqRef.current) return;
+
       if (!opErr && opData) {
-        if (!eAdmin) {
-          opData = opData.filter(op => op.condominio_id === usuarioLogado?.condominio_id);
-        }
-        // Incorpora permissões granulares salvas no objeto de cada operador
         const opComPermissoes = opData.map(op => ({
           ...op,
           permissoes: (op.permissoes && typeof op.permissoes === 'object' && Object.keys(op.permissoes).length > 0)
@@ -1041,42 +1090,44 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
             : obterPermissoesOperador(op)
         }));
         setOperadores(opComPermissoes);
-        salvarCacheLocal('operadores', opComPermissoes, !eAdmin ? (usuarioLogado?.condominio_id || 'local') : 'global');
+        salvarCacheLocal('operadores', opComPermissoes, activeCondoId);
+      } else {
+        const cacheOps = obterCacheLocal<any[]>('operadores', activeCondoId, []);
+        setOperadores(cacheOps || []);
       }
 
-      // 3. Carrega moradores isolados pelo condomínio quando não for admin global
+      // 3. Carrega moradores ESTRITAMENTE do condomínio ativo no banco (nunca consulta global)
       try {
-        let { data: morData, error: morErr } = await supabase
+        const { data: morData, error: morErr } = await supabase
           .from('moradores')
           .select('*')
+          .eq('condominio_id', activeCondoId)
           .order('unidade', { ascending: true });
+        if (reqId !== loadSeqRef.current) return;
+
         if (!morErr && morData && Array.isArray(morData)) {
-          if (!eAdmin) {
-            morData = morData.filter(m => m.condominio_id === usuarioLogado?.condominio_id);
-          }
           setMoradores(morData);
-          salvarCacheLocal('moradores', morData, !eAdmin ? (usuarioLogado?.condominio_id || 'local') : 'global');
+          salvarCacheLocal('moradores', morData, activeCondoId);
         } else {
-          const cacheMoradores = obterCacheLocal<any[]>('moradores', !eAdmin ? (usuarioLogado?.condominio_id || 'local') : 'global', []);
-          if (cacheMoradores && cacheMoradores.length > 0) {
-            setMoradores(cacheMoradores);
-          }
+          const cacheMoradores = obterCacheLocal<any[]>('moradores', activeCondoId, []);
+          setMoradores(cacheMoradores || []);
         }
       } catch (errMor) {
         console.warn('Aviso ao sincronizar moradores no banco:', errMor);
-        const cacheMoradores = obterCacheLocal<any[]>('moradores', !eAdmin ? (usuarioLogado?.condominio_id || 'local') : 'global', []);
-        if (cacheMoradores && cacheMoradores.length > 0) {
-          setMoradores(cacheMoradores);
-        }
+        if (reqId !== loadSeqRef.current) return;
+        const cacheMoradores = obterCacheLocal<any[]>('moradores', activeCondoId, []);
+        setMoradores(cacheMoradores || []);
       }
 
-      // Sempre atualiza os níveis em segundo plano
-      const niveisCarregados = await carregarNiveisAcesso(activeCondoId || condoAtivoId);
+      const niveisCarregados = await carregarNiveisAcesso(activeCondoId);
+      if (reqId !== loadSeqRef.current) return;
       setListaNiveis(niveisCarregados);
     } catch (err: any) {
       console.warn('[Cadastros] Aviso ao sincronizar dados:', err);
     } finally {
-      setLoading(false);
+      if (reqId === loadSeqRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -1585,7 +1636,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           } catch {}
         }
 
-        // Atualiza estado local e cache sincronizado preservando as permissões granulares e a função
+        // Atualiza estado local e cache particionado por condomínio
         setOperadores(prev => {
           const atualizados = prev.map(o => o.id === idEdicao ? { 
             ...o, 
@@ -1596,7 +1647,9 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
             unidade: unidadeFinal,
             ativo: Boolean(ativoOperador) 
           } : o);
-          salvarCacheLocal('operadores', atualizados, 'global');
+          if (isValidCondominioId(targetCondominioId)) {
+            salvarCacheLocal('operadores', atualizados, targetCondominioId);
+          }
           return atualizados;
         });
         window.dispatchEvent(new CustomEvent('operadores_atualizados'));
@@ -1669,7 +1722,9 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
 
         setOperadores(prev => {
           const atualizados = [...prev.filter(o => o.id !== opFinalParaEstado.id), opFinalParaEstado];
-          salvarCacheLocal('operadores', atualizados, 'global');
+          if (isValidCondominioId(targetCondominioId)) {
+            salvarCacheLocal('operadores', atualizados, targetCondominioId);
+          }
           return atualizados;
         });
         window.dispatchEvent(new CustomEvent('operadores_atualizados'));
@@ -1691,15 +1746,19 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     setAtivoOperador(novoAtivo);
     if (idEdicao) {
       try {
-        const { error } = await supabase
-          .from('operadores')
-          .update({ ativo: novoAtivo })
-          .eq('id', idEdicao);
+        const alvoCondo = condominioIdOperador || condoAtivoId;
+        let query = supabase.from('operadores').update({ ativo: novoAtivo }).eq('id', idEdicao);
+        if (isValidCondominioId(alvoCondo)) {
+          query = query.eq('condominio_id', alvoCondo);
+        }
+        const { error } = await query;
         if (error) throw error;
 
         setOperadores(prev => {
           const atualizados = prev.map(o => o.id === idEdicao ? { ...o, ativo: novoAtivo } : o);
-          salvarCacheLocal('operadores', atualizados, 'global');
+          if (isValidCondominioId(alvoCondo)) {
+            salvarCacheLocal('operadores', atualizados, alvoCondo);
+          }
           return atualizados;
         });
         window.dispatchEvent(new CustomEvent('operadores_atualizados'));
@@ -1724,12 +1783,8 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     setLoginOperador(op.login || '');
     setFotoOperador(op.foto_url || '');
 
-    // Administrador Master consegue ver a senha de todos os operadores ao abrir editar
-    if (eAdmin) {
-      setSenhaOperador(op.senha || '');
-    } else {
-      setSenhaOperador('');
-    }
+    // Nunca preenche ou expõe senha em texto claro na tela de edição
+    setSenhaOperador('');
     setMostrarSenhaOperador(false);
     setCamposSenhaOcultosEdicao(true); // Oculta os campos de senha na interface de edição por padrão
     setSenhaCopiada(false);
@@ -1765,15 +1820,19 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
 
   const alternarStatusOperador = async (op: any) => {
     const novoStatus = !(op.ativo !== false);
+    const alvoCondo = op.condominio_id || condoAtivoId;
     try {
-      const { error } = await supabase
-        .from('operadores')
-        .update({ ativo: novoStatus })
-        .eq('id', op.id);
+      let query = supabase.from('operadores').update({ ativo: novoStatus }).eq('id', op.id);
+      if (isValidCondominioId(alvoCondo)) {
+        query = query.eq('condominio_id', alvoCondo);
+      }
+      const { error } = await query;
       if (error) throw error;
       setOperadores(prev => {
         const atualizados = prev.map(item => item.id === op.id ? { ...item, ativo: novoStatus } : item);
-        salvarCacheLocal('operadores', atualizados, 'global');
+        if (isValidCondominioId(alvoCondo)) {
+          salvarCacheLocal('operadores', atualizados, alvoCondo);
+        }
         return atualizados;
       });
       window.dispatchEvent(new CustomEvent('operadores_atualizados'));
@@ -1844,7 +1903,8 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
         let { error } = await supabase
           .from('moradores')
           .update(dadosMorador)
-          .eq('id', idEdicao);
+          .eq('id', idEdicao)
+          .eq('condominio_id', targetCondominioId);
 
         // Fallback resiliente se o banco de dados ainda não tiver as colunas extras de controle de acesso
         if (error && (
@@ -1865,7 +1925,11 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
             condominio_id: dadosMorador.condominio_id,
             tipo: dadosMorador.tipo
           };
-          const resRetry = await supabase.from('moradores').update(fallbackBasico).eq('id', idEdicao);
+          const resRetry = await supabase
+            .from('moradores')
+            .update(fallbackBasico)
+            .eq('id', idEdicao)
+            .eq('condominio_id', targetCondominioId);
           error = resRetry.error;
         }
 
@@ -1959,9 +2023,14 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     const m = moradorParaExcluir;
     setLoading(true);
     try {
-      const { error } = await supabase.from('moradores').delete().eq('id', m.id);
+      const targetCondo = m.condominio_id || condoAtivoId;
+      let queryDel = supabase.from('moradores').delete().eq('id', m.id);
+      if (isValidCondominioId(targetCondo)) {
+        queryDel = queryDel.eq('condominio_id', targetCondo);
+      }
+      const { error } = await queryDel;
       if (error) throw error;
-      invalidarCacheTabela('moradores', m.condominio_id || condoAtivoId);
+      invalidarCacheTabela('moradores', targetCondo);
       setMensagem({ tipo: 'sucesso', texto: `Morador "${m.nome}" removido com sucesso!` });
       setMoradorParaExcluir(null);
       await carregarDados();
@@ -2397,10 +2466,14 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     const uidLimpo = novaTagUID.trim();
     setLoading(true);
     try {
-      const { error } = await supabase
+      let queryTag = supabase
         .from('moradores')
         .update({ tag_rfid: uidLimpo || null })
         .eq('id', moradorId);
+      if (isValidCondominioId(condoAtivoId)) {
+        queryTag = queryTag.eq('condominio_id', condoAtivoId);
+      }
+      const { error } = await queryTag;
       if (error) throw error;
       setMoradores(prev => prev.map(m => m.id === moradorId ? { ...m, tag_rfid: uidLimpo || null } : m));
       setMensagem({
@@ -2433,13 +2506,17 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     const modeloLimpo = modelo.trim();
     setLoading(true);
     try {
-      const { error } = await supabase
+      let queryVeic = supabase
         .from('moradores')
         .update({ 
           veiculo_placa: placaLimpa || null,
           veiculo_modelo: modeloLimpo || null
         })
         .eq('id', moradorId);
+      if (isValidCondominioId(condoAtivoId)) {
+        queryVeic = queryVeic.eq('condominio_id', condoAtivoId);
+      }
+      const { error } = await queryVeic;
       if (error) throw error;
       setMoradores(prev => prev.map(m => m.id === moradorId ? { 
         ...m, 

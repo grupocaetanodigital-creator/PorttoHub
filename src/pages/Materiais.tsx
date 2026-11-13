@@ -65,14 +65,20 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
 
   const [condId, setCondId] = useState(() => getCondominioAtivoId(usuarioLogado));
 
+  const loadSeqRef = React.useRef(0);
+
   useEffect(() => {
     const handleCondoChange = (e: any) => {
-      const novoId = e?.detail?.id;
+      loadSeqRef.current += 1;
+      const novoId = e?.detail?.id || e?.detail?.condominioId;
       if (novoId && novoId !== 'global' && novoId !== 'todos') {
         setCondId(novoId);
       } else {
         setCondId(getCondominioAtivoId(usuarioLogado));
       }
+      setMateriais([]);
+      setItemParaAlterarStatus(null);
+      setFotoAmpliadaModal(null);
     };
     window.addEventListener('infport:condominio_alterado', handleCondoChange);
     return () => window.removeEventListener('infport:condominio_alterado', handleCondoChange);
@@ -91,6 +97,7 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
   }, [condId]);
 
   const carregarMateriais = async () => {
+    const seq = ++loadSeqRef.current;
     if (!condId || condId === 'global' || condId === 'todos') {
       setMateriais([]);
       return;
@@ -104,13 +111,18 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
         .select('id, condominio_id, nome, categoria, codigo_patrimonio, estado, observacao_avaria, foto_url, foto_avaria_url, created_at, updated_at')
         .eq('condominio_id', condId)
         .order('nome');
+      if (seq !== loadSeqRef.current) return;
       if (error) throw error;
 
       setMateriais(data || []);
     } catch (err: any) {
-      setMensagem({ tipo: 'erro', texto: err.message });
+      if (seq === loadSeqRef.current) {
+        setMensagem({ tipo: 'erro', texto: err.message });
+      }
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -123,6 +135,7 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
       const { publicUrl, tamanhoOriginalKb, tamanhoComprimidoKb, taxaReducaoPct } = await uploadFotoComprimidaStorage({
         file,
         pasta: 'materiais_equipamentos',
+        condominioId: condId,
         maxWidth: 1000,
         maxHeight: 1000,
         qualidade: 0.8
@@ -147,6 +160,7 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
       const { publicUrl, tamanhoOriginalKb, tamanhoComprimidoKb, taxaReducaoPct } = await uploadFotoComprimidaStorage({
         file,
         pasta: 'avarias_materiais',
+        condominioId: condId,
         maxWidth: 1000,
         maxHeight: 1000,
         qualidade: 0.75
@@ -182,6 +196,7 @@ export default function Materiais({ usuarioLogado }: MateriaisProps) {
       const { publicUrl, tamanhoOriginalKb, tamanhoComprimidoKb, taxaReducaoPct } = await uploadFotoComprimidaStorage({
         file,
         pasta: 'materiais_status',
+        condominioId: condId,
         maxWidth: 1000,
         maxHeight: 1000,
         qualidade: 0.8

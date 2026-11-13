@@ -41,7 +41,7 @@ export const AccessLogs: React.FC<AccessLogsProps> = ({
 
   // Export to CSV
   const handleExportCSV = () => {
-    const headers = ['Data', 'Horario', 'Nome', 'Unidade', 'Status', 'Metodo', 'Portao', 'Motivo'];
+    const headers = ['Data', 'Horário', 'Nome', 'Unidade', 'Status', 'Método', 'Portão', 'Motivo'];
     const rows = filteredLogs.map((l) => [
       l.date,
       l.timestamp,

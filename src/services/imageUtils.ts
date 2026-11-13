@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { supabaseStorage, obterStorageBucket, obterSupabaseUrl } from './supabaseStorage';
+import { getCondominioAtivoId, isUUID } from './condominioService';
 
 /**
  * Utilitário de Otimização e Compressão Estrita de Imagens (Client-Side)
@@ -250,8 +251,88 @@ export async function comprimirImagemBase64(
   });
 }
 
+const signedUrlCache = new Map<string, { url: string; expiraEm: number }>();
+const SIGNED_URL_TTL_CACHE_MS = 45 * 60 * 1000;
+
 /**
- * Normaliza e formata qualquer URL de foto armazenada para a URL pública oficial do Supabase Storage.
+ * Extrai `{ bucket, path }` de caminhos relativos ou URLs do Supabase Storage
+ * (públicas, assinadas ou autenticadas). Retorna null para data:/blob:/URLs externas.
+ */
+export function extrairPathBucketEncomendas(urlOrPath?: string | null): { bucket: string; path: string } | null {
+  if (!urlOrPath) return null;
+  const limpa = String(urlOrPath).trim();
+  if (!limpa || limpa.startsWith('data:image/') || limpa.startsWith('blob:')) return null;
+
+  const bucketPadrao = obterStorageBucket();
+
+  if (limpa.startsWith('http://') || limpa.startsWith('https://')) {
+    const matchStorage = limpa.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/([^?#]+)/i);
+    if (!matchStorage) return null;
+    return {
+      bucket: decodeURIComponent(matchStorage[1]),
+      path: decodeURIComponent(matchStorage[2]).replace(/^\/+/, '')
+    };
+  }
+
+  let caminhoRelativo = limpa.replace(/^\/+/, '').replace(/^uploads\//, '');
+  if (caminhoRelativo.startsWith(`${bucketPadrao}/`)) {
+    caminhoRelativo = caminhoRelativo.slice(bucketPadrao.length + 1);
+  }
+  if (!caminhoRelativo) return null;
+
+  return {
+    bucket: bucketPadrao,
+    path: caminhoRelativo
+  };
+}
+
+/**
+ * Resolve uma URL utilizável para exibição/download:
+ * - Mantém `data:image/`, `blob:` e URLs externas inalteradas.
+ * - Para objetos do Supabase Storage (paths relativos `condominios/...`, URLs `/public/` legadas ou `/sign/` expiradas),
+ *   solicita `createSignedUrl` autenticada (com cache em memória de 45 min) e usa fallback seguro se necessário.
+ */
+export async function resolverUrlFotoPrivada(urlOrPath?: string | null, forcarRefresh: boolean = false): Promise<string> {
+  if (!urlOrPath) return '';
+  const limpa = String(urlOrPath).trim();
+  if (!limpa) return '';
+  if (limpa.startsWith('data:image/') || limpa.startsWith('blob:')) return limpa;
+
+  const parsed = extrairPathBucketEncomendas(limpa);
+  if (!parsed) return limpa;
+
+  const chaveCache = `${parsed.bucket}:${parsed.path}`;
+  if (!forcarRefresh) {
+    const emCache = signedUrlCache.get(chaveCache);
+    if (emCache && emCache.expiraEm > Date.now()) {
+      return emCache.url;
+    }
+  }
+
+  try {
+    const storageClient = supabase?.storage || supabaseStorage?.storage;
+    if (storageClient) {
+      const { data, error } = await storageClient
+        .from(parsed.bucket)
+        .createSignedUrl(parsed.path, 3600);
+
+      if (!error && data?.signedUrl) {
+        signedUrlCache.set(chaveCache, {
+          url: data.signedUrl,
+          expiraEm: Date.now() + SIGNED_URL_TTL_CACHE_MS
+        });
+        return data.signedUrl;
+      }
+    }
+  } catch (err) {
+    console.warn('[Supabase Storage] Falha ao gerar URL assinada:', err);
+  }
+
+  return formatarUrlFoto(limpa);
+}
+
+/**
+ * Normaliza e formata qualquer URL de foto armazenada para URL utilizável do Supabase Storage.
  */
 export function formatarUrlFoto(url?: string | null): string {
   if (!url) return '';
@@ -260,6 +341,7 @@ export function formatarUrlFoto(url?: string | null): string {
 
   if (
     limpa.includes('.supabase.co/storage/v1/object/public/') ||
+    limpa.includes('.supabase.co/storage/v1/object/sign/') ||
     limpa.startsWith('http://') ||
     limpa.startsWith('https://') ||
     limpa.startsWith('data:image/')
@@ -281,6 +363,7 @@ export interface UploadComprimidoParams {
   file: File | Blob;
   bucket?: string;
   pasta: string;
+  condominioId?: string;
   maxWidth?: number;
   maxHeight?: number;
   qualidade?: number;
@@ -307,6 +390,7 @@ export async function uploadFotoComprimidaStorage({
   file,
   bucket: bucketParam,
   pasta,
+  condominioId,
   maxWidth = 1080,
   maxHeight = 1080,
   qualidade = 0.72,
@@ -344,9 +428,12 @@ export async function uploadFotoComprimidaStorage({
   } catch {}
 
   const pastaLimpa = (pasta || 'etiquetas').replace(/[^a-zA-Z0-9_-]/g, '') || 'etiquetas';
+  const condoEfetivo = String(condominioId || getCondominioAtivoId() || '').trim();
   const sufixoAleatorio = Math.random().toString(36).substring(2, 8);
   const nomeArquivo = `${Date.now()}_${sufixoAleatorio}.jpg`;
-  const storagePath = `${pastaLimpa}/${nomeArquivo}`;
+  const storagePath = condoEfetivo && isUUID(condoEfetivo)
+    ? `condominios/${condoEfetivo}/${pastaLimpa}/${nomeArquivo}`
+    : `${pastaLimpa}/${nomeArquivo}`;
   const bucket = bucketParam || obterStorageBucket();
 
   let publicUrl = '';
@@ -355,7 +442,7 @@ export async function uploadFotoComprimidaStorage({
   try {
     const storageClient = supabase?.storage || supabaseStorage?.storage;
     if (storageClient) {
-      const { data: uploadData, error: uploadError } = await storageClient
+      const { error: uploadError } = await storageClient
         .from(bucket)
         .upload(storagePath, arquivoComprimido, {
           contentType: 'image/jpeg',
@@ -366,13 +453,27 @@ export async function uploadFotoComprimidaStorage({
       if (uploadError) {
         console.warn('[Supabase Storage] Aviso no upload direto:', uploadError);
       } else {
-        const { data: urlData } = storageClient
+        // Prioriza URL assinada para compatibilidade imediata com bucket privado
+        const { data: signedData, error: signedError } = await storageClient
           .from(bucket)
-          .getPublicUrl(storagePath);
+          .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
 
-        if (urlData?.publicUrl) {
-          publicUrl = urlData.publicUrl;
+        if (!signedError && signedData?.signedUrl) {
+          publicUrl = signedData.signedUrl;
+          signedUrlCache.set(`${bucket}:${storagePath}`, {
+            url: signedData.signedUrl,
+            expiraEm: Date.now() + SIGNED_URL_TTL_CACHE_MS
+          });
           uploadSucesso = true;
+        } else {
+          const { data: urlData } = storageClient
+            .from(bucket)
+            .getPublicUrl(storagePath);
+
+          if (urlData?.publicUrl) {
+            publicUrl = urlData.publicUrl;
+            uploadSucesso = true;
+          }
         }
       }
     }

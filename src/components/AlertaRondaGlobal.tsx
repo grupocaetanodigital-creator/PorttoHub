@@ -145,7 +145,18 @@ export default function AlertaRondaGlobal({
   const listaChavesRef = useRef<any[]>([]);
 
   useEffect(() => {
-    if (!idCondominioAtivo || idCondominioAtivo === 'todos' || idCondominioAtivo === 'global' || !isUUID(idCondominioAtivo)) return;
+    listaPrestadoresRef.current = [];
+    listaChavesRef.current = [];
+    rondaEmAndamentoRef.current = false;
+    proximaRondaTimestampRef.current = null;
+    setPrestadoresEstourados([]);
+    setChavesAtrasadas([]);
+    setAlertaDisparado(false);
+
+    if (!idCondominioAtivo || idCondominioAtivo === 'todos' || idCondominioAtivo === 'global' || !isUUID(idCondominioAtivo)) {
+      setTemPontosRonda(false);
+      return;
+    }
 
     let isMounted = true;
 

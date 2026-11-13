@@ -84,7 +84,18 @@ import { carregarEPreaquecerEncomendas, inicializarRealtimeEncomendas } from './
 import { registrarAtividade } from './services/auditoriaService';
 import { carregarNiveisAcesso, verificarPermissao, obterPermissoesOperador } from './services/permissoesService';
 import { isUUID } from './services/condominioService';
-import { cachedQuery, aquecerCacheCondominio } from './services/redisCacheService';
+import { cachedQuery, aquecerCacheCondominio, limparCacheMemoriaCliente } from './services/redisCacheService';
+import {
+  isVerifiedGlobalAdmin,
+  canAccessCondominio,
+  canSwitchCondominio,
+  obterCondominiosAutorizadosIds,
+  dispatchCondominioAlterado,
+  limparCachesOperacionaisTrocaSessao,
+  resolverContextoOperador,
+  isValidCondominioId,
+  extrairCondominioIdDeEvento
+} from './services/tenantAuthService';
 import { 
   ShieldCheck, Sliders, Play, 
   Lock, 
@@ -225,10 +236,10 @@ export default function App() {
     };
   }, [operador]);
 
-  const eSupervisorGlobal = (Number(operador?.nivel_acesso) === 2 || operador?.perfil === 'supervisor') && (!operador?.condominio_id || operador?.condominio_id === 'global' || operador?.condominio_id === 'todos');
-  const eSuperAdminGlobal = (operador?.login === 'admin' || operador?.perfil === 'admin_geral' || (Number(operador?.nivel_acesso) <= 1 && (!operador?.condominio_id || operador?.condominio_id === 'global' || operador?.condominio_id === 'todos')));
-  const eAdmin = eSuperAdminGlobal || operador?.perfil === 'admin' || operador?.nivel_acesso === 0 || operador?.nivel_acesso === 1;
-  const eAcessoMultiCondominio = eSuperAdminGlobal || eSupervisorGlobal || (eAdmin && (!operador?.condominio_id || operador?.condominio_id === 'global' || operador?.condominio_id === 'todos'));
+  const eSuperAdminGlobal = isVerifiedGlobalAdmin(operador);
+  const eSupervisorGlobal = (Number(operador?.nivel_acesso) === 2 || operador?.perfil === 'supervisor') && eSuperAdminGlobal;
+  const eAdmin = eSuperAdminGlobal || operador?.perfil === 'admin' || operador?.perfil === 'admin_geral' || Number(operador?.nivel_acesso) === 0 || Number(operador?.nivel_acesso) === 1;
+  const eAcessoMultiCondominio = canSwitchCondominio(operador);
   const eSindico = operador?.nivel_acesso === 4 || 
                    operador?.perfil === 'sindico' || 
                    operador?.perfil === 'Síndico' || 
@@ -238,83 +249,101 @@ export default function App() {
   useEffect(() => {
     let montado = true;
 
-    // Timer de segurança para NUNCA travar a tela em caso de lentidão de rede
+    // Timer de segurança para evitar bloqueio infinito em caso de instabilidade de rede
     const safetyTimer = setTimeout(() => {
       if (montado) setRestaurandoSessao(false);
-    }, 800);
+    }, 1800);
 
     const restaurarSessaoSalva = async () => {
       try {
+        const { data: authData } = await supabase.auth.getSession();
+        const authUser = authData?.session?.user || null;
+        const viaSupabaseAuth = Boolean(authUser);
+
         const sessaoRaw = localStorage.getItem(CHAVE_SESSAO);
-        if (sessaoRaw) {
-          const sessao = JSON.parse(sessaoRaw);
-          if (sessao.operadorId) {
-            const targetCondo = sessao.condominioId;
-            // Consultas em paralelo no Supabase cortam o tempo de resposta pela metade
-            const [opRes, condoRes] = await Promise.all([
-              supabase
-                .from('operadores')
-                .select('*')
-                .eq('id', sessao.operadorId)
-                .eq('ativo', true)
-                .maybeSingle(),
-              targetCondo && targetCondo !== 'todos' && targetCondo !== 'global' && isUUID(targetCondo)
-                ? supabase
-                    .from('condominios')
-                    .select('*')
-                    .eq('id', targetCondo)
-                    .maybeSingle()
-                : Promise.resolve({ data: null, error: null })
-            ]);
+        const sessao = sessaoRaw ? JSON.parse(sessaoRaw) : null;
 
-            let opData: any = opRes.data;
-            if (opData) {
-              opData.permissoes = (opData.permissoes && typeof opData.permissoes === 'object' && Object.keys(opData.permissoes).length > 0)
-                ? opData.permissoes
-                : obterPermissoesOperador(opData);
-            }
-            if (!opData && sessao.login === 'admin') {
-              opData = {
-                id: 'admin_master_root',
-                nome: 'Administrador Master',
-                login: 'admin',
-                senha: '2468',
-                funcao: 'Administrador Geral',
-                cargo: 'Administrador Geral',
-                perfil: 'admin_geral',
-                nivel_acesso: 0,
-                ativo: true,
-                condominio_id: 'todos',
-                email: 'admin@porttohub.com',
-                turno_padrao: 'Geral',
-                turno: 'Geral'
-              };
-            }
+        let opData: any = null;
 
-            if (opData && montado) {
-              setOperador(opData);
-              const nomeAtivoRestaurado = opData.nome || opData.login || '';
-              localStorage.setItem('infport_ultimo_operador_nome', nomeAtivoRestaurado);
-              (window as any).__operadorAtivoNome = nomeAtivoRestaurado;
-              (window as any).__operadorAtivo = opData;
-              const ehSindicoOp = opData.nivel_acesso === 4 || 
-                                  opData.perfil === 'sindico' || 
-                                  opData.funcao?.toLowerCase() === 'síndico' || 
-                                  opData.funcao?.toLowerCase() === 'sindico';
-              if (ehSindicoOp) {
-                setModuloAtual('painel_sindico');
-              }
-              const finalCondoId = targetCondo || opData.condominio_id;
-              setCondominioAtivoId(finalCondoId || '');
-              if (condoRes.data && montado) {
-                setCondominio(condoRes.data);
-              }
-              if (finalCondoId) {
-                carregarNiveisAcesso(finalCondoId);
-              } else {
-                carregarNiveisAcesso();
-              }
-            }
+        if (authUser) {
+          const { data: opByAuth } = await supabase
+            .from('operadores')
+            .select('*')
+            .eq('auth_user_id', authUser.id)
+            .eq('ativo', true)
+            .maybeSingle();
+
+          if (opByAuth) {
+            opData = opByAuth;
+          } else if (sessao?.operadorId && sessao.operadorId !== 'admin_master_root') {
+            const { data: opBySess } = await supabase
+              .from('operadores')
+              .select('*')
+              .eq('id', sessao.operadorId)
+              .eq('ativo', true)
+              .maybeSingle();
+            opData = opBySess;
+          }
+        } else if (sessao?.operadorId && sessao.operadorId !== 'admin_master_root') {
+          // Compatibilidade controlada somente em transição pré-Fase D (sem usuário sintético)
+          const { data: opBySess } = await supabase
+            .from('operadores')
+            .select('*')
+            .eq('id', sessao.operadorId)
+            .eq('ativo', true)
+            .maybeSingle();
+          if (opBySess && !opBySess.auth_user_id) {
+            opData = opBySess;
+          } else {
+            localStorage.removeItem(CHAVE_SESSAO);
+          }
+        }
+
+        if (opData && montado) {
+          opData.permissoes = (opData.permissoes && typeof opData.permissoes === 'object' && Object.keys(opData.permissoes).length > 0)
+            ? opData.permissoes
+            : obterPermissoesOperador(opData);
+
+          const contexto = await resolverContextoOperador(opData, viaSupabaseAuth);
+          const opSeguro = contexto.operador;
+
+          const salvoLocal = localStorage.getItem('infport_condominio_ativo_id');
+          const candidatoCondo =
+            (isValidCondominioId(salvoLocal) && canAccessCondominio(opSeguro, salvoLocal) ? salvoLocal : '') ||
+            (isValidCondominioId(sessao?.condominioId) && canAccessCondominio(opSeguro, sessao.condominioId) ? sessao.condominioId : '') ||
+            (isValidCondominioId(opSeguro.condominio_id) ? opSeguro.condominio_id : '') ||
+            (contexto.condominiosAutorizados[0]?.id || '');
+
+          const condoObj =
+            contexto.condominiosAutorizados.find((c: any) => c.id === candidatoCondo) ||
+            contexto.condominiosAutorizados[0] ||
+            null;
+
+          setOperador(opSeguro);
+          setListaCondominios(contexto.condominiosAutorizados);
+          const nomeAtivoRestaurado = opSeguro.nome || opSeguro.login || '';
+          localStorage.setItem('infport_ultimo_operador_nome', nomeAtivoRestaurado);
+          (window as any).__operadorAtivoNome = nomeAtivoRestaurado;
+          (window as any).__operadorAtivo = opSeguro;
+
+          const ehSindicoOp = opSeguro.nivel_acesso === 4 || 
+                              opSeguro.perfil === 'sindico' || 
+                              opSeguro.funcao?.toLowerCase() === 'síndico' || 
+                              opSeguro.funcao?.toLowerCase() === 'sindico';
+          if (ehSindicoOp) {
+            setModuloAtual('painel_sindico');
+          }
+
+          setCondominioAtivoId(candidatoCondo || '');
+          if (isValidCondominioId(candidatoCondo)) {
+            localStorage.setItem('infport_condominio_ativo_id', candidatoCondo);
+            (window as any).idCondominioAtivo = candidatoCondo;
+          }
+          if (condoObj) {
+            setCondominio(condoObj);
+          }
+          if (isValidCondominioId(candidatoCondo)) {
+            carregarNiveisAcesso(candidatoCondo);
           }
         }
       } catch (err) {
@@ -325,9 +354,22 @@ export default function App() {
     };
 
     restaurarSessaoSalva();
+
+    const { data: authSub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT' && montado) {
+        limparCacheMemoriaCliente();
+        limparCachesOperacionaisTrocaSessao();
+        setOperador(null);
+        setCondominio(null);
+        setCondominioAtivoId('');
+        setListaCondominios([]);
+      }
+    });
+
     return () => {
       montado = false;
       clearTimeout(safetyTimer);
+      authSub?.subscription?.unsubscribe();
     };
   }, []);
 
@@ -494,8 +536,12 @@ export default function App() {
   // Escuta alterações de condomínio disparadas por subcomponentes (ex: cards do Cadastros)
   useEffect(() => {
     const handleCondominioAlterado = (e: any) => {
-      const novoId = e.detail?.novoCondominioId;
+      const novoId = extrairCondominioIdDeEvento(e);
       if (novoId && novoId !== condominioAtivoId) {
+        if (operador && !canAccessCondominio(operador, novoId)) {
+          console.warn('[App] Evento de troca de condomínio ignorado por falta de vínculo:', novoId);
+          return;
+        }
         setCondominioAtivoId(novoId);
         const cObj = listaCondominios.find(c => c.id === novoId) || e.detail?.condominio;
         if (cObj) setCondominio(cObj);
@@ -507,64 +553,82 @@ export default function App() {
     };
     window.addEventListener('infport:condominio_alterado', handleCondominioAlterado);
     return () => window.removeEventListener('infport:condominio_alterado', handleCondominioAlterado);
-  }, [condominioAtivoId, listaCondominios]);
+  }, [condominioAtivoId, listaCondominios, operador]);
 
   const trocarCondominioGlobal = (novoId: string) => {
+    if (!isValidCondominioId(novoId)) return;
+    if (operador && !canAccessCondominio(operador, novoId)) {
+      console.warn('[App] Tentativa bloqueada de acessar condomínio sem autorização:', novoId);
+      return;
+    }
+
+    // Limpa caches em memória e chaves operacionais antes da propagação para impedir vazamento entre tenants
+    limparCacheMemoriaCliente();
+    limparCachesOperacionaisTrocaSessao({ preservarSessao: true, preservarCondoAtivo: true });
+
     setCondominioAtivoId(novoId);
-    if (novoId) {
-      localStorage.setItem('infport_condominio_ativo_id', novoId);
-    } else {
-      localStorage.removeItem('infport_condominio_ativo_id');
-    }
-    const cObj = listaCondominios.find(c => c.id === novoId);
-    setCondominio(cObj || null);
+    localStorage.setItem('infport_condominio_ativo_id', novoId);
+    const cObj = listaCondominios.find(c => c.id === novoId) || null;
+    setCondominio(cObj);
 
-    // Pré-aquece o cache no Redis e os dados de Encomendas em background para resposta ultrarrápida nos módulos
-    if (novoId && novoId !== 'global' && novoId !== 'todos') {
-      aquecerCacheCondominio(novoId).catch(() => {});
-      carregarEPreaquecerEncomendas(novoId).catch(() => {});
+    if (operador && !eSuperAdminGlobal) {
+      const opAtualizado = { ...operador, condominio_id: novoId, condominio: cObj || operador.condominio };
+      setOperador(opAtualizado);
+      (window as any).__operadorAtivo = opAtualizado;
     }
 
-    // Dispara evento global de troca imediata para que todos os componentes (ex: Encomendas e Lembretes) limpem seus estados locais
-    // antes mesmo da nova requisição ao Supabase, impedindo dados de condomínio anterior na tela
-    window.dispatchEvent(new CustomEvent('infport:condominio_alterado', { detail: { novoCondominioId: novoId } }));
-    window.dispatchEvent(new CustomEvent('infport_sincronizar_dados_global'));
+    // Pré-aquece o cache no Redis e os dados de Encomendas somente para o condomínio autorizado
+    aquecerCacheCondominio(novoId).catch(() => {});
+    carregarEPreaquecerEncomendas(novoId).catch(() => {});
+
+    dispatchCondominioAlterado(novoId, cObj, operador);
+    window.dispatchEvent(new CustomEvent('infport_sincronizar_dados_global', { detail: { condominioId: novoId } }));
     window.dispatchEvent(new CustomEvent('lembretes_portaria_atualizados', { detail: { condominioId: novoId } }));
     window.dispatchEvent(new CustomEvent('operadores_atualizados', { detail: { condominioId: novoId } }));
   };
 
   const carregarCondominiosHeader = async () => {
-    try {
-      const condos = await cachedQuery<any[]>({
-        table: 'condominios',
-        select: '*',
-        orderBy: { field: 'nome', ascending: true },
-        ttlSeconds: 600
-      });
-      setListaCondominios(condos || []);
-      salvarCacheLocal('condominios', condos || [], 'global');
+    if (!operador) return;
+    const autorizadosIds = obterCondominiosAutorizadosIds(operador);
+    const scopeKey = isVerifiedGlobalAdmin(operador) ? 'admin_global' : `op_${operador.id}`;
 
-      // Se for admin e o condomínio ativo atual for vazio, verifica seleção preferencial
-      if (eAdmin && condos && condos.length > 0) {
+    try {
+      let query = supabase
+        .from('condominios')
+        .select('*')
+        .order('nome', { ascending: true });
+
+      if (!isVerifiedGlobalAdmin(operador)) {
+        if (autorizadosIds.length === 0) {
+          setListaCondominios([]);
+          return;
+        }
+        query = query.in('id', autorizadosIds);
+      }
+
+      const { data: condos, error } = await query;
+      if (error) throw error;
+
+      const listaLimpa = (condos || []).filter((c: any) => isValidCondominioId(c?.id));
+      setListaCondominios(listaLimpa);
+      salvarCacheLocal('condominios', listaLimpa, scopeKey);
+
+      if (listaLimpa.length > 0) {
         const savedCondo = localStorage.getItem('infport_condominio_ativo_id');
-        if (savedCondo !== null) {
-          if (savedCondo && condos.some(c => c.id === savedCondo)) {
-            setCondominioAtivoId(savedCondo);
-            const cObj = condos.find(c => c.id === savedCondo);
-            if (cObj) setCondominio(cObj);
-          }
-        } else if (!condominioAtivoId) {
-          const condoReal = condos[0];
-          if (condoReal) {
-            setCondominioAtivoId(condoReal.id);
-            setCondominio(condoReal);
-            localStorage.setItem('infport_condominio_ativo_id', condoReal.id);
-          }
+        if (savedCondo && listaLimpa.some(c => c.id === savedCondo)) {
+          setCondominioAtivoId(savedCondo);
+          const cObj = listaLimpa.find(c => c.id === savedCondo);
+          if (cObj) setCondominio(cObj);
+        } else if (!condominioAtivoId || !listaLimpa.some(c => c.id === condominioAtivoId)) {
+          const condoReal = listaLimpa[0];
+          setCondominioAtivoId(condoReal.id);
+          setCondominio(condoReal);
+          localStorage.setItem('infport_condominio_ativo_id', condoReal.id);
         }
       }
     } catch (err) {
-      console.warn('Erro ao carregar condomínios (tentando cache offline):', err);
-      const cache = obterCacheLocal<any[]>('condominios', 'global', []);
+      console.warn('Erro ao carregar condomínios (tentando cache offline escopado):', err);
+      const cache = obterCacheLocal<any[]>('condominios', scopeKey, []);
       if (cache && cache.length > 0) {
         setListaCondominios(cache);
       }
@@ -687,55 +751,75 @@ export default function App() {
       const loginLimpo = login.trim();
       const senhaLimpa = senha.trim();
 
-      let opData: any = null;
+      if (!loginLimpo || !senhaLimpa) {
+        setErro('Informe usuário e senha para acessar o sistema.');
+        setLoading(false);
+        return;
+      }
 
-      // Suporte instantâneo e total para o login admin / senha 2468
-      if (loginLimpo.toLowerCase() === 'admin' && senhaLimpa === '2468') {
-        opData = {
-          id: 'admin_master_root',
-          nome: 'Administrador Master',
-          login: 'admin',
-          senha: '2468',
-          funcao: 'Administrador Geral',
-          cargo: 'Administrador Geral',
-          perfil: 'admin_geral',
-          nivel_acesso: 0,
-          ativo: true,
-          condominio_id: 'todos',
-          email: 'admin@porttohub.com',
-          turno_padrao: 'Geral',
-          turno: 'Geral',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        // Persiste/atualiza no Firestore em segundo plano
-        supabase.from('operadores').upsert(opData);
-      } else {
-        // Busca sem restrição de maiúsculas/minúsculas (case-insensitive com ilike)
-        let { data: dbData, error: opError } = await supabase
+      // 1. Limpa caches operacionais da sessão anterior antes de autenticar
+      limparCacheMemoriaCliente();
+      limparCachesOperacionaisTrocaSessao();
+
+      let opData: any = null;
+      let viaSupabaseAuth = false;
+
+      // 2. Autenticação real via Supabase Auth (por e-mail direto ou resolvido via login do operador)
+      let emailParaAuth = loginLimpo.includes('@') ? loginLimpo : '';
+      let preLookupOp: any = null;
+
+      if (!emailParaAuth) {
+        const { data: opFound } = await supabase
+          .from('operadores')
+          .select('id, email, login, auth_user_id, ativo')
+          .ilike('login', loginLimpo)
+          .maybeSingle();
+        preLookupOp = opFound;
+        if (opFound?.email) {
+          emailParaAuth = String(opFound.email).trim();
+        }
+      }
+
+      if (emailParaAuth) {
+        const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
+          email: emailParaAuth,
+          password: senhaLimpa
+        });
+
+        if (!signInErr && signInData?.user) {
+          viaSupabaseAuth = true;
+          const { data: opByUid } = await supabase
+            .from('operadores')
+            .select('*')
+            .eq('auth_user_id', signInData.user.id)
+            .maybeSingle();
+
+          if (opByUid) {
+            opData = opByUid;
+          } else {
+            const { data: opByMail } = await supabase
+              .from('operadores')
+              .select('*')
+              .ilike('email', emailParaAuth)
+              .maybeSingle();
+            opData = opByMail;
+          }
+        }
+      }
+
+      // 3. Fallback controlado APENAS em pré-Fase C para operadores legados ainda sem auth_user_id
+      //    (Nunca aceita credenciais fixas em código nem concede privilégio Global Admin)
+      if (!opData && !viaSupabaseAuth && (!preLookupOp || !preLookupOp.auth_user_id)) {
+        const { data: dbData } = await supabase
           .from('operadores')
           .select('*')
           .ilike('login', loginLimpo)
           .eq('senha', senhaLimpa)
           .maybeSingle();
 
-        if (opError || !dbData) {
-          const fallback = await supabase
-            .from('operadores')
-            .select('*')
-            .eq('login', loginLimpo.toLowerCase())
-            .eq('senha', senhaLimpa)
-            .maybeSingle();
-          opData = fallback.data;
-        } else {
+        if (dbData && !dbData.auth_user_id) {
           opData = dbData;
         }
-      }
-
-      if (opData) {
-        opData.permissoes = (opData.permissoes && typeof opData.permissoes === 'object' && Object.keys(opData.permissoes).length > 0)
-          ? opData.permissoes
-          : obterPermissoesOperador(opData);
       }
 
       if (!opData) {
@@ -745,76 +829,83 @@ export default function App() {
       }
 
       if (opData.ativo === false) {
+        if (viaSupabaseAuth) {
+          await supabase.auth.signOut().catch(() => {});
+        }
         setErro('Esta conta de acesso está desativada. Entre em contato com a supervisão.');
         setLoading(false);
         return;
       }
 
-      let condData = null;
-      if (opData.condominio_id && opData.condominio_id !== 'todos' && opData.condominio_id !== 'global') {
-        const { data: cData } = await supabase
-          .from('condominios')
-          .select('*')
-          .eq('id', opData.condominio_id)
-          .maybeSingle();
-        condData = cData;
-      } else {
-        // Para admin geral com acesso total, busca o primeiro condomínio disponível
-        const { data: listaCondos } = await supabase.from('condominios').select('*').limit(1);
-        if (listaCondos && listaCondos.length > 0) {
-          condData = listaCondos[0];
+      opData.permissoes = (opData.permissoes && typeof opData.permissoes === 'object' && Object.keys(opData.permissoes).length > 0)
+        ? opData.permissoes
+        : obterPermissoesOperador(opData);
+
+      const contexto = await resolverContextoOperador(opData, viaSupabaseAuth);
+      const opSeguro = contexto.operador;
+
+      if (contexto.condominiosAutorizados.length === 0 && !contexto.eSuperAdminGlobal) {
+        if (viaSupabaseAuth) {
+          await supabase.auth.signOut().catch(() => {});
         }
+        setErro('Operador sem vínculo de condomínio ativo. Solicite à administração a vinculação ao condomínio.');
+        setLoading(false);
+        return;
       }
 
-      const idCondFinal = condData?.id || (opData.condominio_id !== 'todos' && opData.condominio_id !== 'global' ? opData.condominio_id : '');
-      setOperador(opData);
-      const nomeAtivoLogin = opData.nome || opData.login || '';
+      const condData = contexto.condominiosAutorizados[0] || null;
+      const idCondFinal = condData?.id || '';
+
+      setOperador(opSeguro);
+      setListaCondominios(contexto.condominiosAutorizados);
+      const nomeAtivoLogin = opSeguro.nome || opSeguro.login || '';
       localStorage.setItem('infport_ultimo_operador_nome', nomeAtivoLogin);
       (window as any).__operadorAtivoNome = nomeAtivoLogin;
-      (window as any).__operadorAtivo = opData;
-      setCondominio(condData || { id: 'condo_principal_001', nome: 'Condomínio Residencial PorttoHub' });
+      (window as any).__operadorAtivo = opSeguro;
+      setCondominio(condData);
       setCondominioAtivoId(idCondFinal);
-      carregarNiveisAcesso(idCondFinal);
 
-      // Dispara bootstrapping assíncrono Local-First (IndexedDB) imediatamente no login
-      if (idCondFinal && idCondFinal !== 'todos' && idCondFinal !== 'global') {
+      if (isValidCondominioId(idCondFinal)) {
+        localStorage.setItem('infport_condominio_ativo_id', idCondFinal);
+        (window as any).idCondominioAtivo = idCondFinal;
+        carregarNiveisAcesso(idCondFinal);
         preCarregarDadosCondominio(idCondFinal);
       }
 
       if (lembrarAcesso) {
         localStorage.setItem(CHAVE_SESSAO, JSON.stringify({
-          operadorId: opData.id,
-          login: opData.login,
+          operadorId: opSeguro.id,
+          login: opSeguro.login,
           nome: nomeAtivoLogin,
           operadorNome: nomeAtivoLogin,
-          condominioId: opData.condominio_id,
+          condominioId: idCondFinal || opSeguro.condominio_id || null,
           salvoEm: new Date().toISOString()
         }));
       } else {
         localStorage.removeItem(CHAVE_SESSAO);
       }
 
-      // Registra login no Histórico Absoluto
-      registrarAtividade({
-        modulo: 'Sistema',
-        acao: 'LOGIN',
-        descricao: `Operador ${opData.nome || opData.login} iniciou sessão no sistema.`,
-        detalhes: { operadorId: opData.id, perfil: opData.perfil, condominioId: opData.condominio_id },
-        operador_nome: opData.nome || opData.login,
-        operador_id: opData.id,
-        operador_login: opData.login,
-        condominio_id: opData.condominio_id
-      });
+      if (isValidCondominioId(idCondFinal)) {
+        registrarAtividade({
+          modulo: 'Sistema',
+          acao: 'LOGIN',
+          descricao: `Operador ${opSeguro.nome || opSeguro.login} iniciou sessão no sistema.`,
+          detalhes: { operadorId: opSeguro.id, perfil: opSeguro.perfil, condominioId: idCondFinal, viaSupabaseAuth },
+          operador_nome: opSeguro.nome || opSeguro.login,
+          operador_id: opSeguro.id,
+          operador_login: opSeguro.login,
+          condominio_id: idCondFinal
+        });
+      }
 
-      const ehSindicoOp = opData.nivel_acesso === 4 || 
-                          opData.perfil === 'sindico' || 
-                          opData.funcao?.toLowerCase() === 'síndico' || 
-                          opData.funcao?.toLowerCase() === 'sindico';
+      const ehSindicoOp = opSeguro.nivel_acesso === 4 || 
+                          opSeguro.perfil === 'sindico' || 
+                          opSeguro.funcao?.toLowerCase() === 'síndico' || 
+                          opSeguro.funcao?.toLowerCase() === 'sindico';
       mudarModulo(ehSindicoOp ? 'painel_sindico' : 'dashboard');
 
-      // Dispara verificação de alarme de troca/início de plantão se houver lembretes ativos
-      if (opData.condominio_id) {
-        checarEDispararAlarmeTrocaPlantao(opData.condominio_id);
+      if (isValidCondominioId(idCondFinal)) {
+        checarEDispararAlarmeTrocaPlantao(idCondFinal);
       }
     } catch (err: any) {
       setErro(`Falha de conexão: ${err.message || 'Erro desconhecido'}`);
@@ -823,8 +914,8 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
-    if (operador) {
+  const handleLogout = async () => {
+    if (operador && isValidCondominioId(condominioAtivoId || operador.condominio_id)) {
       registrarAtividade({
         modulo: 'Sistema',
         acao: 'LOGOUT',
@@ -833,13 +924,22 @@ export default function App() {
         operador_nome: operador.nome || operador.login,
         operador_id: operador.id,
         operador_login: operador.login,
-        condominio_id: operador.condominio_id
+        condominio_id: condominioAtivoId || operador.condominio_id
       });
     }
 
-    localStorage.removeItem(CHAVE_SESSAO);
+    await supabase.auth.signOut().catch(() => {});
+    limparCacheMemoriaCliente();
+    limparCachesOperacionaisTrocaSessao();
+    if (typeof window !== 'undefined') {
+      delete (window as any).__operadorAtivo;
+      delete (window as any).__operadorAtivoNome;
+      delete (window as any).idCondominioAtivo;
+    }
+
     setOperador(null);
     setCondominio(null);
+    setListaCondominios([]);
     setLogin('');
     setSenha('');
     setCondominioAtivoId('');
@@ -847,72 +947,82 @@ export default function App() {
   };
 
   const handleTrocarOperador = async (novoOperador: any) => {
-    if (!novoOperador) return;
+    if (!novoOperador || novoOperador.id === 'admin_master_root') return;
 
-    // 1. Atualiza estado do operador ativo em memória
-    setOperador(novoOperador);
-    const nomeNovoOperador = novoOperador.nome || novoOperador.login || '';
+    // Garante que a troca de operador ocorra apenas no mesmo condomínio ou condomínio autorizado
+    const condoAlvo = isValidCondominioId(novoOperador.condominio_id)
+      ? novoOperador.condominio_id
+      : (condominioAtivoId || '');
+    if (!isValidCondominioId(condoAlvo)) return;
+
+    limparCacheMemoriaCliente();
+    limparCachesOperacionaisTrocaSessao({ preservarSessao: true, preservarCondoAtivo: true });
+
+    const contexto = await resolverContextoOperador(novoOperador, false).catch(() => null);
+    const opSeguro = contexto?.operador || {
+      ...novoOperador,
+      senha: '',
+      condominio_id: condoAlvo,
+      e_super_admin_global: false,
+      global_admin_verificado: false
+    };
+
+    setOperador(opSeguro);
+    if (contexto?.condominiosAutorizados?.length) {
+      setListaCondominios(contexto.condominiosAutorizados);
+    }
+    const nomeNovoOperador = opSeguro.nome || opSeguro.login || '';
     localStorage.setItem('infport_ultimo_operador_nome', nomeNovoOperador);
     (window as any).__operadorAtivoNome = nomeNovoOperador;
-    (window as any).__operadorAtivo = novoOperador;
+    (window as any).__operadorAtivo = opSeguro;
 
-    // 2. EFETIVA O LOGIN NO DISPOSITIVO (PERSISTÊNCIA NO LOCALSTORAGE)
-    // Garante que recarregamentos de página, abas em segundo plano e WhatsApp não desfaçam a troca!
     localStorage.setItem(CHAVE_SESSAO, JSON.stringify({
-      operadorId: novoOperador.id,
-      login: novoOperador.login,
+      operadorId: opSeguro.id,
+      login: opSeguro.login,
       nome: nomeNovoOperador,
       operadorNome: nomeNovoOperador,
-      condominioId: novoOperador.condominio_id,
+      condominioId: condoAlvo,
       salvoEm: new Date().toISOString()
     }));
 
-    if (novoOperador.condominio_id) {
-      setCondominioAtivoId(novoOperador.condominio_id);
-      localStorage.setItem('infport_condominio_ativo_id', novoOperador.condominio_id);
-      try {
-        const { data: cData } = await supabase
-          .from('condominios')
-          .select('*')
-          .eq('id', novoOperador.condominio_id)
-          .maybeSingle();
-        if (cData) {
-          setCondominio(cData);
-        }
-      } catch (err) {
-        console.error('Erro ao sincronizar condomínio após troca de operador:', err);
+    setCondominioAtivoId(condoAlvo);
+    localStorage.setItem('infport_condominio_ativo_id', condoAlvo);
+    (window as any).idCondominioAtivo = condoAlvo;
+    try {
+      const { data: cData } = await supabase
+        .from('condominios')
+        .select('*')
+        .eq('id', condoAlvo)
+        .maybeSingle();
+      if (cData) {
+        setCondominio(cData);
       }
-      carregarNiveisAcesso(novoOperador.condominio_id);
-      preCarregarDadosCondominio(novoOperador.condominio_id);
+    } catch (err) {
+      console.error('Erro ao sincronizar condomínio após troca de operador:', err);
     }
+    carregarNiveisAcesso(condoAlvo);
+    preCarregarDadosCondominio(condoAlvo);
 
-    // 3. Registra assunção de plantão no Histórico Absoluto
     registrarAtividade({
       modulo: 'Passagem de Posto',
       acao: 'TROCA_OPERADOR_EFETIVADA',
-      descricao: `Operador ${novoOperador.nome || novoOperador.login} assumiu oficialmente o posto (Login efetivado e autenticado no dispositivo).`,
-      detalhes: { operadorId: novoOperador.id, perfil: novoOperador.perfil, condominioId: novoOperador.condominio_id },
-      operador_nome: novoOperador.nome || novoOperador.login,
-      operador_id: novoOperador.id,
-      operador_login: novoOperador.login,
-      condominio_id: novoOperador.condominio_id
+      descricao: `Operador ${opSeguro.nome || opSeguro.login} assumiu oficialmente o posto no condomínio ativo.`,
+      detalhes: { operadorId: opSeguro.id, perfil: opSeguro.perfil, condominioId: condoAlvo },
+      operador_nome: opSeguro.nome || opSeguro.login,
+      operador_id: opSeguro.id,
+      operador_login: opSeguro.login,
+      condominio_id: condoAlvo
     });
 
-    // 4. Notifica globalmente outros módulos e componentes da troca
-    window.dispatchEvent(new CustomEvent('infport:operador_trocado', { detail: novoOperador }));
+    window.dispatchEvent(new CustomEvent('infport:operador_trocado', { detail: opSeguro }));
 
-    // 5. Redireciona para o painel principal do novo operador
-    const ehSindicoOp = novoOperador.nivel_acesso === 4 || 
-                        novoOperador.perfil === 'sindico' || 
-                        novoOperador.funcao?.toLowerCase() === 'síndico' || 
-                        novoOperador.funcao?.toLowerCase() === 'sindico';
+    const ehSindicoOp = opSeguro.nivel_acesso === 4 || 
+                        opSeguro.perfil === 'sindico' || 
+                        opSeguro.funcao?.toLowerCase() === 'síndico' || 
+                        opSeguro.funcao?.toLowerCase() === 'sindico';
     mudarModulo(ehSindicoOp ? 'painel_sindico' : 'dashboard');
 
-    // 6. Toda vez que houver troca de plantão, se tiver algum lembrete, o app dispara o alarme contínuo
-    const idCondAlvo = novoOperador.condominio_id || condominioAtivoId;
-    if (idCondAlvo) {
-      checarEDispararAlarmeTrocaPlantao(idCondAlvo);
-    }
+    checarEDispararAlarmeTrocaPlantao(condoAlvo);
   };
 
   const objCondominioSelecionado = listaCondominios.find(c => c.id === condominioAtivoId);
@@ -921,22 +1031,19 @@ export default function App() {
     ...operador,
     somenteLeitura: eSindico,
     eSindico: eSindico,
-    condominio_id: (eAdmin && condominioAtivoId) ? condominioAtivoId : (operador.condominio_id || condominioAtivoId || ''),
-    condominio_nome: (eAdmin && objCondominioSelecionado?.nome) 
-      ? objCondominioSelecionado.nome 
-      : (condominio?.nome || 'Condomínio Geral'),
+    condominio_id: (isValidCondominioId(condominioAtivoId) && canAccessCondominio(operador, condominioAtivoId))
+      ? condominioAtivoId
+      : (isValidCondominioId(operador.condominio_id) ? operador.condominio_id : ''),
+    condominio_nome: objCondominioSelecionado?.nome || condominio?.nome || 'Condomínio Ativo',
     listaCondominios: listaCondominios
   } : null;
 
-  // Regra de segurança: O menu e módulo de Configurações é EXCLUSIVO para o Nível 0 de acesso (ADM Geral)
+  // Regra de segurança: Módulo de Configurações exclusivo para Nível 0 verificado (sem fallback por login === 'admin')
   const ehNivel0Adm = Boolean(
     eSuperAdminGlobal ||
-    operador?.login?.toLowerCase() === 'admin' ||
     operador?.perfil?.toLowerCase() === 'admin' ||
     operador?.perfil?.toLowerCase() === 'admin_geral' ||
     Number(operador?.nivel_acesso) === 0 ||
-    operador?.nivel_acesso === 0 ||
-    operador?.nivel_acesso === '0' ||
     (operador as any)?.nivel_acesso_custom_id === 'nivel_0'
   );
 
@@ -1134,7 +1241,7 @@ export default function App() {
                   onChange={(e) => trocarCondominioGlobal(e.target.value)}
                   className="w-full bg-slate-900 text-white text-xs font-bold p-2.5 rounded-lg border border-slate-600 focus:outline-none"
                 >
-                  <option value="">🏢 Todos (Visão Global)</option>
+                  {!condominioAtivoId && <option value="" disabled>Selecione o condomínio...</option>}
                   {listaCondominios.map((c) => (
                     <option key={c.id} value={c.id}>🏢 {c.nome}</option>
                   ))}
@@ -1284,7 +1391,7 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Seletor de Condomínio Ativo para Administrador */}
+                {/* Seletor de Condomínio Ativo para Usuário Multi-Condomínio Verificado */}
                 {eAcessoMultiCondominio && !eSindico && (
                   <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/60 space-y-1">
                     <label className="text-[10px] font-bold text-emerald-400 uppercase flex items-center gap-1">
@@ -1295,7 +1402,7 @@ export default function App() {
                       onChange={(e) => trocarCondominioGlobal(e.target.value)}
                       className="w-full bg-slate-900 text-white text-xs font-bold p-2 rounded-lg border border-slate-600 focus:outline-none"
                     >
-                      <option value="">🏢 Todos (Visão Global)</option>
+                      {!condominioAtivoId && <option value="" disabled>Selecione o condomínio...</option>}
                       {listaCondominios.map((c) => (
                         <option key={c.id} value={c.id}>🏢 {c.nome}</option>
                       ))}
@@ -1830,6 +1937,8 @@ export default function App() {
             <SupabaseDoctorModal
               isOpen={modalSupabaseDoctorAberto}
               onClose={() => setModalSupabaseDoctorAberto(false)}
+              usuarioLogado={operadorContextoGlobal}
+              condominioAtivoId={condominioAtivoId || operador?.condominio_id}
               onAbrirMigrador={() => {
                 setModalSupabaseDoctorAberto(false);
                 mudarModulo('configuracoes');

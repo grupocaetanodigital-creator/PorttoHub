@@ -110,13 +110,9 @@ export const supabase = createClient(obterSupabaseUrl(), obterSupabaseKey(), {
 
 /**
  * Cliente Oficial Dedicado do Supabase Storage
+ * Compartilha a sessão autenticada do cliente principal para uploads e URLs assinadas por condomínio.
  */
-export const supabaseStorage = createClient(obterSupabaseUrl(), obterSupabaseKey(), {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false
-  }
-});
+export const supabaseStorage = supabase;
 
 /**
  * Utilitários de Diagnóstico e Compatibilidade

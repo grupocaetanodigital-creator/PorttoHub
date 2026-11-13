@@ -188,15 +188,23 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
   const [editDestinoBloco, setEditDestinoBloco] = useState('');
   const [editObservacoes, setEditObservacoes] = useState('');
 
+  const loadSeqRef = React.useRef(0);
+
   // Sincronização de alteração de condomínio global
   useEffect(() => {
     const handleCondoChange = (e: any) => {
-      const novoId = e?.detail?.id;
+      loadSeqRef.current += 1;
+      const novoId = e?.detail?.id || e?.detail?.condominioId;
       if (novoId && novoId !== 'global' && novoId !== 'todos') {
         setCondId(novoId);
       } else {
         setCondId(getCondominioAtivoId(usuarioLogado));
       }
+      setItensAtivos([]);
+      setItensHistorico([]);
+      setMoradores([]);
+      setItemParaBaixa(null);
+      setItemEmEdicao(null);
     };
     window.addEventListener('infport:condominio_alterado', handleCondoChange);
     return () => window.removeEventListener('infport:condominio_alterado', handleCondoChange);
@@ -228,7 +236,9 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
           table: 'custodia',
           filter: `condominio_id=eq.${condId}`
         },
-        () => {
+        (payload: any) => {
+          const pCondo = payload?.new?.condominio_id || payload?.old?.condominio_id;
+          if (pCondo && pCondo !== condId) return;
           // Recarrega lista ativa silenciosamente
           carregarCustodiaAtiva(condId, true)
             .then(res => setItensAtivos(res.itens))
@@ -243,8 +253,10 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
   }, [condId]);
 
   const carregarDadosIniciais = async () => {
+    const seq = ++loadSeqRef.current;
     if (!condId || condId === 'global' || condId === 'todos') {
       setItensAtivos([]);
+      setItensHistorico([]);
       setMoradores([]);
       return;
     }
@@ -269,12 +281,16 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
 
       // 3. Consulta otimizada dos itens ativos em custódia (indexada por status)
       const { itens } = await carregarCustodiaAtiva(condId);
+      if (seq !== loadSeqRef.current) return;
       setItensAtivos(itens);
     } catch (err: any) {
+      if (seq !== loadSeqRef.current) return;
       console.warn('[Custodia] Erro ao carregar dados:', err);
       setMensagem({ tipo: 'erro', texto: 'Erro ao carregar itens sob custódia: ' + err.message });
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -310,6 +326,7 @@ export default function Custodia({ usuarioLogado }: CustodiaProps) {
       const { publicUrl, taxaReducaoPct } = await uploadFotoComprimidaStorage({
         file,
         pasta,
+        condominioId: condId,
         maxWidth: 1200,
         maxHeight: 1200,
         qualidade: 0.8

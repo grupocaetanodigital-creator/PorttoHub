@@ -99,12 +99,17 @@ export default function PrestadoresObras({ usuarioLogado }: PrestadoresObrasProp
 
   useEffect(() => {
     const handleCondoChange = (e: any) => {
-      const novoId = e?.detail?.id;
+      const novoId = e?.detail?.id || e?.detail?.condominioId;
       if (novoId && novoId !== 'global' && novoId !== 'todos') {
         setIdCondominio(novoId);
       } else {
         setIdCondominio(getCondominioAtivoId(usuarioLogado));
       }
+      setCadastros([]);
+      setPrestadoresAtivos([]);
+      setVisitasHoje([]);
+      setHistoricoAcessos([]);
+      setMoradores([]);
     };
     window.addEventListener('infport:condominio_alterado', handleCondoChange);
     return () => window.removeEventListener('infport:condominio_alterado', handleCondoChange);

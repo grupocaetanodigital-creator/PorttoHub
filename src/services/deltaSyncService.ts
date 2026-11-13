@@ -43,7 +43,48 @@ export const PROJECOES_CIRURGICAS: Record<string, string> = {
 // Cache quente em memória RAM para renderização síncrona sem wait
 const memoriaRamPorCondominio = new Map<string, Map<string, any[]>>();
 
+function isCondoDeltaValido(condominioId?: string): condominioId is string {
+  return Boolean(
+    condominioId &&
+    condominioId !== 'todos' &&
+    condominioId !== 'global' &&
+    isUUID(condominioId)
+  );
+}
+
+/**
+ * Limpa cache quente em RAM de um condomínio específico ou de todos os tenants.
+ */
+export function limparCacheRamDeltaSync(condominioId?: string): void {
+  if (condominioId) {
+    memoriaRamPorCondominio.delete(condominioId);
+  } else {
+    memoriaRamPorCondominio.clear();
+  }
+}
+
+let listenersDeltaRegistrados = false;
+if (typeof window !== 'undefined' && !listenersDeltaRegistrados) {
+  listenersDeltaRegistrados = true;
+  window.addEventListener('infport:cache_purgado', () => {
+    limparCacheRamDeltaSync();
+  });
+  window.addEventListener('infport:condominio_alterado', (ev: any) => {
+    const novoId = String(ev?.detail?.condominioId || ev?.detail?.id || '').trim();
+    if (!novoId) {
+      limparCacheRamDeltaSync();
+      return;
+    }
+    Array.from(memoriaRamPorCondominio.keys()).forEach((cid) => {
+      if (cid !== novoId) {
+        memoriaRamPorCondominio.delete(cid);
+      }
+    });
+  });
+}
+
 function obterCacheRam<T>(tabela: string, condominioId: string): T[] | null {
+  if (!isCondoDeltaValido(condominioId)) return null;
   const mapaCondo = memoriaRamPorCondominio.get(condominioId);
   if (!mapaCondo) return null;
   const lista = mapaCondo.get(tabela);
@@ -51,12 +92,14 @@ function obterCacheRam<T>(tabela: string, condominioId: string): T[] | null {
 }
 
 function salvarCacheRam<T>(tabela: string, condominioId: string, dados: T[]): void {
+  if (!isCondoDeltaValido(condominioId)) return;
+  const filtrados = (dados || []).filter((it: any) => !it?.condominio_id || it.condominio_id === condominioId);
   let mapaCondo = memoriaRamPorCondominio.get(condominioId);
   if (!mapaCondo) {
     mapaCondo = new Map();
     memoriaRamPorCondominio.set(condominioId, mapaCondo);
   }
-  mapaCondo.set(tabela, dados);
+  mapaCondo.set(tabela, filtrados);
 }
 
 /**
@@ -66,17 +109,22 @@ export async function obterDadosTabelaLocal<T = any>(
   tabela: NomeTabelaLocal,
   condominioId: string
 ): Promise<T[]> {
+  if (!isCondoDeltaValido(condominioId)) {
+    return [];
+  }
+
   // 1. Tenta memória RAM (0.0ms síncrono)
   const ram = obterCacheRam<T>(tabela, condominioId);
   if (ram && ram.length > 0) {
-    return ram;
+    return ram.filter((it: any) => !it?.condominio_id || it.condominio_id === condominioId);
   }
 
   // 2. Lê do IndexedDB (assíncrono ultrarrápido)
   const doBancoLocal = await obterTodosItensLocal<T>(tabela, condominioId);
   if (doBancoLocal && doBancoLocal.length > 0) {
-    salvarCacheRam(tabela, condominioId, doBancoLocal);
-    return doBancoLocal;
+    const filtrados = doBancoLocal.filter((it: any) => !it?.condominio_id || it.condominio_id === condominioId);
+    salvarCacheRam(tabela, condominioId, filtrados);
+    return filtrados;
   }
 
   return [];
@@ -220,9 +268,8 @@ export async function sincronizarDeltaTabela<T extends { id: string | number; up
   condominioId: string,
   colunaChaveId: string = 'id'
 ): Promise<DeltaSyncResult<T>> {
-  if (!condominioId || condominioId === 'todos' || condominioId === 'global' || !isUUID(condominioId)) {
-    const dadosLocais = await obterDadosTabelaLocal<T>(tabela, condominioId);
-    return { dadosAtualizados: dadosLocais, deltaCount: 0, veioDoCacheLocal: true, timestampSync: new Date().toISOString() };
+  if (!isCondoDeltaValido(condominioId)) {
+    return { dadosAtualizados: [], deltaCount: 0, veioDoCacheLocal: false, timestampSync: new Date().toISOString() };
   }
 
   // 1. Lê os dados existentes localmente
@@ -241,12 +288,13 @@ export async function sincronizarDeltaTabela<T extends { id: string | number; up
         .limit(400);
 
       if (!error && data) {
+        const dadosFiltrados = (data as any[]).filter((it: any) => !it?.condominio_id || it.condominio_id === condominioId);
         const agora = new Date().toISOString();
-        salvarCacheRam(tabela, condominioId, data);
-        await salvarLoteItensLocal(tabela, data, condominioId, agora, true);
+        salvarCacheRam(tabela, condominioId, dadosFiltrados);
+        await salvarLoteItensLocal(tabela, dadosFiltrados, condominioId, agora, true);
         return {
-          dadosAtualizados: (data as any) as T[],
-          deltaCount: data.length,
+          dadosAtualizados: (dadosFiltrados as any) as T[],
+          deltaCount: dadosFiltrados.length,
           veioDoCacheLocal: false,
           timestampSync: agora
         };
@@ -295,11 +343,22 @@ export async function sincronizarDeltaTabela<T extends { id: string | number; up
       };
     }
 
+    const deltaFiltrado = (deltaData as any[]).filter((it: any) => !it?.condominio_id || it.condominio_id === condominioId);
+    if (deltaFiltrado.length === 0) {
+      await salvarMetadataSyncLocal(tabela, condominioId, novoCursor, dadosLocais.length);
+      return {
+        dadosAtualizados: dadosLocais,
+        deltaCount: 0,
+        veioDoCacheLocal: true,
+        timestampSync: novoCursor
+      };
+    }
+
     // 3. Merge inteligente: Substitui registros atualizados e insere novos
     const mapaItens = new Map<string, T>();
     dadosLocais.forEach((it: any) => mapaItens.set(String(it[colunaChaveId]), it));
 
-    deltaData.forEach((deltaItem: any) => {
+    deltaFiltrado.forEach((deltaItem: any) => {
       mapaItens.set(String(deltaItem[colunaChaveId]), deltaItem);
     });
 
@@ -307,16 +366,16 @@ export async function sincronizarDeltaTabela<T extends { id: string | number; up
 
     // Atualiza RAM e IndexedDB
     salvarCacheRam(tabela, condominioId, listaConsolidada);
-    await salvarLoteItensLocal(tabela, deltaData, condominioId, novoCursor, false);
+    await salvarLoteItensLocal(tabela, deltaFiltrado, condominioId, novoCursor, false);
 
-    console.log(`[DeltaSync] ${deltaData.length} registro(s) sincronizado(s) em ${tabela} via Delta Sync.`);
+    console.log(`[DeltaSync] ${deltaFiltrado.length} registro(s) sincronizado(s) em ${tabela} via Delta Sync.`);
     window.dispatchEvent(new CustomEvent(`porttohub_delta_${tabela}`, {
-      detail: { tabela, condominioId, alterados: deltaData.length }
+      detail: { tabela, condominioId, alterados: deltaFiltrado.length }
     }));
 
     return {
       dadosAtualizados: listaConsolidada,
-      deltaCount: deltaData.length,
+      deltaCount: deltaFiltrado.length,
       veioDoCacheLocal: false,
       timestampSync: novoCursor
     };
@@ -340,22 +399,31 @@ export async function aplicarMutacaoLocal<T extends { id: any; condominio_id?: s
   item: T,
   tipo: 'INSERT' | 'UPDATE' | 'DELETE'
 ): Promise<void> {
+  if (!isCondoDeltaValido(condominioId)) {
+    return;
+  }
+  if (item?.condominio_id && item.condominio_id !== condominioId) {
+    console.warn(`[DeltaSync] Mutação local bloqueada: item de ${item.condominio_id} em contexto ${condominioId}`);
+    return;
+  }
+
   const chaveId = String(item.id);
   const itensAtuais = await obterDadosTabelaLocal<T>(tabela, condominioId);
 
   let novaLista: T[] = [];
   if (tipo === 'DELETE') {
     novaLista = itensAtuais.filter((it: any) => String(it.id) !== chaveId);
-    await excluirItemLocal(tabela, item.id);
+    await excluirItemLocal(tabela, item.id, condominioId);
   } else {
+    const itemSeguro: T = { ...item, condominio_id: item.condominio_id || condominioId };
     const idx = itensAtuais.findIndex((it: any) => String(it.id) === chaveId);
     if (idx >= 0) {
       novaLista = [...itensAtuais];
-      novaLista[idx] = { ...novaLista[idx], ...item };
+      novaLista[idx] = { ...novaLista[idx], ...itemSeguro };
     } else {
-      novaLista = [item, ...itensAtuais];
+      novaLista = [itemSeguro, ...itensAtuais];
     }
-    await salvarItemLocal(tabela, item);
+    await salvarItemLocal(tabela, itemSeguro, condominioId);
   }
 
   salvarCacheRam(tabela, condominioId, novaLista);

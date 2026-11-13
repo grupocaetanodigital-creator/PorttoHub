@@ -56,14 +56,21 @@ export default function Manutencao({ usuarioLogado }: ManutencaoProps) {
 
   const [condId, setCondId] = useState(() => getCondominioAtivoId(usuarioLogado));
 
+  const loadSeqRef = React.useRef(0);
+
   useEffect(() => {
     const handleCondoChange = (e: any) => {
-      const novoId = e?.detail?.id;
+      loadSeqRef.current += 1;
+      const novoId = e?.detail?.id || e?.detail?.condominioId;
       if (novoId && novoId !== 'global' && novoId !== 'todos') {
         setCondId(novoId);
       } else {
         setCondId(getCondominioAtivoId(usuarioLogado));
       }
+      setRotinas([]);
+      setChamados([]);
+      setModalNovoChamado(false);
+      setModalConclusaoOS(null);
     };
     window.addEventListener('infport:condominio_alterado', handleCondoChange);
     return () => window.removeEventListener('infport:condominio_alterado', handleCondoChange);
@@ -87,6 +94,7 @@ export default function Manutencao({ usuarioLogado }: ManutencaoProps) {
   }, [subAba]);
 
   const carregarChecklist = async () => {
+    const seq = ++loadSeqRef.current;
     if (!condId || condId === 'global' || condId === 'todos') {
       setRotinas([]);
       return;
@@ -110,16 +118,22 @@ export default function Manutencao({ usuarioLogado }: ManutencaoProps) {
       }
 
       const { data, error } = await query;
+      if (seq !== loadSeqRef.current) return;
       if (error) throw error;
       setRotinas(data || []);
     } catch (err: any) {
-      setMensagem({ tipo: 'erro', texto: err.message });
+      if (seq === loadSeqRef.current) {
+        setMensagem({ tipo: 'erro', texto: err.message });
+      }
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   const carregarChamados = async () => {
+    const seq = ++loadSeqRef.current;
     if (!condId || condId === 'global' || condId === 'todos') {
       setChamados([]);
       return;
@@ -140,12 +154,17 @@ export default function Manutencao({ usuarioLogado }: ManutencaoProps) {
       }
 
       const { data, error } = await query;
+      if (seq !== loadSeqRef.current) return;
       if (error) throw error;
       setChamados(data || []);
     } catch (err: any) {
-      setMensagem({ tipo: 'erro', texto: err.message });
+      if (seq === loadSeqRef.current) {
+        setMensagem({ tipo: 'erro', texto: err.message });
+      }
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -158,6 +177,7 @@ export default function Manutencao({ usuarioLogado }: ManutencaoProps) {
       const { publicUrl, tamanhoOriginalKb, tamanhoComprimidoKb, taxaReducaoPct } = await uploadFotoComprimidaStorage({
         file,
         pasta,
+        condominioId: condId,
         maxWidth: 1000,
         maxHeight: 1000,
         qualidade: 0.75

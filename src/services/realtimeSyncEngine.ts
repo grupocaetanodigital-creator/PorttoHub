@@ -1,15 +1,17 @@
 /**
  * PorttoHub 1.0 — Motor de Sincronização em Tempo Real (Realtime) & Consistência Multi-Dispositivo
- * 
- * - Ouve alterações via Supabase Realtime Channels (PostgreSQL CDC).
- * - Sincroniza abas, dispositivos móveis e computadores de guarita instantaneamente.
- * - Quando a rede é restabelecida após queda, drena automaticamente a fila offline
- *   e sincroniza dados pendentes sem intervenção manual do usuário.
+ *
+ * Isolamento estrito por condomínio:
+ * - Nunca abre assinatura Postgres CDC global sem filtro `condominio_id=eq.<id>`.
+ * - Descarta qualquer evento cujo payload não corresponda ao condomínio ativo monitorado.
+ * - Realiza teardown limpo quando ocorre troca de condomínio ou encerramento de sessão.
  */
 
 import { supabase } from './supabase';
+import { getCondominioAtivoId } from './condominioService';
 import { sincronizarFilaComSupabase, obterFilaOffline } from './offlineSyncEngine';
 import { invalidarCacheTabela } from './redisCacheService';
+import { extrairCondominioIdDeEvento, isValidCondominioId } from './tenantAuthService';
 
 type RealtimeCallback = (payload: {
   tabela: string;
@@ -19,33 +21,47 @@ type RealtimeCallback = (payload: {
 }) => void;
 
 const listenersMap = new Map<string, Set<RealtimeCallback>>();
-let canalRealtimeGeral: any = null;
-let inicializado = false;
+const canaisPorTabela = new Map<string, any>();
+let condominioMonitoradoAtual = '';
+let globalListenersRegistrados = false;
 
-/**
- * Inicializa a escuta global em tempo real no Supabase
- */
-export function inicializarRealtimeGlobal(): () => void {
-  if (inicializado && canalRealtimeGeral) {
-    return () => {};
-  }
+function encerrarTodosCanais(): void {
+  canaisPorTabela.forEach((canal) => {
+    try {
+      supabase.removeChannel(canal);
+    } catch {}
+  });
+  canaisPorTabela.clear();
+}
+
+function garantirCanalTabela(tabela: string, condominioId: string): void {
+  if (!isValidCondominioId(condominioId)) return;
+  const chave = `${tabela}:${condominioId}`;
+  if (canaisPorTabela.has(chave)) return;
 
   try {
-    canalRealtimeGeral = supabase
-      .channel('porttohub_sincronizacao_geral')
+    const canal = supabase
+      .channel(`porttohub_rt_${tabela}_${condominioId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public' },
+        {
+          event: '*',
+          schema: 'public',
+          table: tabela,
+          filter: `condominio_id=eq.${condominioId}`
+        },
         (payload) => {
-          const tabela = payload.table;
           const tipo = payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE';
-          const novo = payload.new;
-          const antigo = payload.old;
+          const novo = payload.new as any;
+          const antigo = payload.old as any;
+          const payloadCondo = String(novo?.condominio_id || antigo?.condominio_id || '').trim();
 
-          // Invalida cache local e Redis para a tabela afetada
-          invalidarCacheTabela(tabela);
+          if (payloadCondo && payloadCondo !== condominioMonitoradoAtual) {
+            return;
+          }
 
-          // Notifica os componentes cadastrados para a tabela específica
+          invalidarCacheTabela(tabela, condominioId).catch(() => {});
+
           const listeners = listenersMap.get(tabela);
           if (listeners) {
             listeners.forEach((callback) => {
@@ -57,28 +73,38 @@ export function inicializarRealtimeGlobal(): () => void {
             });
           }
 
-          // Dispara evento global no DOM para reatividade decoupled
-          window.dispatchEvent(
-            new CustomEvent('porttohub:realtime_alteracao', {
-              detail: { tabela, tipo, novo, antigo }
-            })
-          );
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(
+              new CustomEvent('porttohub:realtime_alteracao', {
+                detail: { tabela, tipo, novo, antigo, condominioId }
+              })
+            );
+          }
         }
       )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('[RealtimeSync] Canal de sincronização em tempo real conectado com sucesso!');
-        }
-      });
+      .subscribe();
 
-    inicializado = true;
+    canaisPorTabela.set(chave, canal);
   } catch (err) {
-    console.warn('[RealtimeSync] Não foi possível conectar ao canal Realtime:', err);
+    console.warn(`[RealtimeSync] Não foi possível conectar canal Realtime para ${tabela}:`, err);
+  }
+}
+
+export function inicializarRealtimeGlobal(condominioIdParam?: string): () => void {
+  const condoId = condominioIdParam || getCondominioAtivoId();
+  if (isValidCondominioId(condoId)) {
+    if (condominioMonitoradoAtual && condominioMonitoradoAtual !== condoId) {
+      encerrarTodosCanais();
+    }
+    condominioMonitoradoAtual = condoId;
+    listenersMap.forEach((_, tabela) => garantirCanalTabela(tabela, condoId));
   }
 
-  // Listener para restabelecimento de conexão de rede
+  if (typeof window === 'undefined') {
+    return () => encerrarTodosCanais();
+  }
+
   const handleVoltouOnline = async () => {
-    console.log('[RealtimeSync] Conexão com a internet restabelecida! Iniciando sincronização automática...');
     const fila = obterFilaOffline();
     if (fila.length > 0) {
       window.dispatchEvent(
@@ -103,36 +129,56 @@ export function inicializarRealtimeGlobal(): () => void {
         );
       }
     }
-
-    // Notifica todos os módulos para atualizarem suas listagens com dados frescos
     window.dispatchEvent(new CustomEvent('porttohub:reconexao_sincronizada'));
   };
 
-  window.addEventListener('online', handleVoltouOnline);
+  const handleCondoAlterado = (e: any) => {
+    const novoId = extrairCondominioIdDeEvento(e) || getCondominioAtivoId();
+    encerrarTodosCanais();
+    condominioMonitoradoAtual = isValidCondominioId(novoId) ? novoId : '';
+    if (condominioMonitoradoAtual) {
+      listenersMap.forEach((_, tabela) => garantirCanalTabela(tabela, condominioMonitoradoAtual));
+    }
+  };
+
+  if (!globalListenersRegistrados) {
+    globalListenersRegistrados = true;
+    window.addEventListener('online', handleVoltouOnline);
+    window.addEventListener('infport:condominio_alterado', handleCondoAlterado);
+  }
 
   return () => {
+    encerrarTodosCanais();
     window.removeEventListener('online', handleVoltouOnline);
-    if (canalRealtimeGeral) {
-      supabase.removeChannel(canalRealtimeGeral);
-      canalRealtimeGeral = null;
-      inicializado = false;
-    }
+    window.removeEventListener('infport:condominio_alterado', handleCondoAlterado);
+    globalListenersRegistrados = false;
   };
 }
 
 /**
- * Registra um callback para ouvir alterações em tempo real de uma tabela específica
+ * Registra um callback para ouvir alterações em tempo real de uma tabela específica filtrada pelo condomínio ativo
  */
-export function subscreverTabelaRealtime(tabela: string, callback: RealtimeCallback): () => void {
+export function subscreverTabelaRealtime(
+  tabela: string,
+  callback: RealtimeCallback,
+  condominioIdParam?: string
+): () => void {
+  const condoId = condominioIdParam || condominioMonitoradoAtual || getCondominioAtivoId();
+  if (!isValidCondominioId(condoId)) {
+    return () => {};
+  }
+
+  if (condominioMonitoradoAtual && condominioMonitoradoAtual !== condoId) {
+    encerrarTodosCanais();
+  }
+  condominioMonitoradoAtual = condoId;
+
   if (!listenersMap.has(tabela)) {
     listenersMap.set(tabela, new Set());
   }
   listenersMap.get(tabela)!.add(callback);
 
-  // Garante que o canal geral está ativo
-  if (!inicializado) {
-    inicializarRealtimeGlobal();
-  }
+  garantirCanalTabela(tabela, condoId);
 
   return () => {
     const listeners = listenersMap.get(tabela);
@@ -140,6 +186,14 @@ export function subscreverTabelaRealtime(tabela: string, callback: RealtimeCallb
       listeners.delete(callback);
       if (listeners.size === 0) {
         listenersMap.delete(tabela);
+        const chave = `${tabela}:${condoId}`;
+        const canal = canaisPorTabela.get(chave);
+        if (canal) {
+          try {
+            supabase.removeChannel(canal);
+          } catch {}
+          canaisPorTabela.delete(chave);
+        }
       }
     }
   };

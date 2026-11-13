@@ -115,23 +115,70 @@ export function isUUID(val?: string | null): boolean {
 
 /**
  * Obtém o ID do condomínio ativo atual garantindo isolamento absoluto por tenant.
- * Nunca retorna 'global' ou 'todos'. Caso um parâmetro legado seja passado, resolve pelo
- * contexto ativo no localStorage/estado global do usuário.
+ * Prioridade segura:
+ * 1. `paramId` explícito (desde que não seja 'global'/'todos' e o usuário tenha acesso, quando fornecido).
+ * 2. Seleção ativa em `localStorage` (`infport_condominio_ativo_id`) ou `window.idCondominioAtivo`,
+ *    validada contra a lista de condomínios autorizados do operador (ou Super Admin Global verificado).
+ * 3. `usuarioLogado.condominio_id` (quando válido).
+ * 4. Primeiro condomínio autorizado em `usuarioLogado.listaCondominios`.
  */
 export function getCondominioAtivoId(usuarioLogado?: any, paramId?: string | null): string {
-  const p = String(paramId || '').trim();
-  if (p && p !== 'global' && p !== 'todos') return p;
+  const isGlobalValid = (val: string) => {
+    const t = String(val || '').trim();
+    const low = t.toLowerCase();
+    return Boolean(t && low !== 'global' && low !== 'todos' && low !== 'null' && low !== 'undefined');
+  };
 
-  const uId = String(usuarioLogado?.condominio_id || '').trim();
-  if (uId && uId !== 'global' && uId !== 'todos') return uId;
+  const isAuthorized = (cand: string): boolean => {
+    if (!isGlobalValid(cand)) return false;
+    if (!usuarioLogado) return true;
+    const isVerifiedGlobal =
+      usuarioLogado.id !== 'admin_master_root' &&
+      ((usuarioLogado.e_super_admin_global === true && usuarioLogado.global_admin_verificado === true) ||
+        (usuarioLogado.admin_global_registro?.ativo === true && usuarioLogado.condominio_id === null));
+    if (isVerifiedGlobal) return true;
+
+    const listaIds: string[] = [];
+    if (Array.isArray(usuarioLogado.condominios_autorizados)) {
+      usuarioLogado.condominios_autorizados.forEach((id: any) => {
+        if (isGlobalValid(String(id || ''))) listaIds.push(String(id).trim());
+      });
+    }
+    if (Array.isArray(usuarioLogado.listaCondominios)) {
+      usuarioLogado.listaCondominios.forEach((c: any) => {
+        const cid = typeof c === 'string' ? c : c?.id;
+        if (isGlobalValid(String(cid || ''))) listaIds.push(String(cid).trim());
+      });
+    }
+    if (isGlobalValid(usuarioLogado.condominio_id)) {
+      listaIds.push(String(usuarioLogado.condominio_id).trim());
+    }
+    if (isGlobalValid(usuarioLogado.condominio?.id)) {
+      listaIds.push(String(usuarioLogado.condominio.id).trim());
+    }
+
+    // Se o objeto usuarioLogado ainda não possui lista resolvida mas tem algum vínculo, respeita
+    if (listaIds.length === 0) return false;
+    return listaIds.includes(cand.trim());
+  };
+
+  const p = String(paramId || '').trim();
+  if (isGlobalValid(p) && isAuthorized(p)) return p;
 
   try {
-    const local = localStorage.getItem('infport_condominio_ativo_id') || (typeof window !== 'undefined' ? (window as any)?.idCondominioAtivo : '');
+    const local =
+      localStorage.getItem('infport_condominio_ativo_id') ||
+      (typeof window !== 'undefined' ? (window as any)?.idCondominioAtivo : '');
     const lTrim = String(local || '').trim();
-    if (lTrim && lTrim !== 'global' && lTrim !== 'todos') return lTrim;
+    if (isGlobalValid(lTrim) && isAuthorized(lTrim)) {
+      return lTrim;
+    }
   } catch (e) {}
 
-  const primeiro = (usuarioLogado?.listaCondominios || []).find((c: any) => c.id && c.id !== 'global' && c.id !== 'todos');
+  const uId = String(usuarioLogado?.condominio_id || '').trim();
+  if (isGlobalValid(uId)) return uId;
+
+  const primeiro = (usuarioLogado?.listaCondominios || []).find((c: any) => isGlobalValid(c?.id));
   if (primeiro?.id) return String(primeiro.id).trim();
 
   return '';
@@ -333,6 +380,37 @@ export function saoUnidadesEquivalentes(numA: string | null | undefined, numB: s
   }
   
   return false;
+}
+
+/**
+ * Verifica se dois identificadores de bloco/torre são equivalentes dentro da estrutura do condomínio.
+ * Em condomínios de blocos ou torres, bloco vazio NÃO funciona como curinga para evitar mistura entre blocos.
+ */
+export function saoBlocosCompativeis(
+  blocoA: string | null | undefined,
+  blocoB: string | null | undefined,
+  tipoEstrutura?: string
+): boolean {
+  if (isEstruturaCasas(tipoEstrutura) || isEstruturaNumeralDireto(tipoEstrutura)) {
+    return true;
+  }
+
+  const norm = (val: string | null | undefined): string => {
+    const raw = String(val || '').trim().toLowerCase();
+    if (!raw) return '';
+    return raw.replace(/^(bloco|torre|bl|tr)\.?\s*/i, '').trim();
+  };
+
+  const a = String(blocoA || '').trim().toLowerCase();
+  const b = String(blocoB || '').trim().toLowerCase();
+
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  if (a === b) return true;
+
+  const aNorm = norm(blocoA);
+  const bNorm = norm(blocoB);
+  return Boolean(aNorm && bNorm && aNorm === bNorm);
 }
 
 /**

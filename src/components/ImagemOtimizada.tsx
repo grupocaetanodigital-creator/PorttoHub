@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ImageIcon, ZoomIn, RefreshCw, X, Download } from 'lucide-react';
 import { obterImagemCacheada, salvarImagemCache } from '../services/imageCacheService';
+import { resolverUrlFotoPrivada } from '../services/imageUtils';
 
 interface ImagemOtimizadaProps extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   src?: string | null;
@@ -55,19 +56,29 @@ export const ImagemOtimizada: React.FC<ImagemOtimizadaProps> = ({
     setCarregando(true);
     setErro(false);
 
-    // 1. Tenta recuperar imagem do CacheStorage local para carregamento instantâneo
+    // 1. Resolve URL privada/assinada (ou mantém base64/legada) e checa CacheStorage
     let cancelado = false;
-    obterImagemCacheada(src).then((cachedBlobUrl) => {
-      if (cancelado || !montadoRef.current) return;
-      if (cachedBlobUrl) {
-        setUrlEfetiva(cachedBlobUrl);
-        setEmCacheLocal(true);
-        setCarregando(false);
-      } else {
-        setUrlEfetiva(src);
-        setEmCacheLocal(false);
-      }
-    });
+    resolverUrlFotoPrivada(src)
+      .then(async (urlResolvida) => {
+        if (cancelado || !montadoRef.current) return;
+        const alvo = urlResolvida || src;
+        const cachedBlobUrl = await obterImagemCacheada(alvo);
+        if (cancelado || !montadoRef.current) return;
+        if (cachedBlobUrl) {
+          setUrlEfetiva(cachedBlobUrl);
+          setEmCacheLocal(true);
+          setCarregando(false);
+        } else {
+          setUrlEfetiva(alvo);
+          setEmCacheLocal(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelado && montadoRef.current) {
+          setUrlEfetiva(src);
+          setEmCacheLocal(false);
+        }
+      });
 
     return () => {
       cancelado = true;
@@ -78,8 +89,9 @@ export const ImagemOtimizada: React.FC<ImagemOtimizadaProps> = ({
     setCarregando(false);
     setErro(false);
     // Salva no CacheStorage para permitir acesso offline futuro
-    if (src && !emCacheLocal) {
-      salvarImagemCache(src);
+    const urlParaCache = urlEfetiva || src;
+    if (urlParaCache && !emCacheLocal) {
+      salvarImagemCache(urlParaCache);
     }
   };
 
@@ -90,9 +102,19 @@ export const ImagemOtimizada: React.FC<ImagemOtimizadaProps> = ({
 
   const tentarRecarregar = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!src) return;
     setErro(false);
     setCarregando(true);
-    setUrlEfetiva(src ? `${src}${src.includes('?') ? '&' : '?'}retry=${Date.now()}` : null);
+    resolverUrlFotoPrivada(src, true)
+      .then((novaUrl) => {
+        if (!montadoRef.current) return;
+        const base = novaUrl || src;
+        setUrlEfetiva(base.startsWith('data:') || base.startsWith('blob:') ? base : `${base}${base.includes('?') ? '&' : '?'}retry=${Date.now()}`);
+      })
+      .catch(() => {
+        if (!montadoRef.current) return;
+        setUrlEfetiva(`${src}${src.includes('?') ? '&' : '?'}retry=${Date.now()}`);
+      });
   };
 
   if (!src || erro) {
@@ -173,9 +195,9 @@ export const ImagemOtimizada: React.FC<ImagemOtimizadaProps> = ({
                 {alt || 'Visualização do Comprovante / Foto'}
               </span>
               <div className="flex items-center gap-2">
-                {src && (
+                {(urlEfetiva || src) && (
                   <a
-                    href={src}
+                    href={urlEfetiva || src}
                     download="comprovante-porttohub.jpg"
                     target="_blank"
                     rel="noreferrer"

@@ -51,6 +51,9 @@ export function useLocalFirstSync<T extends { id: any; condominio_id?: string; u
   const dadosRef = useRef<T[]>([]);
   dadosRef.current = dados;
 
+  const condominioIdAtualRef = useRef<string | undefined>(condominioId);
+  condominioIdAtualRef.current = condominioId;
+
   const condoIdValido = Boolean(
     condominioId && 
     condominioId !== 'todos' && 
@@ -62,7 +65,7 @@ export function useLocalFirstSync<T extends { id: any; condominio_id?: string; u
    * 1. Carga Instantânea (0ms) a partir do IndexedDB / RAM
    */
   const carregarDoBancoLocal = useCallback(async () => {
-    if (!condominioId) {
+    if (!condoIdValido || !condominioId) {
       setDados([]);
       setCarregandoLocal(false);
       return;
@@ -70,14 +73,17 @@ export function useLocalFirstSync<T extends { id: any; condominio_id?: string; u
 
     try {
       const itensLocais = await obterDadosTabelaLocal<T>(tabela, condominioId);
+      if (condominioIdAtualRef.current !== condominioId) return;
       const filtrados = filtroCustomizado ? itensLocais.filter(filtroCustomizado) : itensLocais;
       setDados(filtrados);
     } catch (err) {
       console.warn(`[useLocalFirstSync] Erro ao carregar cache local de ${tabela}:`, err);
     } finally {
-      setCarregandoLocal(false);
+      if (condominioIdAtualRef.current === condominioId) {
+        setCarregandoLocal(false);
+      }
     }
-  }, [tabela, condominioId, filtroCustomizado]);
+  }, [tabela, condominioId, condoIdValido, filtroCustomizado]);
 
   /**
    * 2. Executa a sincronização Delta em Background
@@ -88,6 +94,7 @@ export function useLocalFirstSync<T extends { id: any; condominio_id?: string; u
     setSincronizandoDelta(true);
     try {
       const resultado = await sincronizarDeltaTabela<T>(tabela, condominioId, colunaChaveId);
+      if (condominioIdAtualRef.current !== condominioId) return;
       const filtrados = filtroCustomizado ? resultado.dadosAtualizados.filter(filtroCustomizado) : resultado.dadosAtualizados;
       setDados(filtrados);
       setUltimoSync(resultado.timestampSync);
@@ -95,7 +102,9 @@ export function useLocalFirstSync<T extends { id: any; condominio_id?: string; u
     } catch (err) {
       console.warn(`[useLocalFirstSync] Erro no Delta Sync de ${tabela}:`, err);
     } finally {
-      setSincronizandoDelta(false);
+      if (condominioIdAtualRef.current === condominioId) {
+        setSincronizandoDelta(false);
+      }
     }
   }, [tabela, condominioId, condoIdValido, colunaChaveId, filtroCustomizado]);
 
@@ -105,6 +114,7 @@ export function useLocalFirstSync<T extends { id: any; condominio_id?: string; u
   useEffect(() => {
     let ativo = true;
 
+    setDados([]);
     setCarregandoLocal(true);
     carregarDoBancoLocal().then(() => {
       if (ativo && condoIdValido) {
@@ -140,24 +150,27 @@ export function useLocalFirstSync<T extends { id: any; condominio_id?: string; u
           const tipo = payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE';
           const novo = payload.new as T;
           const antigo = payload.old as T;
+          const payloadCondo = (novo as any)?.condominio_id || (antigo as any)?.condominio_id;
 
-          console.log(`[Realtime LocalFirst] Evento ${tipo} em ${tabela}:`, novo || antigo);
+          if ((payloadCondo && payloadCondo !== condominioId) || condominioIdAtualRef.current !== condominioId) {
+            return;
+          }
 
           if (tipo === 'INSERT' && novo) {
-            await salvarItemLocal(tabela, novo);
+            await salvarItemLocal(tabela, novo, condominioId);
             setDados((prev) => {
               const semDuplicata = prev.filter((it) => String(it.id) !== String(novo.id));
               const atualizada = [novo, ...semDuplicata];
               return filtroCustomizado ? atualizada.filter(filtroCustomizado) : atualizada;
             });
           } else if (tipo === 'UPDATE' && novo) {
-            await salvarItemLocal(tabela, novo);
+            await salvarItemLocal(tabela, novo, condominioId);
             setDados((prev) => {
               const atualizada = prev.map((it) => (String(it.id) === String(novo.id) ? { ...it, ...novo } : it));
               return filtroCustomizado ? atualizada.filter(filtroCustomizado) : atualizada;
             });
           } else if (tipo === 'DELETE' && antigo) {
-            await excluirItemLocal(tabela, antigo.id);
+            await excluirItemLocal(tabela, antigo.id, condominioId);
             setDados((prev) => prev.filter((it) => String(it.id) !== String(antigo.id)));
           }
         }

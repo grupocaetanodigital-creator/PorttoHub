@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../services/supabase';
 import { registrarAtividade } from '../services/auditoriaService';
 import { carregarModulosCondominio, isModuloAtivo } from '../services/modulosService';
+import { isValidCondominioId, canAccessCondominio, extrairCondominioIdDeEvento } from '../services/tenantAuthService';
 import { 
   ShieldCheck, 
   Package, 
@@ -117,6 +118,22 @@ export default function PainelSindico({
   const [historico, setHistorico] = useState<any[]>([]);
   const [materiais, setMateriais] = useState<any[]>([]);
   const [manutencoes, setManutencoes] = useState<any[]>([]);
+  const loadSeqRef = useRef(0);
+
+  const limparTodosDadosSindico = () => {
+    setEncomendas([]);
+    setTotalEntreguesBanco(0);
+    setOcorrencias([]);
+    setRondas([]);
+    setChaves([]);
+    setChavesMovimentacoes([]);
+    setPrestadores([]);
+    setPorteiroTurnoAtual(null);
+    setCustodia([]);
+    setHistorico([]);
+    setMateriais([]);
+    setManutencoes([]);
+  };
 
   // Filtros internos por aba
   const [filtroEncomendas, setFiltroEncomendas] = useState<'todas' | 'pendentes' | 'entregues'>('pendentes');
@@ -158,17 +175,30 @@ export default function PainelSindico({
     return isModuloAtivo(moduloKey, flagsAtivas);
   };
 
-  // Sincroniza condomínio se mudar na prop ou se lista de condomínios for carregada
+  // Sincroniza condomínio se mudar na prop ou se evento global infport:condominio_alterado for emitido
   useEffect(() => {
     const idAlvo = condominioAtivo?.id || usuarioLogado?.condominio_id || (listaCondominios && listaCondominios[0]?.id);
-    if (idAlvo && (!condominioFiltro || (condominioAtivo?.id && condominioAtivo.id !== condominioFiltro))) {
+    if (isValidCondominioId(idAlvo) && canAccessCondominio(usuarioLogado, idAlvo) && idAlvo !== condominioFiltro) {
+      limparTodosDadosSindico();
       setCondominioFiltro(idAlvo);
     }
   }, [condominioAtivo?.id, usuarioLogado?.condominio_id, listaCondominios]);
 
+  useEffect(() => {
+    const onCondoAlterado = (e: any) => {
+      const novoId = extrairCondominioIdDeEvento(e);
+      if (isValidCondominioId(novoId) && canAccessCondominio(usuarioLogado, novoId)) {
+        limparTodosDadosSindico();
+        setCondominioFiltro(novoId);
+      }
+    };
+    window.addEventListener('infport:condominio_alterado', onCondoAlterado as EventListener);
+    return () => window.removeEventListener('infport:condominio_alterado', onCondoAlterado as EventListener);
+  }, [usuarioLogado]);
+
   // Carrega as feature flags do condomínio selecionado
   const carregarFlagsDoCondominio = async (idCondo: string) => {
-    if (!idCondo) return;
+    if (!isValidCondominioId(idCondo)) return;
     setFlagsLoading(true);
     try {
       const flags = await carregarModulosCondominio(idCondo);
@@ -186,7 +216,7 @@ export default function PainelSindico({
   // Disparar carga de flags e dados quando condomínio selecionado mudar
   useEffect(() => {
     const idCondo = condominioFiltro || usuarioLogado?.condominio_id || condominioAtivo?.id;
-    if (idCondo) {
+    if (isValidCondominioId(idCondo) && canAccessCondominio(usuarioLogado, idCondo)) {
       carregarFlagsDoCondominio(idCondo);
     }
   }, [condominioFiltro]);
@@ -218,205 +248,162 @@ export default function PainelSindico({
     }
   }, [flagsAtivas, abaAtiva]);
 
-  // Carrega todos os dados do condomínio para consulta, SOMENTE DOS MÓDULOS HABILITADOS
-  // Carrega todos os dados do condomínio para consulta (Histórico Completo)
+  // Carrega todos os dados do condomínio para consulta (Histórico Completo e 100% Isolado)
   const carregarDadosSindico = async () => {
-    setLoading(true);
+    const reqId = ++loadSeqRef.current;
     const idCondo = condominioFiltro || usuarioLogado?.condominio_id || condominioAtivo?.id;
+
+    if (!isValidCondominioId(idCondo) || !canAccessCondominio(usuarioLogado, idCondo)) {
+      limparTodosDadosSindico();
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
 
     try {
       // 1. Encomendas (mod02_gestao_encomendas) - HISTÓRICO COMPLETO EXCLUSIVO DO CONDOMÍNIO ATIVO
       if (moduloHabilitado('encomendas')) {
-        if (!idCondo || idCondo === 'global' || idCondo === 'todos') {
-          // Sem condomínio alvo definido, zera para não misturar dados de múltiplos locais
-          setEncomendas([]);
-          setTotalEntreguesBanco(0);
-        } else {
-          let itensCarregados: any[] = [];
+        let itensCarregados: any[] = [];
 
-          // Consulta 1: Tabela oficial 'encomendas_itens' e contagem exata de entregues no banco
-          try {
-            const [resItens, resCount] = await Promise.all([
-              supabase
-                .from('encomendas_itens')
-                .select('id, condominio_id, lote_re_id, status, created_at, destinatario, morador_nome, bloco, unidade, data_recebimento, data_retirada, data_hora_retirada, codigo_barras, codigo_rastreio, local_armazenamento, retirado_por, foto_etiqueta_url, foto_etiqueta')
-                .eq('condominio_id', idCondo)
-                .order('created_at', { ascending: false }),
-              supabase
-                .from('encomendas_itens')
-                .select('id', { count: 'exact', head: true })
-                .eq('condominio_id', idCondo)
-                .or('status.ilike.%entregue%,status.ilike.%retirad%,status.ilike.%baixad%')
-            ]);
+        try {
+          const [resItens, resCount] = await Promise.all([
+            supabase
+              .from('encomendas_itens')
+              .select('id, condominio_id, lote_re_id, status, created_at, destinatario, morador_nome, bloco, unidade, data_recebimento, data_retirada, data_hora_retirada, codigo_barras, codigo_rastreio, local_armazenamento, retirado_por, foto_etiqueta_url, foto_etiqueta')
+              .eq('condominio_id', idCondo)
+              .order('created_at', { ascending: false }),
+            supabase
+              .from('encomendas_itens')
+              .select('id', { count: 'exact', head: true })
+              .eq('condominio_id', idCondo)
+              .or('status.ilike.%entregue%,status.ilike.%retirad%,status.ilike.%baixad%')
+          ]);
 
-            if (!resItens.error && Array.isArray(resItens.data)) {
-              // Garante em memória que SOMENTE registros deste condomínio permaneçam
-              itensCarregados = resItens.data.filter((item: any) => String(item.condominio_id) === String(idCondo));
-            }
-            if (!resCount.error && typeof resCount.count === 'number') {
-              setTotalEntreguesBanco(resCount.count);
-            }
-          } catch (eEnc) {
-            console.warn('[PainelSindico] Falha na consulta de encomendas_itens:', eEnc);
+          if (reqId !== loadSeqRef.current) return;
+
+          if (!resItens.error && Array.isArray(resItens.data)) {
+            itensCarregados = resItens.data.filter((item: any) => String(item.condominio_id) === String(idCondo));
           }
-
-          // Consulta 2: Se a tabela principal não retornou nada, tenta a tabela legada 'encomendas' com o MESMO filtro estrito
-          if (itensCarregados.length === 0) {
-            try {
-              const { data: legacyEnc, error: errLeg } = await supabase
-                .from('encomendas')
-                .select('*')
-                .eq('condominio_id', idCondo)
-                .order('created_at', { ascending: false });
-
-              if (!errLeg && Array.isArray(legacyEnc) && legacyEnc.length > 0) {
-                itensCarregados = legacyEnc.filter((item: any) => String(item.condominio_id) === String(idCondo));
-              }
-            } catch (eLeg) {
-              // Tabela legada opcional
-            }
+          if (!resCount.error && typeof resCount.count === 'number') {
+            setTotalEntreguesBanco(resCount.count);
           }
-
-          // Consulta 3: Cache local específico DESTE condomínio (IndexedDB / localStorage)
-          if (itensCarregados.length === 0) {
-            try {
-              const rawLocal = localStorage.getItem(`infport_cache_retidos_${idCondo}`);
-              if (rawLocal) {
-                const parsedLocal = JSON.parse(rawLocal);
-                if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
-                  itensCarregados = parsedLocal.filter((item: any) => String(item.condominio_id) === String(idCondo));
-                }
-              }
-            } catch (eLocal) {}
-          }
-
-          // Atribui com exatidão - NUNCA gera itens falsos ou mock de demonstração!
-          setEncomendas(itensCarregados);
+        } catch (eEnc) {
+          console.warn('[PainelSindico] Falha na consulta de encomendas_itens:', eEnc);
         }
+
+        if (itensCarregados.length === 0) {
+          try {
+            const { data: legacyEnc, error: errLeg } = await supabase
+              .from('encomendas')
+              .select('*')
+              .eq('condominio_id', idCondo)
+              .order('created_at', { ascending: false });
+
+            if (reqId !== loadSeqRef.current) return;
+
+            if (!errLeg && Array.isArray(legacyEnc) && legacyEnc.length > 0) {
+              itensCarregados = legacyEnc.filter((item: any) => String(item.condominio_id) === String(idCondo));
+            }
+          } catch {}
+        }
+
+        if (itensCarregados.length === 0) {
+          try {
+            const rawLocal = localStorage.getItem(`infport_cache_retidos_${idCondo}`);
+            if (rawLocal) {
+              const parsedLocal = JSON.parse(rawLocal);
+              if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
+                itensCarregados = parsedLocal.filter((item: any) => String(item.condominio_id) === String(idCondo));
+              }
+            }
+          } catch {}
+        }
+
+        setEncomendas(itensCarregados);
       } else {
         setEncomendas([]);
+        setTotalEntreguesBanco(0);
       }
 
-      // 2. Ocorrências (mod08_livro_ocorrencias) - HISTÓRICO COMPLETO
+      // 2. Ocorrências (mod08_livro_ocorrencias) - ZERO DADOS MOCKADOS
       if (moduloHabilitado('ocorrencias')) {
-        let qOcorr = supabase
+        const { data: dataOcorr } = await supabase
           .from('ocorrencias')
           .select('id, condominio_id, titulo, prioridade, gravidade, status, created_at, data_hora, tipo, unidade_bloco, unidade, bloco, operador_nome, foto_url, descricao')
+          .eq('condominio_id', idCondo)
           .order('created_at', { ascending: false });
-        if (idCondo) qOcorr = qOcorr.eq('condominio_id', idCondo);
-        const { data: dataOcorr } = await qOcorr;
-        if (dataOcorr && dataOcorr.length > 0) {
-          setOcorrencias(dataOcorr);
-        } else {
-          setOcorrencias([
-            { id: 'oc-1', titulo: 'Vazamento contínuo na prumada da garagem G2', prioridade: 'Urgente', gravidade: 'Alta', status: 'Pendente', tipo: 'Infraestrutura', unidade_bloco: 'Garagem G2 / Vaga 44', unidade: 'G2', bloco: 'Garagem', operador_nome: 'Porteiro Joel', descricao: 'Identificado gotejamento volumoso vindo da tubulação de água pluvial sobre o veículo da vaga 44. Manutenção acionada em caráter emergencial.', created_at: new Date(Date.now() - 3600000 * 2).toISOString(), data_hora: new Date(Date.now() - 3600000 * 2).toISOString() },
-            { id: 'oc-2', titulo: 'Barulho excessivo e som alto após as 22h', prioridade: 'Média', gravidade: 'Média', status: 'Pendente', tipo: 'Regimento Interno', unidade_bloco: 'Bloco B - Apto 502', unidade: '502', bloco: 'B', operador_nome: 'Vigilante Santos', descricao: 'Reclamação de vizinhos sobre som alto no apto 502. Notificação verbal emitida por interfone aguardando termo de ciência do síndico.', created_at: new Date(Date.now() - 3600000 * 5).toISOString(), data_hora: new Date(Date.now() - 3600000 * 5).toISOString() },
-            { id: 'oc-3', titulo: 'Portão da clausura de pedestres com desarme elétrico', prioridade: 'Alta', gravidade: 'Alta', status: 'Resolvido', tipo: 'Segurança', unidade_bloco: 'Eclusa Principal', unidade: 'Portaria', bloco: 'Térreo', operador_nome: 'Supervisor Marcos', descricao: 'A mola eletromagnética não travava no ciclo automático. Técnico da serralheria esteve no local e calibrou o sensor magnético com sucesso.', created_at: new Date(Date.now() - 3600000 * 30).toISOString(), data_hora: new Date(Date.now() - 3600000 * 30).toISOString() }
-          ]);
-        }
+        if (reqId !== loadSeqRef.current) return;
+        setOcorrencias((dataOcorr || []).filter((r: any) => String(r.condominio_id) === String(idCondo)));
       } else {
         setOcorrencias([]);
       }
 
       // 3. Rondas Execução (mod07_gestao_ronda)
       if (moduloHabilitado('rondas')) {
-        let qRondas = supabase
+        const { data: dataRondas } = await supabase
           .from('rondas_execucao')
           .select('id, condominio_id, operador_id, operador_nome, status, data_inicio, data_fim, hora_inicio, hora_fim, pontos_totais, pontos_lidos, observacoes, created_at')
+          .eq('condominio_id', idCondo)
           .order('created_at', { ascending: false });
-        if (idCondo) qRondas = qRondas.eq('condominio_id', idCondo);
-        const { data: dataRondas } = await qRondas;
-        setRondas(dataRondas || []);
+        if (reqId !== loadSeqRef.current) return;
+        setRondas((dataRondas || []).filter((r: any) => String(r.condominio_id) === String(idCondo)));
       } else {
         setRondas([]);
       }
 
-      // 4. Chaves (mod05_quadro_chaves) - QUADRO E HISTÓRICO COMPLETO
+      // 4. Chaves (mod05_quadro_chaves) - ZERO DADOS MOCKADOS
       if (moduloHabilitado('chaves')) {
-        let qChaves = supabase
-          .from('chaves')
-          .select('id, condominio_id, codigo_chave, nome_chave, status, localizacao, setor, bloco, unidade, observacoes, created_at')
-          .order('codigo_chave', { ascending: true });
-        if (idCondo) qChaves = qChaves.eq('condominio_id', idCondo);
-        const { data: dataChaves } = await qChaves;
-        
-        let qMovChaves = supabase
-          .from('movimentacao_chaves')
-          .select('id, chave_id, condominio_id, tipo_retirante, nome_retirante, documento_retirante, telefone_retirante, empresa_retirante, unidade_retirante, bloco_retirante, operador_retirada_id, operador_retirada_nome, data_hora_retirada, data_hora_devolucao, previsao_devolucao, status, observacoes_retirada, chaves(id, codigo_chave, nome_chave)')
-          .order('created_at', { ascending: false });
-        if (idCondo) qMovChaves = qMovChaves.eq('condominio_id', idCondo);
-        const { data: dataMovChaves } = await qMovChaves;
+        const [{ data: dataChaves }, { data: dataMovChaves }] = await Promise.all([
+          supabase
+            .from('chaves')
+            .select('id, condominio_id, codigo_chave, nome_chave, status, localizacao, setor, bloco, unidade, observacoes, created_at')
+            .eq('condominio_id', idCondo)
+            .order('codigo_chave', { ascending: true }),
+          supabase
+            .from('movimentacao_chaves')
+            .select('id, chave_id, condominio_id, tipo_retirante, nome_retirante, documento_retirante, telefone_retirante, empresa_retirante, unidade_retirante, bloco_retirante, operador_retirada_id, operador_retirada_nome, data_hora_retirada, data_hora_devolucao, previsao_devolucao, status, observacoes_retirada, chaves(id, codigo_chave, nome_chave)')
+            .eq('condominio_id', idCondo)
+            .order('created_at', { ascending: false })
+        ]);
+        if (reqId !== loadSeqRef.current) return;
 
-        if (dataChaves && dataChaves.length > 0) {
-          setChaves(dataChaves);
-        } else {
-          setChaves([
-            { id: 'ch-1', codigo_chave: 'CH-01', nome_chave: 'Casa de Máquinas dos Elevadores', status: 'Em Uso', setor: 'Cobertura', localizacao: 'Painel Superior', observacoes: 'Retirada para manutenção Atlas Schindler', created_at: new Date().toISOString() },
-            { id: 'ch-2', codigo_chave: 'CH-02', nome_chave: 'Centro de Medição Elétrica (Barramento)', status: 'Em Uso', setor: 'Subsolo G1', localizacao: 'Quadro Geral', observacoes: 'Com eletricista credenciado Enel', created_at: new Date().toISOString() },
-            { id: 'ch-3', codigo_chave: 'CH-03', nome_chave: 'Salão de Festas Principal', status: 'Disponível', setor: 'Térreo Social', localizacao: 'Claviculário A-03', observacoes: 'Chave e controle de iluminação testados', created_at: new Date().toISOString() },
-            { id: 'ch-4', codigo_chave: 'CH-04', nome_chave: 'Academia & Espaço Fitness', status: 'Disponível', setor: 'Mezanino', localizacao: 'Claviculário A-04', observacoes: 'Livre acesso conforme regras', created_at: new Date().toISOString() },
-            { id: 'ch-5', codigo_chave: 'CH-05', nome_chave: 'Bomba de Recalque & Cisterna', status: 'Disponível', setor: 'Subsolo G2', localizacao: 'Claviculário B-01', observacoes: 'Acesso restrito ao zelador', created_at: new Date().toISOString() }
-          ]);
-        }
-
-        if (dataMovChaves && dataMovChaves.length > 0) {
-          setChavesMovimentacoes(dataMovChaves);
-        } else {
-          setChavesMovimentacoes([
-            { id: 'mch-1', chave_id: 'ch-1', nome_retirante: 'Carlos Souza (Técnico Atlas)', tipo_retirante: 'Prestador', empresa_retirante: 'Atlas Schindler', telefone_retirante: '(11) 98822-1029', data_hora_retirada: new Date(Date.now() - 3600000 * 2).toISOString(), data_hora_devolucao: null, status: 'Em Uso', operador_retirada_nome: 'Porteiro Joel', chaves: { id: 'ch-1', codigo_chave: 'CH-01', nome_chave: 'Casa de Máquinas dos Elevadores' }, created_at: new Date(Date.now() - 3600000 * 2).toISOString() },
-            { id: 'mch-2', chave_id: 'ch-2', nome_retirante: 'Valdemir Souza (Eletricista)', tipo_retirante: 'Prestador', empresa_retirante: 'EletroServ', telefone_retirante: '(11) 97711-4455', data_hora_retirada: new Date(Date.now() - 3600000 * 1.5).toISOString(), data_hora_devolucao: null, status: 'Em Uso', operador_retirada_nome: 'Porteiro Joel', chaves: { id: 'ch-2', codigo_chave: 'CH-02', nome_chave: 'Centro de Medição Elétrica' }, created_at: new Date(Date.now() - 3600000 * 1.5).toISOString() },
-            { id: 'mch-3', chave_id: 'ch-3', nome_retirante: 'Mariana Costa (Moradora 304)', tipo_retirante: 'Morador', unidade_retirante: '304', bloco_retirante: 'A', data_hora_retirada: new Date(Date.now() - 3600000 * 26).toISOString(), data_hora_devolucao: new Date(Date.now() - 3600000 * 20).toISOString(), status: 'Devolvida', operador_retirada_nome: 'Porteiro Silva', chaves: { id: 'ch-3', codigo_chave: 'CH-03', nome_chave: 'Salão de Festas Principal' }, created_at: new Date(Date.now() - 3600000 * 26).toISOString() }
-          ]);
-        }
+        setChaves((dataChaves || []).filter((r: any) => String(r.condominio_id) === String(idCondo)));
+        setChavesMovimentacoes((dataMovChaves || []).filter((r: any) => String(r.condominio_id) === String(idCondo)));
       } else {
         setChaves([]);
         setChavesMovimentacoes([]);
       }
 
-      // 5. Prestadores (mod10_prestadores_servico) - TODOS CADASTRADOS & PRESENTES
+      // 5. Prestadores (mod10_prestadores_servico)
       if (moduloHabilitado('prestadores')) {
-        let qPrest = supabase
+        const { data: dataPrest, error: errPrest } = await supabase
           .from('prestadores')
           .select('id, condominio_id, nome_profissional, status_acesso, created_at, perfil_acesso, unidade, bloco, empresa, documento, cracha_atribuido, data_hora_entrada, data_hora_saida, foto_rosto, foto_documento, tipo_validade, data_validade_fim, data_validade_inicio, limite_permanencia_ate, ativo')
+          .eq('condominio_id', idCondo)
           .order('created_at', { ascending: false });
-        if (idCondo) qPrest = qPrest.eq('condominio_id', idCondo);
-        const { data: dataPrest, error: errPrest } = await qPrest;
+        if (reqId !== loadSeqRef.current) return;
         if (errPrest) {
           console.warn('[PainelSindico] Erro ao carregar prestadores do Supabase:', errPrest);
         }
-        setPrestadores(dataPrest || []);
+        setPrestadores((dataPrest || []).filter((r: any) => String(r.condominio_id) === String(idCondo)));
       } else {
         setPrestadores([]);
       }
 
-      // 6. Porteiro que assumiu o posto na Troca de Turno (tabela passagens_posto)
+      // 6. Porteiro que assumiu o posto na Troca de Turno (EXCLUSIVO deste condomínio — sem fallback global)
       try {
-        let passagensQuery = supabase
+        const { data: dataPass } = await supabase
           .from('passagens_posto')
           .select('id, codigo, condominio_id, operador_entrante_nome, operador_sainte_nome, created_at, data_hora, status')
-          .order('created_at', { ascending: false });
+          .eq('condominio_id', idCondo)
+          .order('created_at', { ascending: false })
+          .limit(1);
 
-        if (idCondo && idCondo !== 'todos' && idCondo !== 'global') {
-          passagensQuery = passagensQuery.eq('condominio_id', idCondo);
-        }
+        if (reqId !== loadSeqRef.current) return;
 
-        let { data: dataPass } = await passagensQuery.limit(1);
-
-        // Se filtrou por condomínio e não encontrou registro específico, busca a última troca de turno geral no banco
-        if ((!dataPass || dataPass.length === 0) && idCondo && idCondo !== 'todos' && idCondo !== 'global') {
-          const { data: dataPassGeral } = await supabase
-            .from('passagens_posto')
-            .select('id, codigo, condominio_id, operador_entrante_nome, operador_sainte_nome, created_at, data_hora, status')
-            .order('created_at', { ascending: false })
-            .limit(1);
-          if (dataPassGeral && dataPassGeral.length > 0) {
-            dataPass = dataPassGeral;
-          }
-        }
-
-        if (dataPass && dataPass.length > 0) {
+        if (dataPass && dataPass.length > 0 && String(dataPass[0].condominio_id) === String(idCondo)) {
           const ult = dataPass[0];
-          // Quem assumiu o posto na troca de turno é o operador_entrante_nome
           const nomeEntrante = ult.operador_entrante_nome?.trim() || ult.operador_sainte_nome?.trim();
           if (nomeEntrante) {
             let turnoNome = 'Plantão Ativo';
@@ -448,75 +435,54 @@ export default function PainelSindico({
         setPorteiroTurnoAtual(null);
       }
 
-      // 7. Custódia (mod03_custodia_itens) - HISTÓRICO COMPLETO
+      // 7. Custódia (mod03_custodia_itens) - ZERO DADOS MOCKADOS
       if (moduloHabilitado('custodia')) {
-        let qCust = supabase
+        const { data: dataCust } = await supabase
           .from('custodia')
           .select('id, condominio_id, status, created_at, descricao, codigo, codigo_custodia, fluxo, origem, destino, deixado_por, recebedor_nome, data_hora_entrada, data_hora_saida, local_armazenamento, foto_url, foto_entrada_url, foto_saida_url')
+          .eq('condominio_id', idCondo)
           .order('created_at', { ascending: false });
-        if (idCondo) qCust = qCust.eq('condominio_id', idCondo);
-        const { data: dataCust } = await qCust;
-        if (dataCust && dataCust.length > 0) {
-          setCustodia(dataCust);
-        } else {
-          setCustodia([
-            { id: 'cst-1', codigo_custodia: 'CUST-8819', descricao: 'Envelope com contrato de locação e chaves reserva', fluxo: 'M-T', origem_nome_doc: 'Dra. Beatriz Toledo (Proprietária)', destino_nome_doc: 'Novo Inquilino Dr. Fábio', local_armazenamento: 'Gaveta Cofre Guarita', status: 'Guardado', data_hora_entrada: new Date(Date.now() - 3600000 * 6).toISOString(), data_hora_saida: null, created_at: new Date(Date.now() - 3600000 * 6).toISOString() },
-            { id: 'cst-2', codigo_custodia: 'CUST-8820', descricao: 'Molho com 3 controles remotos do portão de garagem', fluxo: 'T-M', origem_nome_doc: 'Zeladoria Geral', destino_nome_doc: 'Morador Apto 402 Bloco A', local_armazenamento: 'Bancada Portaria', status: 'Guardado', data_hora_entrada: new Date(Date.now() - 3600000 * 14).toISOString(), data_hora_saida: null, created_at: new Date(Date.now() - 3600000 * 14).toISOString() },
-            { id: 'cst-3', codigo_custodia: 'CUST-8821', descricao: 'Caixa de ferramentas do técnico de refrigeração', fluxo: 'T-T', origem_nome_doc: 'ArFrio Assistência', destino_nome_doc: 'Técnico Plantão Noturno', local_armazenamento: 'DML Portaria', status: 'Guardado', data_hora_entrada: new Date(Date.now() - 3600000 * 20).toISOString(), data_hora_saida: null, created_at: new Date(Date.now() - 3600000 * 20).toISOString() },
-            { id: 'cst-4', codigo_custodia: 'CUST-8815', descricao: 'Documento CNH esquecido na recepção de visitantes', fluxo: 'M-M', origem_nome_doc: 'Visitante Marcos L.', destino_nome_doc: 'Retirada pelo Titular', local_armazenamento: 'Gaveta A', status: 'Retirado', data_hora_entrada: new Date(Date.now() - 3600000 * 48).toISOString(), data_hora_saida: new Date(Date.now() - 3600000 * 24).toISOString(), created_at: new Date(Date.now() - 3600000 * 48).toISOString() }
-          ]);
-        }
+        if (reqId !== loadSeqRef.current) return;
+        setCustodia((dataCust || []).filter((r: any) => String(r.condominio_id) === String(idCondo)));
       } else {
         setCustodia([]);
       }
 
       // 8. Histórico Absoluto (mod12_historico_absoluto)
       if (moduloHabilitado('historico_absoluto')) {
-        let qHist = supabase
+        const { data: dataHist } = await supabase
           .from('historico_absoluto')
           .select('id, condominio_id, modulo, acao, descricao, criado_em, operador_nome')
+          .eq('condominio_id', idCondo)
           .order('criado_em', { ascending: false });
-        if (idCondo) qHist = qHist.eq('condominio_id', idCondo);
-        const { data: dataHist } = await qHist;
-        setHistorico(dataHist || []);
+        if (reqId !== loadSeqRef.current) return;
+        setHistorico((dataHist || []).filter((r: any) => String(r.condominio_id) === String(idCondo)));
       } else {
         setHistorico([]);
       }
 
-      // 9. Materiais (mod04_materiais_posto) - INVENTÁRIO COMPLETO
+      // 9. Materiais (mod04_materiais_posto) - ZERO DADOS MOCKADOS
       if (moduloHabilitado('materiais')) {
-        let qMat = supabase
+        const { data: dataMat } = await supabase
           .from('materiais_posto')
           .select('id, condominio_id, nome, quantidade, status, estado, categoria, condicao, observacao, observacao_avaria, foto_url, foto_avaria_url')
+          .eq('condominio_id', idCondo)
           .order('nome', { ascending: true });
-        if (idCondo) qMat = qMat.eq('condominio_id', idCondo);
-        const { data: dataMat } = await qMat;
-        if (dataMat && dataMat.length > 0) {
-          setMateriais(dataMat);
-        } else {
-          setMateriais([
-            { id: 'mat-1', nome: 'Rádio Comunicador HT Motorola Talkabout (Posto 01)', categoria: 'Comunicação', quantidade: 1, estado: 'Perfeito', condicao: 'Bom', observacao: 'Bateria carregada em base dock', created_at: new Date().toISOString() },
-            { id: 'mat-2', nome: 'Rádio Comunicador HT Motorola Talkabout (Ronda Externa)', categoria: 'Comunicação', quantidade: 1, estado: 'Avariado', condicao: 'Avaria', observacao_avaria: 'Botão PTT com mau contato e chiado intermitente na antena.', observacao: 'Encaminhado para assistência técnica pelo zelador', created_at: new Date().toISOString() },
-            { id: 'mat-3', nome: 'Lanterna Tática LED Recarregável 2000 Lumens', categoria: 'Ronda Noturna', quantidade: 2, estado: 'Perfeito', condicao: 'Bom', observacao: 'Ambas em suporte com carregador 12V', created_at: new Date().toISOString() },
-            { id: 'mat-4', nome: 'Colete Reflexivo de Alta Visibilidade (Tamanho G)', categoria: 'EPI / Segurança', quantidade: 4, estado: 'Perfeito', condicao: 'Bom', observacao: 'Higienizados no armário de serviço', created_at: new Date().toISOString() },
-            { id: 'mat-5', nome: 'Bastão Vigia Ronda Eletrônica Touch iButton', categoria: 'Equipamento', quantidade: 1, estado: 'Em Manutenção', condicao: 'Manutenção', observacao_avaria: 'Sensor magnético não bipando no leitor do Bloco C.', observacao: 'Aguardando troca de pilha de lítio', created_at: new Date().toISOString() },
-            { id: 'mat-6', nome: 'Detector Manual de Metais Garret Portaria', categoria: 'Controle de Acesso', quantidade: 1, estado: 'Perfeito', condicao: 'Bom', observacao: 'Sensibilidade regulada e calibrada', created_at: new Date().toISOString() },
-            { id: 'mat-7', nome: 'Kit Primeiros Socorros Maleta Posto', categoria: 'Segurança Médica', quantidade: 1, estado: 'Perfeito', condicao: 'Bom', observacao: 'Itens dentro do prazo de validade', created_at: new Date().toISOString() }
-          ]);
-        }
+        if (reqId !== loadSeqRef.current) return;
+        setMateriais((dataMat || []).filter((r: any) => String(r.condominio_id) === String(idCondo)));
       } else {
         setMateriais([]);
       }
 
       // 10. Manutenções (mod06_gestao_manutencao)
       if (moduloHabilitado('manutencao')) {
-        let qMan = supabase
+        const { data: dataMan } = await supabase
           .from('chamados_manutencao')
           .select('id, condominio_id, titulo, status, prioridade, created_at, setor, localizacao, categoria, descricao, foto_antes_url, foto_depois_url, operador_abertura')
+          .eq('condominio_id', idCondo)
           .order('created_at', { ascending: false });
-        if (idCondo) qMan = qMan.eq('condominio_id', idCondo);
-        const { data: dataMan } = await qMan;
-        setManutencoes(dataMan || []);
+        if (reqId !== loadSeqRef.current) return;
+        setManutencoes((dataMan || []).filter((r: any) => String(r.condominio_id) === String(idCondo)));
       } else {
         setManutencoes([]);
       }
@@ -525,20 +491,22 @@ export default function PainelSindico({
     } catch (err: any) {
       console.warn('Erro ao carregar dados do síndico:', err.message);
     } finally {
-      setLoading(false);
+      if (reqId === loadSeqRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    // Ao trocar ou atualizar condomínio, limpa os dados anteriores para evitar qualquer mistura visual
-    setEncomendas([]);
+    // Limpa integralmente todos os estados ao trocar de condomínio antes de iniciar nova carga
+    limparTodosDadosSindico();
     carregarDadosSindico();
 
     const handleSync = () => carregarDadosSindico();
     const handleEncomendasUpdate = (evt: any) => {
       const condoEvt = evt?.detail?.condominioId;
       const idAtual = condominioFiltro || usuarioLogado?.condominio_id || condominioAtivo?.id;
-      if (!condoEvt || !idAtual || String(condoEvt) === String(idAtual)) {
+      if (condoEvt && idAtual && String(condoEvt) === String(idAtual)) {
         carregarDadosSindico();
       }
     };
@@ -551,29 +519,39 @@ export default function PainelSindico({
     const idCondo = condominioFiltro || usuarioLogado?.condominio_id || condominioAtivo?.id;
     let canal: any = null;
 
-    if (idCondo && idCondo !== 'global' && idCondo !== 'todos') {
+    if (isValidCondominioId(idCondo) && canAccessCondominio(usuarioLogado, idCondo)) {
+      const aoReceberPayload = (payload: any) => {
+        const regCondo = payload?.new?.condominio_id || payload?.old?.condominio_id;
+        if (regCondo && String(regCondo) !== String(idCondo)) return;
+        carregarDadosSindico();
+      };
+
       canal = supabase
         .channel(`sindico_realtime_${idCondo}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'ocorrencias' }, () => {
-          carregarDadosSindico();
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'chamados_manutencao' }, () => {
-          carregarDadosSindico();
-        })
-        .on('postgres_changes', { 
-          event: '*', 
-          schema: 'public', 
-          table: 'encomendas_itens'
-        }, () => {
-          carregarDadosSindico();
-        })
-        .on('postgres_changes', { 
-          event: '*', 
-          schema: 'public', 
-          table: 'lotes_re'
-        }, () => {
-          carregarDadosSindico();
-        })
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'ocorrencias',
+          filter: `condominio_id=eq.${idCondo}`
+        }, aoReceberPayload)
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'chamados_manutencao',
+          filter: `condominio_id=eq.${idCondo}`
+        }, aoReceberPayload)
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'encomendas_itens',
+          filter: `condominio_id=eq.${idCondo}`
+        }, aoReceberPayload)
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'lotes_re',
+          filter: `condominio_id=eq.${idCondo}`
+        }, aoReceberPayload)
         .subscribe();
     }
 
@@ -870,8 +848,8 @@ export default function PainelSindico({
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
                   </span>
                   <span className="text-slate-300 text-[11px]">Porteiro no Turno:</span>
-                  <strong className="text-white font-bold truncate max-w-[200px] sm:max-w-[320px]">
-                    {porteiroTurnoAtual?.nome || 'Nenhum plantonista registrado'}
+                  <strong className="text-white font-bold truncate max-w-[260px] sm:max-w-[420px]">
+                    {porteiroTurnoAtual?.nome || 'Não há passagem de posto registrada para este condomínio.'}
                   </strong>
                 </div>
 

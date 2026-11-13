@@ -740,9 +740,12 @@ export function obterPermissoesOperador(operador: any): PermissoesModulo {
     }
   }
 
-  // 3. Tenta localizar na lista cacheada de operadores locais
+  // 3. Tenta localizar na lista cacheada do condomínio do operador (nunca chave global compartilhada)
   try {
-    const rawOps = localStorage.getItem('infport_cache_global_operadores') || localStorage.getItem('infport_cache_local_operadores');
+    const condoScope = operador.condominio_id;
+    const rawOps = condoScope && condoScope !== 'global' && condoScope !== 'todos'
+      ? localStorage.getItem(`infport_cache_${condoScope}_operadores`)
+      : null;
     if (rawOps) {
       const parsedOps = JSON.parse(rawOps);
       if (Array.isArray(parsedOps)) {
@@ -787,10 +790,15 @@ export async function salvarPermissoesOperador(
       localStorage.setItem(`porttohub_operador_permissoes_${loginOperador.toLowerCase()}`, JSON.stringify(permissoes));
     }
 
-    // 2. Atualiza no cache de operadores do localStorage se existir
+    // 2. Atualiza caches locais particionados por condomínio (se existirem)
     try {
-      const chavesCache = ['infport_cache_global_operadores', 'infport_cache_local_operadores'];
-      for (const k of chavesCache) {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k || !k.startsWith('infport_cache_') || !k.endsWith('_operadores')) continue;
+        if (k === 'infport_cache_global_operadores' || k === 'infport_cache_local_operadores') {
+          localStorage.removeItem(k);
+          continue;
+        }
         const raw = localStorage.getItem(k);
         if (raw) {
           const ops = JSON.parse(raw);
@@ -1043,18 +1051,22 @@ export function verificarPermissao(
     }
   }
 
-  const ehAdminGeral = (perfilStr === 'admin' || perfilStr === 'admin_geral' || perfilStr === 'master' || nivelNum === 0 || nivelNum === 1 || Boolean(operador.eSuperAdminGlobal));
+  const ehGlobalVerificado = Boolean(
+    operador.id !== 'admin_master_root' &&
+    operador.e_super_admin_global === true &&
+    operador.global_admin_verificado === true
+  );
+  const ehAdminGeral = (ehGlobalVerificado || perfilStr === 'admin' || perfilStr === 'admin_geral' || perfilStr === 'master' || nivelNum === 0 || nivelNum === 1);
 
   // Normalização de sinônimos de módulos
   let modKey = String(modulo).toLowerCase();
   if (modKey === 'prestadores') modKey = 'autorizados';
   if (modKey === 'passagem') modKey = 'passagem_posto';
 
-  // REGRA ESTRITA DE SEGURANÇA: Módulo de Configurações é EXCLUSIVO para o Nível 0 de acesso (ADM Geral)
+  // REGRA ESTRITA DE SEGURANÇA: Módulo de Configurações é EXCLUSIVO para o Nível 0 de acesso (ADM)
   if (modKey === 'configuracoes') {
     const ehNivel0 = Boolean(
-      operador.eSuperAdminGlobal ||
-      operador.login === 'admin' ||
+      ehGlobalVerificado ||
       perfilStr === 'admin' ||
       perfilStr === 'admin_geral' ||
       nivelNum === 0 ||

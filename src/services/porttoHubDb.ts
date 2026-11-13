@@ -172,124 +172,180 @@ export function abrirPorttoHubDb(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
+function isCondoLocalValido(condominioId?: string): condominioId is string {
+  return Boolean(
+    condominioId &&
+    condominioId !== 'todos' &&
+    condominioId !== 'global' &&
+    condominioId !== 'undefined' &&
+    condominioId !== 'null'
+  );
+}
+
 /**
- * Lê todos os registros de uma tabela local filtrados por condomínio (0ms)
+ * Lê todos os registros de uma tabela local filtrados estritamente por condomínio (0ms)
  */
 export async function obterTodosItensLocal<T = any>(
   storeName: NomeTabelaLocal,
   condominioId: string
 ): Promise<T[]> {
+  if (!isCondoLocalValido(condominioId)) {
+    return [];
+  }
+
   try {
     const db = await abrirPorttoHubDb();
     return new Promise<T[]>((resolve) => {
       const tx = db.transaction(storeName, 'readonly');
       const store = tx.objectStore(storeName);
 
-      // Se a store tiver índice por condomínio, faz query filtrada
-      if (store.indexNames.contains('condominio_id') && condominioId && condominioId !== 'todos' && condominioId !== 'global') {
+      if (store.indexNames.contains('condominio_id')) {
         const index = store.index('condominio_id');
         const req = index.getAll(IDBKeyRange.only(condominioId));
-        req.onsuccess = () => resolve((req.result || []) as T[]);
+        req.onsuccess = () => resolve(((req.result || []) as any[]).filter((it: any) => it?.condominio_id === condominioId) as T[]);
         req.onerror = () => {
-          // Fallback para getAll completo e filtro em memória
           const reqAll = store.getAll();
           reqAll.onsuccess = () => {
             const todos = reqAll.result || [];
-            resolve(todos.filter((it: any) => it.condominio_id === condominioId) as T[]);
+            resolve(todos.filter((it: any) => it?.condominio_id === condominioId) as T[]);
           };
           reqAll.onerror = () => resolve([]);
         };
       } else {
         const req = store.getAll();
         req.onsuccess = () => {
-          let lista = req.result || [];
-          if (condominioId && condominioId !== 'todos' && condominioId !== 'global') {
-            lista = lista.filter((it: any) => it.condominio_id === condominioId);
-          }
+          const lista = (req.result || []).filter((it: any) => it?.condominio_id === condominioId);
           resolve(lista as T[]);
         };
         req.onerror = () => resolve([]);
       }
     });
   } catch (err) {
-    // Fallback gracioso para memória
     const chave = `${storeName}_${condominioId}`;
-    return (memoriaFallback.get(chave) || []) as T[];
+    return ((memoriaFallback.get(chave) || []) as any[]).filter((it: any) => it?.condominio_id === condominioId) as T[];
   }
 }
 
 /**
- * Lê um único registro por chave primária
+ * Lê um único registro por chave primária, validando pertencimento ao condomínio quando informado
  */
 export async function obterItemPorIdLocal<T = any>(
   storeName: NomeTabelaLocal,
-  id: string | number
+  id: string | number,
+  condominioId?: string
 ): Promise<T | null> {
+  if (condominioId !== undefined && !isCondoLocalValido(condominioId)) {
+    return null;
+  }
+
   try {
     const db = await abrirPorttoHubDb();
     return new Promise<T | null>((resolve) => {
       const tx = db.transaction(storeName, 'readonly');
       const store = tx.objectStore(storeName);
       const req = store.get(id);
-      req.onsuccess = () => resolve(req.result || null);
+      req.onsuccess = () => {
+        const res = req.result || null;
+        if (res && condominioId && (res as any).condominio_id && (res as any).condominio_id !== condominioId) {
+          resolve(null);
+          return;
+        }
+        resolve(res);
+      };
       req.onerror = () => resolve(null);
     });
   } catch {
+    if (condominioId) {
+      const lista = memoriaFallback.get(`${storeName}_${condominioId}`) || [];
+      return (lista.find((it: any) => String(it.id) === String(id) && it?.condominio_id === condominioId) || null) as T | null;
+    }
     return null;
   }
 }
 
 /**
- * Salva um item individual no banco local
+ * Salva um item individual no banco local validando compatibilidade com condominioId
  */
 export async function salvarItemLocal<T extends { id?: any; condominio_id?: string }>(
   storeName: NomeTabelaLocal,
-  item: T
+  item: T,
+  condominioId?: string
 ): Promise<void> {
+  if (condominioId !== undefined && !isCondoLocalValido(condominioId)) {
+    throw new Error('[IndexedDB] condominioId inválido ao salvar item local.');
+  }
+  if (condominioId && item.condominio_id && item.condominio_id !== condominioId) {
+    throw new Error(`[IndexedDB] Tentativa bloqueada de gravação cross-tenant em ${storeName}.`);
+  }
+
+  const itemSeguro: T = condominioId && !item.condominio_id
+    ? { ...item, condominio_id: condominioId }
+    : item;
+
   try {
     const db = await abrirPorttoHubDb();
     return new Promise<void>((resolve, reject) => {
       const tx = db.transaction(storeName, 'readwrite');
       const store = tx.objectStore(storeName);
-      store.put(item);
+      store.put(itemSeguro);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
   } catch (err) {
-    if (item.condominio_id) {
-      const chave = `${storeName}_${item.condominio_id}`;
+    if (itemSeguro.condominio_id) {
+      const chave = `${storeName}_${itemSeguro.condominio_id}`;
       const lista = memoriaFallback.get(chave) || [];
-      const idx = lista.findIndex((it: any) => String(it.id) === String(item.id));
-      if (idx >= 0) lista[idx] = item;
-      else lista.push(item);
+      const idx = lista.findIndex((it: any) => String(it.id) === String(itemSeguro.id));
+      if (idx >= 0) lista[idx] = itemSeguro;
+      else lista.push(itemSeguro);
       memoriaFallback.set(chave, lista);
     }
   }
 }
 
 /**
- * Exclui um registro do banco local
+ * Exclui um registro do banco local validando pertencimento ao condomínio quando informado
  */
 export async function excluirItemLocal(
   storeName: NomeTabelaLocal,
-  id: string | number
+  id: string | number,
+  condominioId?: string
 ): Promise<void> {
+  if (condominioId !== undefined && !isCondoLocalValido(condominioId)) {
+    return;
+  }
+
   try {
     const db = await abrirPorttoHubDb();
     return new Promise<void>((resolve, reject) => {
       const tx = db.transaction(storeName, 'readwrite');
       const store = tx.objectStore(storeName);
-      store.delete(id);
+      if (condominioId) {
+        const reqGet = store.get(id);
+        reqGet.onsuccess = () => {
+          const existente = reqGet.result;
+          if (existente && existente.condominio_id && existente.condominio_id !== condominioId) {
+            return;
+          }
+          store.delete(id);
+        };
+      } else {
+        store.delete(id);
+      }
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
   } catch {
-    // Ignorar fallback
+    if (condominioId) {
+      const chave = `${storeName}_${condominioId}`;
+      const lista = memoriaFallback.get(chave) || [];
+      memoriaFallback.set(chave, lista.filter((it: any) => String(it.id) !== String(id)));
+    }
   }
 }
 
 /**
- * Salva um lote inteiro de registros em uma única transação atômica (Ultra-Rápido)
+ * Salva um lote inteiro de registros em uma única transação atômica com validação estrita de tenant
  */
 export async function salvarLoteItensLocal<T = any>(
   storeName: NomeTabelaLocal,
@@ -298,7 +354,10 @@ export async function salvarLoteItensLocal<T = any>(
   cursorTimestamp?: string,
   substituirTodos: boolean = false
 ): Promise<void> {
-  if (!itens || itens.length === 0) return;
+  if (!isCondoLocalValido(condominioId) || !itens || itens.length === 0) return;
+
+  const itensSeguros = itens.filter((item: any) => !item?.condominio_id || item.condominio_id === condominioId);
+  if (itensSeguros.length === 0) return;
 
   try {
     const db = await abrirPorttoHubDb();
@@ -307,7 +366,6 @@ export async function salvarLoteItensLocal<T = any>(
       const store = tx.objectStore(storeName);
 
       if (substituirTodos && store.indexNames.contains('condominio_id')) {
-        // Se for substituição completa do condomínio, limpa os antigos deste tenant
         const index = store.index('condominio_id');
         const reqKeys = index.getAllKeys(IDBKeyRange.only(condominioId));
         reqKeys.onsuccess = () => {
@@ -315,12 +373,12 @@ export async function salvarLoteItensLocal<T = any>(
           for (const k of keys) {
             store.delete(k);
           }
-          for (const item of itens) {
+          for (const item of itensSeguros) {
             store.put(item);
           }
         };
       } else {
-        for (const item of itens) {
+        for (const item of itensSeguros) {
           store.put(item);
         }
       }
@@ -330,12 +388,12 @@ export async function salvarLoteItensLocal<T = any>(
     });
 
     if (cursorTimestamp) {
-      await salvarMetadataSyncLocal(storeName, condominioId, cursorTimestamp, itens.length);
+      await salvarMetadataSyncLocal(storeName, condominioId, cursorTimestamp, itensSeguros.length);
     }
   } catch (err) {
     console.warn(`[IndexedDB] Fallback para gravação de ${storeName}:`, err);
     const chave = `${storeName}_${condominioId}`;
-    memoriaFallback.set(chave, itens);
+    memoriaFallback.set(chave, itensSeguros);
   }
 }
 

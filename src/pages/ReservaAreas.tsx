@@ -139,19 +139,20 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
     usuarioLogado?.eSindico
   );
   const podeAprovar = Boolean(
-    usuarioLogado?.login === 'admin' ||
-    usuarioLogado?.perfil === 'admin' ||
-    usuarioLogado?.nivel_acesso <= 2 ||
-    eSindico ||
-    verificarPermissao(usuarioLogado, 'reservas', 'aprovar')
+    usuarioLogado && (
+      usuarioLogado?.perfil === 'admin' ||
+      usuarioLogado?.nivel_acesso <= 2 ||
+      eSindico ||
+      verificarPermissao(usuarioLogado, 'reservas', 'aprovar')
+    )
   );
   const podeGerenciarAreas = Boolean(
-    usuarioLogado?.login === 'admin' ||
-    usuarioLogado?.perfil === 'admin' ||
-    usuarioLogado?.nivel_acesso <= 2 ||
-    eSindico ||
-    verificarPermissao(usuarioLogado, 'reservas', 'gerenciar_areas') ||
-    !usuarioLogado
+    usuarioLogado && (
+      usuarioLogado?.perfil === 'admin' ||
+      usuarioLogado?.nivel_acesso <= 2 ||
+      eSindico ||
+      verificarPermissao(usuarioLogado, 'reservas', 'gerenciar_areas')
+    )
   );
 
   // Áreas ativas para os seletores de reservas e agendamentos
@@ -261,15 +262,23 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
     observacoes: ''
   });
 
+  const loadSeqRef = React.useRef(0);
+
   // Monitora troca global de condomínio
   useEffect(() => {
     const handleCondoChange = (e: any) => {
-      const novoId = e?.detail?.id;
+      loadSeqRef.current += 1;
+      const novoId = e?.detail?.id || e?.detail?.condominioId;
       if (novoId && novoId !== 'global' && novoId !== 'todos') {
         setCondId(novoId);
       } else {
         setCondId(getCondominioAtivoId(usuarioLogado));
       }
+      setAreas([]);
+      setReservas([]);
+      setConvidadosNovaReserva([]);
+      setReservaSelecionadaConvidados(null);
+      setModalNovaArea(false);
     };
     window.addEventListener('infport:condominio_alterado', handleCondoChange);
     return () => window.removeEventListener('infport:condominio_alterado', handleCondoChange);
@@ -281,7 +290,10 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
   }, [condId]);
 
   const carregarTudo = async () => {
+    const seq = ++loadSeqRef.current;
     if (!condId || condId === 'global' || condId === 'todos') {
+      setAreas([]);
+      setReservas([]);
       setLoading(false);
       return;
     }
@@ -292,6 +304,7 @@ export default function ReservaAreas({ usuarioLogado }: ReservaAreasProps) {
         carregarAreasComuns(condId),
         carregarReservas(condId)
       ]);
+      if (seq !== loadSeqRef.current) return;
       setCondoConfig(cfg);
       setAreas(areasData);
       setReservas(reservasData);
