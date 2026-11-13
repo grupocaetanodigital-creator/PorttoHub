@@ -298,7 +298,14 @@ export async function salvarLoteItensLocal<T = any>(
   cursorTimestamp?: string,
   substituirTodos: boolean = false
 ): Promise<void> {
-  if (!itens || itens.length === 0) return;
+  if (!itens || (itens.length === 0 && !substituirTodos)) return;
+
+  const itensValidos =
+    condominioId && condominioId !== 'todos' && condominioId !== 'global'
+      ? itens.filter((it: any) => !it?.condominio_id || String(it.condominio_id) === String(condominioId))
+      : itens;
+
+  if (itensValidos.length === 0 && !substituirTodos) return;
 
   try {
     const db = await abrirPorttoHubDb();
@@ -315,12 +322,12 @@ export async function salvarLoteItensLocal<T = any>(
           for (const k of keys) {
             store.delete(k);
           }
-          for (const item of itens) {
+          for (const item of itensValidos) {
             store.put(item);
           }
         };
       } else {
-        for (const item of itens) {
+        for (const item of itensValidos) {
           store.put(item);
         }
       }
@@ -330,12 +337,12 @@ export async function salvarLoteItensLocal<T = any>(
     });
 
     if (cursorTimestamp) {
-      await salvarMetadataSyncLocal(storeName, condominioId, cursorTimestamp, itens.length);
+      await salvarMetadataSyncLocal(storeName, condominioId, cursorTimestamp, itensValidos.length);
     }
   } catch (err) {
     console.warn(`[IndexedDB] Fallback para gravação de ${storeName}:`, err);
     const chave = `${storeName}_${condominioId}`;
-    memoriaFallback.set(chave, itens);
+    memoriaFallback.set(chave, itensValidos);
   }
 }
 
@@ -411,6 +418,8 @@ export async function limparCacheLocalCondominio(condominioId: string): Promise<
     ];
 
     for (const tab of tabelas) {
+      memoriaFallback.delete(`${tab}_${condominioId}`);
+      memoriaMetadataFallback.delete(`${tab}_${condominioId}`);
       const tx = db.transaction(tab, 'readwrite');
       const store = tx.objectStore(tab);
       if (store.indexNames.contains('condominio_id')) {

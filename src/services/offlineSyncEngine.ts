@@ -7,7 +7,127 @@
  */
 
 import { supabase } from './supabase';
-import { isUUID } from './condominioService';
+import {
+  isUUID,
+  getCondominioConfigLocal,
+  isEstruturaNumeralDireto,
+  saoUnidadesEquivalentes,
+  saoBlocosEquivalentes
+} from './condominioService';
+import { invalidarCacheTabela } from './redisCacheService';
+
+async function validarEncomendaParaSyncSupabase(
+  payload: any,
+  tipoOperacao: 'INSERT' | 'UPDATE'
+): Promise<{ valido: boolean; erro?: string; payloadSaneado?: any }> {
+  const condominioId = String(payload?.condominio_id || '').trim();
+  const unidade = String(payload?.unidade || '').trim();
+  const bloco = String(payload?.bloco || '').trim();
+  const moradorId = payload?.morador_id ? String(payload.morador_id).trim() : '';
+
+  if (tipoOperacao === 'UPDATE' && !unidade && !('morador_id' in (payload || {}))) {
+    // Atualização parcial (ex: baixa/entrega ou mudança de local) que não altera unidade/morador
+    return { valido: true, payloadSaneado: payload };
+  }
+
+  if (!condominioId || !isUUID(condominioId) || !unidade) {
+    return { valido: false, erro: 'Condomínio ou unidade ausente na encomenda offline.' };
+  }
+
+  let tipoEstrutura = getCondominioConfigLocal(condominioId)?.tipo_estrutura;
+  if (!tipoEstrutura) {
+    try {
+      const { data: condoData } = await supabase
+        .from('condominios')
+        .select('tipo_estrutura')
+        .eq('id', condominioId)
+        .maybeSingle();
+      if (condoData?.tipo_estrutura) tipoEstrutura = condoData.tipo_estrutura;
+    } catch {}
+  }
+
+  const eCasas = Boolean(tipoEstrutura && tipoEstrutura.toLowerCase().includes('casa'));
+  const eNumeral = Boolean(tipoEstrutura && isEstruturaNumeralDireto(tipoEstrutura));
+  if (!eCasas && !eNumeral && !bloco) {
+    return { valido: false, erro: 'Bloco/Torre ausente na encomenda offline.' };
+  }
+
+  if (moradorId) {
+    const { data: mor, error } = await supabase
+      .from('moradores')
+      .select('id, condominio_id, nome, bloco, unidade')
+      .eq('id', moradorId)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Erro ao validar morador no servidor: ${error.message}`);
+    }
+    if (!mor) {
+      return { valido: false, erro: 'Morador vinculado não existe mais no cadastro.' };
+    }
+    if (mor.condominio_id && String(mor.condominio_id) !== condominioId) {
+      return { valido: false, erro: 'Morador pertence a outro condomínio.' };
+    }
+    if (!saoUnidadesEquivalentes(mor.unidade, unidade) || !saoBlocosEquivalentes(mor.bloco, eCasas ? (bloco || 'Casa') : bloco, tipoEstrutura)) {
+      return {
+        valido: false,
+        erro: `Inconsistência: morador "${mor.nome}" não pertence à unidade ${bloco ? bloco + ' - ' : ''}${unidade}.`
+      };
+    }
+
+    return {
+      valido: true,
+      payloadSaneado: {
+        ...payload,
+        morador_id: mor.id,
+        destinatario: mor.nome
+      }
+    };
+  }
+
+  // Sem morador_id: verifica se a unidade possui múltiplos moradores no servidor
+  const { data: moradoresCondo, error: errMor } = await supabase
+    .from('moradores')
+    .select('id, condominio_id, nome, bloco, unidade')
+    .eq('condominio_id', condominioId);
+
+  if (errMor) {
+    throw new Error(`Erro ao consultar moradores da unidade: ${errMor.message}`);
+  }
+
+  const daUnidade = (moradoresCondo || []).filter(
+    (m: any) =>
+      saoUnidadesEquivalentes(m.unidade, unidade) &&
+      saoBlocosEquivalentes(m.bloco, eCasas ? (bloco || 'Casa') : bloco, tipoEstrutura)
+  );
+
+  if (daUnidade.length > 1) {
+    return {
+      valido: false,
+      erro: `Unidade ${unidade} possui ${daUnidade.length} moradores; destinatário não especificado.`
+    };
+  }
+
+  if (daUnidade.length === 1) {
+    return {
+      valido: true,
+      payloadSaneado: {
+        ...payload,
+        morador_id: daUnidade[0].id,
+        destinatario: daUnidade[0].nome
+      }
+    };
+  }
+
+  return {
+    valido: true,
+    payloadSaneado: {
+      ...payload,
+      morador_id: null,
+      destinatario: null
+    }
+  };
+}
 
 export interface AcaoOffline {
   id: string;
@@ -123,21 +243,47 @@ export async function sincronizarFilaComSupabase(): Promise<{
 
       if (acao.tipo === 'INSERT') {
         // Remove IDs temporários gerados no front offline caso existam
-        const payload = { ...acao.dados };
+        let payload = { ...acao.dados };
         if (typeof payload.id === 'string' && payload.id.startsWith('offline_')) {
           delete payload.id;
         }
 
+        if (acao.tabela === 'encomendas_itens') {
+          const validacao = await validarEncomendaParaSyncSupabase(payload, 'INSERT');
+          if (!validacao.valido) {
+            console.error(`[OfflineSyncEngine] Encomenda bloqueada por inconsistência de destinatário (${acao.descricaoAmigavel}): ${validacao.erro}`);
+            falhas++;
+            continue;
+          }
+          payload = validacao.payloadSaneado || payload;
+        }
+
         const { error } = await supabase.from(acao.tabela).insert([payload]);
         resError = error;
+        if (!error && acao.tabela === 'encomendas_itens' && payload.condominio_id) {
+          invalidarCacheTabela('encomendas_itens', payload.condominio_id).catch(() => {});
+        }
       } else if (acao.tipo === 'UPDATE') {
         const idAlvo = acao.dados.id;
-        const payload = { ...acao.dados };
+        let payload = { ...acao.dados };
         delete payload.id;
+
+        if (acao.tabela === 'encomendas_itens') {
+          const validacao = await validarEncomendaParaSyncSupabase(payload, 'UPDATE');
+          if (!validacao.valido) {
+            console.error(`[OfflineSyncEngine] Atualização de encomenda bloqueada por inconsistência (${acao.descricaoAmigavel}): ${validacao.erro}`);
+            falhas++;
+            continue;
+          }
+          payload = validacao.payloadSaneado || payload;
+        }
 
         if (idAlvo) {
           const { error } = await supabase.from(acao.tabela).update(payload).eq('id', idAlvo);
           resError = error;
+          if (!error && acao.tabela === 'encomendas_itens' && payload.condominio_id) {
+            invalidarCacheTabela('encomendas_itens', payload.condominio_id).catch(() => {});
+          }
         }
       } else if (acao.tipo === 'DELETE') {
         const idAlvo = acao.dados.id || acao.dados;

@@ -57,7 +57,9 @@ function buildClientKey(options: CachedQueryOptions): string {
     .join('|');
   const normOrder = options.orderBy ? `${options.orderBy.field}:${options.orderBy.ascending ? 'asc' : 'desc'}` : '';
   const normLimit = options.limit ? `limit:${options.limit}` : '';
-  const condoPart = options.condominioId ? `condo:${options.condominioId}` : '';
+  const filterCondo = (options.filters || []).find(f => f.field === 'condominio_id' && f.op === 'eq')?.value;
+  const resolvedCondoId = options.condominioId || (filterCondo ? String(filterCondo) : '');
+  const condoPart = resolvedCondoId ? `condo:${resolvedCondoId}` : '';
   return `l1:${options.table}:${condoPart}:${normSelect}:${normFilters}:${normOrder}:${normLimit}`;
 }
 
@@ -165,10 +167,19 @@ export async function cachedQuery<T = any[]>(options: CachedQueryOptions): Promi
  * Invalida o cache de uma tabela específica tanto localmente quanto no Redis
  */
 export async function invalidarCacheTabela(table: string, condominioId?: string): Promise<void> {
-  // 1. Limpa L1 Memória do Cliente
+  // 1. Limpa L1 Memória do Cliente e queries em voo
   for (const k of Array.from(clientMemoryCache.keys())) {
     if (k.startsWith(`l1:${table}:`)) {
-      clientMemoryCache.delete(k);
+      if (!condominioId || k.includes(`:condo:${condominioId}:`) || !k.includes(':condo:')) {
+        clientMemoryCache.delete(k);
+      }
+    }
+  }
+  for (const k of Array.from(inflightQueries.keys())) {
+    if (k.startsWith(`l1:${table}:`)) {
+      if (!condominioId || k.includes(`:condo:${condominioId}:`) || !k.includes(':condo:')) {
+        inflightQueries.delete(k);
+      }
     }
   }
 
@@ -189,6 +200,7 @@ export async function invalidarCacheTabela(table: string, condominioId?: string)
  */
 export async function invalidarCacheCondominio(condominioId: string): Promise<void> {
   clientMemoryCache.clear();
+  inflightQueries.clear();
   try {
     await fetch('/api/cache/invalidate', {
       method: 'POST',
@@ -203,6 +215,7 @@ export async function invalidarCacheCondominio(condominioId: string): Promise<vo
  */
 export async function limparTodoCache(): Promise<void> {
   clientMemoryCache.clear();
+  inflightQueries.clear();
   try {
     await fetch('/api/cache/clear', { method: 'POST' });
   } catch {}

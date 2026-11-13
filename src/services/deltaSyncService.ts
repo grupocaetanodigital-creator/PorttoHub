@@ -351,7 +351,14 @@ export async function aplicarMutacaoLocal<T extends { id: any; condominio_id?: s
     const idx = itensAtuais.findIndex((it: any) => String(it.id) === chaveId);
     if (idx >= 0) {
       novaLista = [...itensAtuais];
-      novaLista[idx] = { ...novaLista[idx], ...item };
+      const atual: any = novaLista[idx];
+      const novo: any = item;
+      const moradorMudou = 'morador_id' in novo && String(novo.morador_id || '') !== String(atual.morador_id || '');
+      novaLista[idx] = {
+        ...atual,
+        ...novo,
+        ...(moradorMudou && !novo.moradores ? { moradores: null } : {})
+      };
     } else {
       novaLista = [item, ...itensAtuais];
     }

@@ -336,6 +336,45 @@ export function saoUnidadesEquivalentes(numA: string | null | undefined, numB: s
 }
 
 /**
+ * Verifica se dois blocos/torres são equivalentes respeitando a estrutura do condomínio.
+ * Nunca trata bloco vazio como equivalente a um bloco preenchido quando há blocos/torres.
+ */
+export function saoBlocosEquivalentes(
+  blocoA?: string | null,
+  blocoB?: string | null,
+  tipoEstrutura?: string
+): boolean {
+  const a = String(blocoA || '').trim().toLowerCase();
+  const b = String(blocoB || '').trim().toLowerCase();
+
+  if (tipoEstrutura && isEstruturaNumeralDireto(tipoEstrutura)) {
+    return true;
+  }
+
+  const eCasasExplicito = Boolean(tipoEstrutura && tipoEstrutura.toLowerCase().includes('casa'));
+  const aEhCasaOuVazio = !a || a === 'casa' || a === 'casas';
+  const bEhCasaOuVazio = !b || b === 'casa' || b === 'casas';
+
+  if (eCasasExplicito && aEhCasaOuVazio && bEhCasaOuVazio) {
+    return true;
+  }
+
+  if (!a || !b) return false;
+  if (a === b) return true;
+
+  if ((a === 'casa' || a === 'casas') && (b === 'casa' || b === 'casas')) return true;
+
+  const normalizar = (val: string) =>
+    val.replace(/^(torre|bloco|bl\.?|tr\.?)\s*/i, '').trim();
+
+  const aNorm = normalizar(a);
+  const bNorm = normalizar(b);
+  if (aNorm && bNorm && aNorm === bNorm) return true;
+
+  return false;
+}
+
+/**
  * Formata um número com zero à esquerda de forma segura:
  * Ex: 1 -> "01", 7 -> "07", "03" -> "03", "12A" -> "12A"
  */

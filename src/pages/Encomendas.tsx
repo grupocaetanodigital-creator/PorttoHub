@@ -68,6 +68,7 @@ import {
   formatarIdentificacaoUnidade, 
   formatarTextoWhatsUnidade,
   saoUnidadesEquivalentes,
+  saoBlocosEquivalentes,
   autoCorrigirZeroEsquerda,
   CondominioConfig,
   getCondominioAtivoId
@@ -76,7 +77,15 @@ import { ModalWhatsAppDisparo } from '../components/ModalWhatsAppDisparo';
 import { formatarLinkWhatsApp, dispararLinkWhatsApp } from '../services/configWhatsappService';
 import { validarECarregarCacheRetidos } from '../services/cacheLimpezaService';
 import { cachedQuery, invalidarCacheTabela } from '../services/redisCacheService';
-import { obterCacheEncomendas, carregarEPreaquecerEncomendas } from '../services/encomendasService';
+import {
+  obterCacheEncomendas,
+  carregarEPreaquecerEncomendas,
+  enriquecerEncomendaComMorador,
+  buscarMoradoresDaUnidadeExata,
+  moradorPertenceAUnidade,
+  inserirEncomendasValidadas,
+  atualizarEncomendaValidada
+} from '../services/encomendasService';
 
 export interface EncomendaAdicional {
   id: string;
@@ -421,6 +430,14 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       setMoradores([]);
       setLocaisArmazenamento([]);
       setItensDossie([]);
+      setUnidadeTriagem('');
+      setBlocoTriagem('');
+      setMoradorSelecionado(null);
+      setMoradoresDaUnidade([]);
+      setEncomendasAdicionais([]);
+      setAlertaAgrupamento(null);
+      setPacoteEmEdicao(null);
+      setEditPacoteMoradorId('');
       return;
     }
 
@@ -464,8 +481,16 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       setMoradores([]);
       setLocaisArmazenamento([]);
       setItensDossie([]);
+      setUnidadeTriagem('');
+      setBlocoTriagem('');
+      setMoradorSelecionado(null);
+      setMoradoresDaUnidade([]);
+      setEncomendasAdicionais([]);
+      setAlertaAgrupamento(null);
+      setPacoteEmEdicao(null);
+      setEditPacoteMoradorId('');
     };
-    const handleSync = () => carregarDadosBase(true);
+    const handleSync = () => carregarDadosBase(true, true);
 
     window.addEventListener('infport_encomendas_atualizadas', handleEncomendasAtualizadas);
     window.addEventListener('infport:condominio_alterado', handleResetInstantaneo);
@@ -556,7 +581,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     return usuarioLogado?.nome || usuarioLogado?.login || 'Portaria';
   };
 
-  const carregarDadosBase = async (silencioso = false) => {
+  const carregarDadosBase = async (silencioso = false, forcar = false) => {
     if (!silencioso && todosItensRetidos.length === 0) {
       setLoading(true);
     }
@@ -600,7 +625,8 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
         filters: condoFiltros,
         orderBy: { field: 'nome', ascending: true },
         ttlSeconds: 300,
-        condominioId: condId
+        condominioId: condId,
+        forceRefresh: forcar
       });
       setEntregadores(entData || []);
 
@@ -678,7 +704,8 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
         filters: condoFiltros,
         orderBy: { field: 'nome', ascending: true },
         ttlSeconds: 300,
-        condominioId: condId
+        condominioId: condId,
+        forceRefresh: forcar
       });
       setMoradores(moradData || []);
 
@@ -694,7 +721,8 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
           ],
           orderBy: { field: 'created_at', ascending: false },
           ttlSeconds: 60,
-          condominioId: condId
+          condominioId: condId,
+          forceRefresh: forcar
         });
         let itensCarregados = rawItens;
 
@@ -724,22 +752,9 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
             ? itensCarregados.filter((item: any) => item.condominio_id === condId)
             : itensCarregados;
 
-          retidosData = itensValidos.map((item: any) => {
-            const m = (moradData || []).find((mor: any) =>
-              mor.id === item.morador_id ||
-              (mor.unidade && String(mor.unidade).trim() === String(item.unidade).trim() && (!item.bloco || mor.bloco === item.bloco))
-            );
-            const l = (lotesData || []).find((lt: any) => lt.id === item.lote_re_id);
-            return {
-              ...item,
-              codigo_barras: item.codigo_barras || item.codigo_rastreio || '',
-              codigo_rastreio: item.codigo_rastreio || item.codigo_barras || '',
-              foto_etiqueta: item.foto_etiqueta || item.foto_etiqueta_url || '',
-              operador_baixa: item.operador_baixa || item.operador_baixa_nome || '',
-              moradores: m ? { nome: m.nome, telefone: m.telefone, bloco: m.bloco, unidade: m.unidade } : (item.moradores || null),
-              lotes_re: l ? { operador_id: l.operador_id, codigo_re: l.codigo_re } : (item.lotes_re || null)
-            };
-          });
+          retidosData = itensValidos.map((item: any) =>
+            enriquecerEncomendaComMorador(item, moradData || [], lotesData || [], condoConfig?.tipo_estrutura)
+          );
         }
       } catch (errRet) {
         console.error('[Encomendas] Erro ao carregar encomendas_itens:', errRet);
@@ -834,7 +849,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       // 1. Tenta carregar os itens de encomendas com moradores usando projeção leve e paginação por range estritamente do condomínio ativo
       const query = supabase
         .from('encomendas_itens')
-        .select('id, condominio_id, lote_re_id, codigo_rastreio, codigo_barras, destinatario, bloco, unidade, status, local_armazenamento, data_recebimento, data_retirada, operador_entrada, operador_baixa, retirado_por, created_at, foto_etiqueta, assinatura_url, moradores(nome, telefone, bloco, unidade)')
+        .select('id, condominio_id, lote_re_id, morador_id, codigo_rastreio, codigo_barras, destinatario, bloco, unidade, status, local_armazenamento, data_recebimento, data_retirada, operador_entrada, operador_baixa, retirado_por, created_at, foto_etiqueta, assinatura_url, moradores(id, condominio_id, nome, telefone, bloco, unidade)')
         .eq('condominio_id', idCondo)
         .order('created_at', { ascending: false })
         .range(0, 49);
@@ -846,7 +861,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
         console.warn('Fallback simples para encomendas_itens no dossiê:', error?.message);
         const fallbackQuery = supabase
           .from('encomendas_itens')
-          .select('id, condominio_id, lote_re_id, codigo_rastreio, codigo_barras, destinatario, bloco, unidade, status, local_armazenamento, data_recebimento, data_retirada, operador_entrada, operador_baixa, retirado_por, created_at, foto_etiqueta, assinatura_url')
+          .select('id, condominio_id, lote_re_id, morador_id, codigo_rastreio, codigo_barras, destinatario, bloco, unidade, status, local_armazenamento, data_recebimento, data_retirada, operador_entrada, operador_baixa, retirado_por, created_at, foto_etiqueta, assinatura_url')
           .eq('condominio_id', idCondo)
           .order('created_at', { ascending: false })
           .range(0, 49);
@@ -855,27 +870,27 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       }
 
       if (itens && itens.length > 0) {
-        // Enriquecer itens com dados de Lote RE e entregadores de forma segura
+        // Enriquecer itens com dados de Lote RE e validar morador estritamente por morador_id (sem inventar associação)
+        let lotesDossie: any[] = [];
         const loteIds = Array.from(new Set(itens.map((it: any) => it.lote_re_id).filter(Boolean)));
         if (loteIds.length > 0) {
           try {
             const { data: lotes } = await supabase
               .from('lotes_re')
-              .select('id, codigo_re, created_at, entregador_id')
+              .select('id, codigo_re, created_at, entregador_id, operador_id')
               .in('id', loteIds);
 
             if (lotes && lotes.length > 0) {
-              const mapaLotes = new Map(lotes.map((l: any) => [l.id, l]));
-              itens = itens.map((it: any) => ({
-                ...it,
-                lotes_re: it.lote_re_id ? mapaLotes.get(it.lote_re_id) : null
-              }));
+              lotesDossie = lotes;
             }
           } catch (errLote) {
             console.warn('Aviso ao consultar lotes_re:', errLote);
           }
         }
-        setItensDossie(itens);
+        const itensEnriquecidos = itens.map((it: any) =>
+          enriquecerEncomendaComMorador(it, moradores, lotesDossie, condoConfig?.tipo_estrutura)
+        );
+        setItensDossie(itensEnriquecidos);
       } else {
         setItensDossie([]);
       }
@@ -1176,6 +1191,12 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     setItensCandidatosEntrega([]);
 
     // 2. Prepara estados limpos para a nova entrada
+    setUnidadeTriagem('');
+    setBlocoTriagem(eEstruturaCasas ? 'Casa' : '');
+    setMoradorSelecionado(null);
+    setMoradoresDaUnidade([]);
+    setAlertaAgrupamento(null);
+    setObservacoes('');
     setFotoEtiquetaUrl('');
     setCodigoBarras('');
     setCodigoDetectadoAoVivo('');
@@ -1742,6 +1763,32 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     }
   };
 
+  const moradoresParaEdicaoPacote = useMemo(() => {
+    if (!pacoteEmEdicao) return [];
+    const condIdEdicao = pacoteEmEdicao.condominio_id || idCondominioAtivo;
+    const blocoEdicao = eEstruturaCasas ? 'Casa' : editPacoteBloco;
+    return buscarMoradoresDaUnidadeExata(
+      moradores,
+      condIdEdicao,
+      blocoEdicao,
+      editPacoteUnidade,
+      condoConfig?.tipo_estrutura
+    );
+  }, [pacoteEmEdicao, moradores, idCondominioAtivo, eEstruturaCasas, editPacoteBloco, editPacoteUnidade, condoConfig?.tipo_estrutura]);
+
+  useEffect(() => {
+    if (!pacoteEmEdicao) return;
+    if (moradoresParaEdicaoPacote.length === 1) {
+      setEditPacoteMoradorId(moradoresParaEdicaoPacote[0].id);
+    } else if (moradoresParaEdicaoPacote.length > 1) {
+      setEditPacoteMoradorId((prev) =>
+        prev && moradoresParaEdicaoPacote.some((m) => String(m.id) === String(prev)) ? prev : ''
+      );
+    } else {
+      setEditPacoteMoradorId('');
+    }
+  }, [pacoteEmEdicao, moradoresParaEdicaoPacote]);
+
   // Funções de Edição e Exclusão nos Cards de Pacotes Retidos (Blindadas por RBAC)
   const abrirEdicaoPacote = (item: any) => {
     if (!podeEditarPacote) {
@@ -1760,37 +1807,87 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
   const salvarEdicaoPacote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!podeEditarPacote || !pacoteEmEdicao) return;
+
+    const condIdEdicao = pacoteEmEdicao.condominio_id || idCondominioAtivo;
+    const unidadeCorrigida = autoCorrigirZeroEsquerda(editPacoteUnidade.trim());
+    const blocoCorrigido = eEstruturaCasas ? 'Casa' : editPacoteBloco.trim();
+    const exigeBlocoEdicao = !eEstruturaCasas && !isEstruturaNumeralDireto(condoConfig?.tipo_estrutura);
+
+    if (!unidadeCorrigida) {
+      setMensagem({ tipo: 'erro', texto: 'Informe a unidade do pacote antes de salvar.' });
+      return;
+    }
+    if (exigeBlocoEdicao && !blocoCorrigido) {
+      setMensagem({ tipo: 'erro', texto: `Informe o ${rotuloBloco} do pacote antes de salvar.` });
+      return;
+    }
+
+    const moradoresUnidadeEdicao = buscarMoradoresDaUnidadeExata(
+      moradores,
+      condIdEdicao,
+      blocoCorrigido,
+      unidadeCorrigida,
+      condoConfig?.tipo_estrutura
+    );
+
+    if (moradoresUnidadeEdicao.length > 1 && !editPacoteMoradorId) {
+      setMensagem({
+        tipo: 'erro',
+        texto: `A unidade possui ${moradoresUnidadeEdicao.length} moradores. Selecione explicitamente o morador destinatário do pacote.`
+      });
+      return;
+    }
+
+    const moradorIdFinal =
+      moradoresUnidadeEdicao.length === 1
+        ? moradoresUnidadeEdicao[0].id
+        : editPacoteMoradorId || null;
+
+    if (moradorIdFinal) {
+      const mAlvo = moradores.find((m) => String(m.id) === String(moradorIdFinal));
+      if (!mAlvo || !moradorPertenceAUnidade(mAlvo, condIdEdicao, blocoCorrigido, unidadeCorrigida, condoConfig?.tipo_estrutura)) {
+        setMensagem({
+          tipo: 'erro',
+          texto: 'O morador selecionado não pertence ao condomínio, bloco e unidade informados.'
+        });
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
-      const payload: any = {
-        unidade: autoCorrigirZeroEsquerda(editPacoteUnidade.trim()),
-        bloco: eEstruturaCasas ? 'Casa' : editPacoteBloco.trim(),
-        morador_id: editPacoteMoradorId || null,
+      const payload = {
+        condominio_id: condIdEdicao,
+        unidade: unidadeCorrigida,
+        bloco: blocoCorrigido,
+        morador_id: moradorIdFinal,
         codigo_barras: editPacoteCodigo.trim(),
         local_armazenamento: editPacoteLocal.trim(),
         observacoes: editPacoteObs.trim()
       };
 
-      const { error } = await supabase
-        .from('encomendas_itens')
-        .update(payload)
-        .eq('id', pacoteEmEdicao.id);
-
-      if (error) throw error;
+      const { moradorValidado } = await atualizarEncomendaValidada(
+        pacoteEmEdicao.id,
+        payload,
+        {
+          moradoresCondominio: moradores,
+          tipoEstrutura: condoConfig?.tipo_estrutura
+        }
+      );
 
       await registrarAtividade({
         modulo: 'Encomendas',
         acao: 'EDITAR',
-        descricao: `Editou pacote retido ${pacoteEmEdicao.codigo_barras || pacoteEmEdicao.id}: Unidade ${editPacoteUnidade} (${editPacoteBloco}).`,
+        descricao: `Editou pacote retido ${pacoteEmEdicao.codigo_barras || pacoteEmEdicao.id}: Unidade ${unidadeCorrigida} (${blocoCorrigido}) - Destinatário: ${moradorValidado?.nome || 'Destinatário não identificado'}.`,
         detalhes: { pacoteId: pacoteEmEdicao.id, alteracoes: payload },
         operador_nome: usuarioLogado?.nome || usuarioLogado?.login || 'Portaria',
-        condominio_id: pacoteEmEdicao.condominio_id
+        condominio_id: condIdEdicao
       });
 
       setMensagem({ tipo: 'sucesso', texto: 'Pacote retido atualizado com sucesso!' });
       setPacoteEmEdicao(null);
-      await carregarDadosBase();
+      await carregarDadosBase(true, true);
     } catch (err: any) {
       setMensagem({ tipo: 'erro', texto: 'Erro ao editar pacote: ' + err.message });
     } finally {
@@ -1840,6 +1937,8 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
         }
       }
 
+      await invalidarCacheTabela('encomendas_itens', pacoteParaExcluir.condominio_id || idCondominioAtivo);
+
       await registrarAtividade({
         modulo: 'Encomendas',
         acao: 'EXCLUIR',
@@ -1851,7 +1950,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
 
       setMensagem({ tipo: 'sucesso', texto: 'Pacote excluído com sucesso!' });
       setPacoteParaExcluir(null);
-      await carregarDadosBase();
+      await carregarDadosBase(true, true);
     } catch (err: any) {
       setMensagem({ tipo: 'erro', texto: 'Erro ao excluir pacote: ' + err.message });
     } finally {
@@ -1868,10 +1967,11 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
         .delete()
         .in('id', itensSelecionadosIds);
       if (error) throw error;
+      await invalidarCacheTabela('encomendas_itens', idCondominioAtivo || usuarioLogado?.condominio_id);
       setItensSelecionadosIds([]);
       setItensCandidatosEntrega([]);
       setMensagem({ tipo: 'sucesso', texto: 'Pacotes selecionados excluídos com sucesso!' });
-      await carregarDadosBase();
+      await carregarDadosBase(true, true);
     } catch (err: any) {
       setMensagem({ tipo: 'erro', texto: 'Erro ao excluir pacotes: ' + err.message });
     } finally {
@@ -1887,36 +1987,58 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     if (!unid.trim()) {
       setMoradoresDaUnidade([]);
       setMoradorSelecionado(null);
+      setEncomendasAdicionais((prev) => prev.map((it) => ({ ...it, moradorId: '' })));
       setAlertaAgrupamento(null);
       return;
     }
 
-    const moradoresEncontrados = moradores.filter(m => {
-      const uMatch = saoUnidadesEquivalentes(m.unidade, unid);
-      const bMatch = eEstruturaCasas 
-        ? true 
-        : blocoEfetivo.trim() 
-        ? (m.bloco || '').toString().toLowerCase() === blocoEfetivo.trim().toLowerCase() 
-        : true;
-      return uMatch && bMatch;
-    });
+    const condoAlvo = condoAlvoId || idCondominioAtivo || usuarioLogado?.condominio_id || '';
+    const moradoresEncontrados = buscarMoradoresDaUnidadeExata(
+      moradores,
+      condoAlvo,
+      blocoEfetivo,
+      unid,
+      condoConfig?.tipo_estrutura
+    );
     setMoradoresDaUnidade(moradoresEncontrados);
 
-    if (moradoresEncontrados.length > 0) {
-      setMoradorSelecionado(moradoresEncontrados[0]);
+    // Regra obrigatória: auto-seleção SOMENTE quando existir exatamente 1 morador na unidade.
+    // Quando houver múltiplos moradores, exige escolha explícita do porteiro (nunca seleciona moradoresEncontrados[0] por padrão).
+    if (moradoresEncontrados.length === 1) {
+      const unicoMorador = moradoresEncontrados[0];
+      setMoradorSelecionado(unicoMorador);
+      setEncomendasAdicionais((prev) => prev.map((it) => ({ ...it, moradorId: unicoMorador.id })));
+    } else if (moradoresEncontrados.length > 1) {
+      setMoradorSelecionado((prev: any) =>
+        prev && moradoresEncontrados.some((m) => String(m.id) === String(prev.id))
+          ? moradoresEncontrados.find((m) => String(m.id) === String(prev.id)) || null
+          : null
+      );
+      setEncomendasAdicionais((prev) =>
+        prev.map((it) => ({
+          ...it,
+          moradorId:
+            it.moradorId && moradoresEncontrados.some((m) => String(m.id) === String(it.moradorId))
+              ? it.moradorId
+              : ''
+        }))
+      );
     } else {
       setMoradorSelecionado(null);
+      setEncomendasAdicionais((prev) => prev.map((it) => ({ ...it, moradorId: '' })));
     }
 
-    // Busca itens retidos da mesma unidade na lista local com suporte a zeros à esquerda
+    // Busca itens retidos da mesma unidade e mesmo bloco/condomínio
+    const eNumeral = isEstruturaNumeralDireto(condoConfig?.tipo_estrutura);
     const itensMesmaUnidade = todosItensRetidos.filter((item: any) => {
+      if (item.condominio_id && condoAlvo && String(item.condominio_id) !== String(condoAlvo)) {
+        return false;
+      }
       const uMatch = saoUnidadesEquivalentes(item.unidade, unid);
-      const bMatch = eEstruturaCasas 
-        ? true 
-        : blocoEfetivo.trim() 
-        ? (item.bloco || '').toString().toLowerCase() === blocoEfetivo.trim().toLowerCase() 
-        : true;
-      return uMatch && bMatch;
+      if (!uMatch) return false;
+      if (eEstruturaCasas || eNumeral) return true;
+      if (!blocoEfetivo.trim()) return false;
+      return saoBlocosEquivalentes(item.bloco, blocoEfetivo, condoConfig?.tipo_estrutura);
     });
 
     if (itensMesmaUnidade.length > 0) {
@@ -2032,10 +2154,20 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       return;
     }
 
+    const exigeBloco = !eEstruturaCasas && !isEstruturaNumeralDireto(condoConfig?.tipo_estrutura);
+    if (exigeBloco && !blocoTriagem.trim()) {
+      setMensagem({
+        tipo: 'erro',
+        texto: `Por favor, selecione o ${rotuloBloco} antes de adicionar outra encomenda para a unidade.`
+      });
+      return;
+    }
+
     const novoId = 'adic_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     const novoItem: EncomendaAdicional = {
       id: novoId,
-      moradorId: moradorSelecionado?.id || (moradoresDaUnidade[0]?.id || ''),
+      // Auto-preenche SOMENTE quando há exatamente 1 morador na unidade; com múltiplos moradores, exige escolha explícita
+      moradorId: moradoresDaUnidade.length === 1 ? moradoresDaUnidade[0].id : '',
       codigoBarras: '',
       fotoEtiquetaUrl: '',
       observacoes: '',
@@ -2066,21 +2198,73 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       setMensagem({ tipo: 'erro', texto: 'Por favor, informe a unidade / número para registrar a entrada.' });
       return;
     }
+    const exigeBloco = !eEstruturaCasas && !isEstruturaNumeralDireto(condoConfig?.tipo_estrutura);
+    if (exigeBloco && !blocoTriagem.trim()) {
+      setMensagem({ tipo: 'erro', texto: `Selecione o ${rotuloBloco} da unidade antes de registrar a entrada.` });
+      return;
+    }
     if (uploadingFoto) {
       setMensagem({ tipo: 'info', texto: 'Aguarde o processamento da foto ser concluído...' });
       return;
     }
+
+    const localArmazenar = localArmazenamentoTriagem || 'Bancada Principal';
+    const condoAlvo = idCondominioAtivo || condominioNovoLoteId || usuarioLogado?.condominio_id || '';
+    if (!condoAlvo || condoAlvo === 'global' || condoAlvo === 'todos') {
+      setMensagem({ tipo: 'erro', texto: 'Selecione um condomínio ativo válido para registrar o pacote de encomenda.' });
+      return;
+    }
+
+    const blocoFinal = eEstruturaCasas ? 'Casa' : (blocoTriagem || '').trim();
+    const unidadeFinal = autoCorrigirZeroEsquerda(unidadeTriagem.trim());
+    const moradoresUnidadeAtual = buscarMoradoresDaUnidadeExata(
+      moradores,
+      condoAlvo,
+      blocoFinal,
+      unidadeFinal,
+      condoConfig?.tipo_estrutura
+    );
+
+    if (moradoresUnidadeAtual.length > 1 && !moradorSelecionado?.id) {
+      setMensagem({
+        tipo: 'erro',
+        texto: `A unidade possui ${moradoresUnidadeAtual.length} moradores cadastrados. Selecione explicitamente o destinatário do pacote principal.`
+      });
+      return;
+    }
+
+    if (moradorSelecionado?.id && !moradorPertenceAUnidade(moradorSelecionado, condoAlvo, blocoFinal, unidadeFinal, condoConfig?.tipo_estrutura)) {
+      setMensagem({
+        tipo: 'erro',
+        texto: `Inconsistência detectada: o morador "${moradorSelecionado.nome}" não pertence ao condomínio/bloco/unidade informados.`
+      });
+      return;
+    }
+
+    for (let idx = 0; idx < encomendasAdicionais.length; idx++) {
+      const adic = encomendasAdicionais[idx];
+      if (moradoresUnidadeAtual.length > 1 && !adic.moradorId) {
+        setMensagem({
+          tipo: 'erro',
+          texto: `Selecione explicitamente o morador destinatário para o Pacote #${idx + 2}.`
+        });
+        return;
+      }
+      if (adic.moradorId) {
+        const moradorAdic = moradores.find((m) => String(m.id) === String(adic.moradorId));
+        if (!moradorAdic || !moradorPertenceAUnidade(moradorAdic, condoAlvo, blocoFinal, unidadeFinal, condoConfig?.tipo_estrutura)) {
+          setMensagem({
+            tipo: 'erro',
+            texto: `Pacote #${idx + 2}: o morador selecionado não pertence à unidade/bloco informados.`
+          });
+          return;
+        }
+      }
+    }
+
     setLoading(true);
 
     try {
-      const localArmazenar = localArmazenamentoTriagem || 'Bancada Principal';
-      const condoAlvo = idCondominioAtivo || usuarioLogado?.condominio_id || '';
-      if (!condoAlvo || condoAlvo === 'global' || condoAlvo === 'todos') {
-        setMensagem({ tipo: 'erro', texto: 'Selecione um condomínio ativo válido para registrar o pacote de encomenda.' });
-        setLoading(false);
-        return;
-      }
-
       // Se já existiam pacotes retidos para esta unidade e o operador definiu um novo local, agrupa todos no novo local
       if (alertaAgrupamento?.itens && alertaAgrupamento.itens.length > 0) {
         const idsAntigos = alertaAgrupamento.itens.map((i: any) => i.id);
@@ -2094,8 +2278,6 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
             }
           });
       }
-      const blocoFinal = eEstruturaCasas ? 'Casa' : (blocoTriagem || '').trim();
-      const unidadeFinal = autoCorrigirZeroEsquerda(unidadeTriagem.trim());
 
       // Converte URLs do tipo blob para base64 para nunca se perderem
       let fotoPrincipal = fotoEtiquetaUrl.trim();
@@ -2122,13 +2304,18 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
         };
       }));
 
+      const moradorPrincipalId =
+        moradoresUnidadeAtual.length === 1
+          ? moradoresUnidadeAtual[0].id
+          : moradorSelecionado?.id || null;
+
       const pacotesParaSalvar: any[] = [
         {
-          lote_re_id: loteAtivo?.id || null, // Não vincula lote obrigatoriamente
+          lote_re_id: loteAtivo?.id || null,
           condominio_id: condoAlvo,
           bloco: blocoFinal,
           unidade: unidadeFinal,
-          morador_id: moradorSelecionado?.id || null,
+          morador_id: moradorPrincipalId,
           codigo_barras: codigoBarras.trim(),
           foto_etiqueta_url: formatarUrlFoto(fotoPrincipal),
           observacoes: observacoes.trim(),
@@ -2140,7 +2327,10 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
           condominio_id: condoAlvo,
           bloco: blocoFinal,
           unidade: unidadeFinal,
-          morador_id: adic.moradorId || moradorSelecionado?.id || null,
+          morador_id:
+            moradoresUnidadeAtual.length === 1
+              ? moradoresUnidadeAtual[0].id
+              : adic.moradorId || null,
           codigo_barras: (adic.codigoBarras || '').trim(),
           foto_etiqueta_url: formatarUrlFoto(adic.fotoEtiquetaUrl),
           observacoes: (adic.observacoes || '').trim(),
@@ -2149,30 +2339,17 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
         }))
       ];
 
-      let { data: itensInseridos, error: itemErr } = await supabase
-        .from('encomendas_itens')
-        .insert(pacotesParaSalvar)
-        .select();
-
-      // Fallback seguro caso a coluna local_armazenamento ainda não exista no Supabase
-      if (itemErr && (itemErr.message?.includes('local_armazenamento') || (itemErr as any).code === '42703' || itemErr.message?.includes('schema cache'))) {
-        console.warn('[INFPORT] Coluna não encontrada no Supabase. Salvando pacote(s) em modo de compatibilidade...');
-        const semCamposNovos = pacotesParaSalvar.map(({ local_armazenamento, ...rest }) => rest);
-        const retry = await supabase.from('encomendas_itens').insert(semCamposNovos).select();
-        itemErr = retry.error;
-        itensInseridos = retry.data;
-      }
-
-      if (itensInseridos && Array.isArray(itensInseridos)) {
-        itensInseridos.forEach((item) => {
-          localStorage.setItem(`infport_item_local_${item.id}`, localArmazenar);
-        });
-      }
-
-      if (itemErr) throw itemErr;
+      // Validação autoritativa e gravação segura no Supabase (ou fila offline)
+      const resultadoGravacao = await inserirEncomendasValidadas(pacotesParaSalvar, {
+        condominioId: condoAlvo,
+        moradoresCondominio: moradores,
+        tipoEstrutura: condoConfig?.tipo_estrutura,
+        localArmazenamento: localArmazenar,
+        operadorNome: usuarioLogado?.nome || usuarioLogado?.login || 'Portaria'
+      });
 
       // Se houver lote ativo no estado, atualiza-o com a soma de todos os pacotes
-      if (loteAtivo) {
+      if (loteAtivo && !resultadoGravacao.offline) {
         const novaQtdTriada = (loteAtivo.qtd_triada || 0) + pacotesParaSalvar.length;
         const novoStatusLote = novaQtdTriada >= loteAtivo.qtd_declarada ? 'concluido' : 'em_triagem';
         await supabase
@@ -2183,12 +2360,11 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
         setLoteAtivo((prev: any) => prev ? ({ ...prev, qtd_triada: novaQtdTriada, status: novoStatusLote }) : null);
       }
 
-      // Invalida cache no Redis e localmente para refletir o novo pacote de imediato
-      invalidarCacheTabela('encomendas_itens', condoAlvo);
-      invalidarCacheTabela('lotes_re', condoAlvo);
+      await invalidarCacheTabela('lotes_re', condoAlvo);
 
-      const telMorador = moradorSelecionado?.telefone?.replace(/\D/g, '') || (moradoresDaUnidade.find(m => m.telefone)?.telefone?.replace(/\D/g, '') || '');
-      const nomeDestinatario = moradorSelecionado ? moradorSelecionado.nome : 'Morador';
+      const destinatarioPrincipal = resultadoGravacao.destinatariosValidados[0]?.morador || null;
+      const telMorador = destinatarioPrincipal?.telefone?.replace(/\D/g, '') || '';
+      const nomeDestinatario = destinatarioPrincipal?.nome || 'Destinatário não identificado';
       const labelUnidadeFormatada = formatarIdentificacaoUnidade(unidadeFinal, blocoFinal, condoConfig?.tipo_estrutura);
       const orientacaoRetirada = eEstruturaCasas ? 'o número da sua casa' : 'seu apartamento e bloco';
 
@@ -2223,8 +2399,8 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       } else {
         const totalP = pacotesParaSalvar.length;
         const linhasPacotes = pacotesParaSalvar.map((p, idx) => {
-          const m = moradoresDaUnidade.find(mor => mor.id === p.morador_id) || moradorSelecionado;
-          const dest = m?.nome || nomeDestinatario;
+          const morValidado = resultadoGravacao.destinatariosValidados[idx]?.morador;
+          const dest = morValidado?.nome || 'Destinatário não identificado';
           const f = formatarUrlFoto(p.foto_etiqueta_url);
           const fLinha = f ? `\n• Foto da Etiqueta: ${f}` : '';
           const obsLinha = p.observacoes ? `\n• Obs: ${p.observacoes}` : '';
@@ -2257,10 +2433,17 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       setTipoFiltroBuscaBaixa('unidade');
       setBuscaBaixaGeral(unidadeFinal);
 
-      carregarDadosBase();
+      if (!resultadoGravacao.offline) {
+        await carregarDadosBase(true, true);
+      } else if (resultadoGravacao.data?.length) {
+        setTodosItensRetidos(prev => [...resultadoGravacao.data, ...prev]);
+      }
+
       setMensagem({ 
         tipo: 'sucesso', 
-        texto: `✅ ${pacotesParaSalvar.length} encomenda(s) registrada(s) com sucesso! Notificação consolidada enviada para ${nomeDestinatario}.` 
+        texto: resultadoGravacao.offline
+          ? `✅ ${pacotesParaSalvar.length} encomenda(s) salva(s) na fila offline com validação segura!`
+          : `✅ ${pacotesParaSalvar.length} encomenda(s) registrada(s) com sucesso! Notificação consolidada enviada para ${nomeDestinatario}.`
       });
     } catch (err: any) {
       setMensagem({ tipo: 'erro', texto: err.message });
@@ -2291,7 +2474,9 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
         if (moverTodosDaUnidade) {
           // Pega todos os itens retidos da mesma unidade/bloco para agrupar
           const itensMesmaUnidade = todosItensRetidos.filter(
-            i => i.unidade === itemParaMover.unidade && (itemParaMover.bloco ? i.bloco === itemParaMover.bloco : true)
+            i =>
+              saoUnidadesEquivalentes(i.unidade, itemParaMover.unidade) &&
+              saoBlocosEquivalentes(i.bloco, itemParaMover.bloco, condoConfig?.tipo_estrutura)
           );
           idsParaAtualizar = itensMesmaUnidade.map(i => i.id);
         } else {
@@ -2350,20 +2535,12 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     return eEstruturaTorres ? `Torre ${b}` : `Bloco ${b}`;
   };
 
-  const saoBlocosEquivalentes = (blocoA?: string | null, blocoB?: string | null): boolean => {
+  const saoBlocosEquivalentesAba = (blocoA?: string | null, blocoB?: string | null): boolean => {
     if (!blocoA || !blocoB) return false;
     const a = blocoA.trim().toLowerCase();
     const b = blocoB.trim().toLowerCase();
-    if (a === b) return true;
     if (a === 'todos' || b === 'todos') return true;
-    if ((a === 'casa' || a === 'casas') && (b === 'casa' || b === 'casas')) return true;
-
-    // Normaliza 'Torre 1' vs '1', 'Bloco A' vs 'A'
-    const aNorm = a.replace(/^(torre|bloco)\s*/i, '').trim();
-    const bNorm = b.replace(/^(torre|bloco)\s*/i, '').trim();
-    if (aNorm && bNorm && aNorm === bNorm) return true;
-
-    return false;
+    return saoBlocosEquivalentes(blocoA, blocoB, condoConfig?.tipo_estrutura);
   };
 
   const itensRetidosFiltrados = useMemo(() => {
@@ -2373,8 +2550,8 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
         const blocoItem = getRotuloBlocoParaFiltro(item.bloco);
         if (
           blocoItem !== abaBlocoSelecionada &&
-          !saoBlocosEquivalentes(blocoItem, abaBlocoSelecionada) &&
-          !saoBlocosEquivalentes(item.bloco, abaBlocoSelecionada)
+          !saoBlocosEquivalentesAba(blocoItem, abaBlocoSelecionada) &&
+          !saoBlocosEquivalentesAba(item.bloco, abaBlocoSelecionada)
         ) {
           return false;
         }
@@ -2503,11 +2680,12 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       ...itensCandidatosObjetos
     ];
 
-    // 1. Moradores cadastrados na mesma unidade/bloco
+    // 1. Moradores cadastrados na mesma unidade/bloco/condomínio
     moradores.forEach(m => {
-      const match = unidadesDosItens.some(item => 
+      const match = unidadesDosItens.some(item =>
+        (!m.condominio_id || !item.condominio_id || String(m.condominio_id) === String(item.condominio_id)) &&
         saoUnidadesEquivalentes(item.unidade, m.unidade) &&
-        (!item.bloco || String(item.bloco).toLowerCase() === String(m.bloco || '').toLowerCase() || eEstruturaCasas)
+        saoBlocosEquivalentes(item.bloco, m.bloco, condoConfig?.tipo_estrutura)
       );
       if (match && m.nome && !nomesJaAdicionados.has(m.nome.toLowerCase().trim())) {
         nomesJaAdicionados.add(m.nome.toLowerCase().trim());
@@ -2515,12 +2693,12 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       }
     });
 
-    // 2. Morador diretamente vinculado ao pacote se houver
+    // 2. Morador diretamente vinculado pelo morador_id válido do pacote, se houver
     unidadesDosItens.forEach(item => {
-      if (item.moradores?.nome && !nomesJaAdicionados.has(item.moradores.nome.toLowerCase().trim())) {
+      if (item.morador_id && item.moradores?.nome && !nomesJaAdicionados.has(item.moradores.nome.toLowerCase().trim())) {
         nomesJaAdicionados.add(item.moradores.nome.toLowerCase().trim());
         listaEncontrada.push({
-          id: item.morador_id || item.moradores.id || `morador-${item.id}`,
+          id: item.morador_id,
           nome: item.moradores.nome,
           tipo: item.moradores.tipo || 'Morador'
         });
@@ -2528,7 +2706,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
     });
 
     return listaEncontrada;
-  }, [moradores, itensSelecionadosObjetos, itensCandidatosObjetos, eEstruturaCasas]);
+  }, [moradores, itensSelecionadosObjetos, itensCandidatosObjetos, condoConfig?.tipo_estrutura]);
 
   const handleLimparBuscaBaixa = () => {
     setBuscaBaixaGeral('');
@@ -2788,7 +2966,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                   </div>
 
                   <p className="text-xs font-bold text-slate-900 truncate">
-                    {item.moradores?.nome || 'Morador não vinculado'}
+                    {item.moradores?.nome || 'Destinatário não identificado'}
                   </p>
 
                   <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
@@ -2921,7 +3099,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       if (error) throw error;
 
       // Invalida cache no Redis e localmente após baixa
-      invalidarCacheTabela('encomendas_itens', idCondominioAtivo || usuarioLogado?.condominio_id);
+      await invalidarCacheTabela('encomendas_itens', idCondominioAtivo || usuarioLogado?.condominio_id);
 
       const primeiroItem = todosItensRetidos.find(i => i.id === itensSelecionadosIds[0]);
 
@@ -2947,8 +3125,9 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
         condominio_id: primeiroItem?.condominio_id || idCondominioAtivo
       });
 
-      const moradorDoItem = moradores.find(m => m.id === primeiroItem?.morador_id) || 
-        moradores.find(m => saoUnidadesEquivalentes(m.unidade, primeiroItem?.unidade));
+      const moradorDoItem = primeiroItem?.morador_id
+        ? moradores.find(m => String(m.id) === String(primeiroItem.morador_id))
+        : null;
 
       const telMorador = primeiroItem?.moradores?.telefone?.replace(/\D/g, '') || 
         moradorDoItem?.telefone?.replace(/\D/g, '') || '';
@@ -2982,7 +3161,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
       setBaixaDocRetirante(''); setBaixaParentesco('Titular / Morador');
       setBaixaObsEspecial(''); setBaixaNotificarSupervisor(false);
       setMostrarOpcoesBaixa(false);
-      carregarDadosBase();
+      await carregarDadosBase(true, true);
       setMensagem({ tipo: 'sucesso', texto: 'Baixa de saída realizada com sucesso com assinatura digital registrada!' });
     } catch (err: any) {
       setMensagem({ tipo: 'erro', texto: err.message });
@@ -3291,7 +3470,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                       )}
 
                       <p className="text-[10px] text-slate-600 font-medium truncate w-full">
-                        {item.moradoresNomes.length > 0 ? item.moradoresNomes.join(', ') : 'Morador não vinculado'}
+                        {item.moradoresNomes.length > 0 ? item.moradoresNomes.join(', ') : 'Destinatário não identificado'}
                       </p>
 
                       {/* Indicador de seleção removido conforme solicitado */}
@@ -3381,7 +3560,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                               </span>
 
                               <span className="text-xs font-bold text-slate-900 truncate">
-                                {item.moradores?.nome || 'Morador não vinculado'}
+                                {item.moradores?.nome || 'Destinatário não identificado'}
                               </span>
                             </div>
 
@@ -4049,7 +4228,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                   </span>
                 </div>
                 <p className="text-slate-600">
-                  Destinatário: <strong>{itemParaMover.moradores?.nome || 'Morador'}</strong>
+                  Destinatário: <strong>{itemParaMover.moradores?.nome || 'Destinatário não identificado'}</strong>
                 </p>
                 <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg">
                   Local Atual: <strong>{itemParaMover.local_armazenamento || 'Bancada Principal'}</strong>
@@ -4421,7 +4600,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                                 {formatarIdentificacaoUnidade(item.unidade, item.bloco, condoConfig?.tipo_estrutura)}
                               </span>
                               <span className="text-[11px] text-slate-500 truncate max-w-[140px]">
-                                ({item.moradores?.nome || 'Morador'})
+                                ({item.moradores?.nome || 'Destinatário não identificado'})
                               </span>
                             </div>
 
@@ -4581,7 +4760,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                                 const msg = `📦 *COMPROVANTE DE ENTREGA DE ENCOMENDA - INFPORT*\n` +
                                   `━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
                                   `🏢 *Unidade:* ${formatarIdentificacaoUnidade(item.unidade, item.bloco, condoConfig?.tipo_estrutura)}\n` +
-                                  `👤 *Destinatário Cadastrado:* ${item.moradores?.nome || 'Morador'}\n` +
+                                  `👤 *Destinatário Cadastrado:* ${item.moradores?.nome || 'Destinatário não identificado'}\n` +
                                   `🏷️ *Código de Rastreio:* ${item.codigo_barras || 'S/ Código'}\n` +
                                   `✅ *Status:* ENTREGUE COM SUCESSO\n` +
                                   `👤 *Retirado Por:* ${item.retirado_por}\n` +
@@ -4632,7 +4811,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                 Encomenda {formatarIdentificacaoUnidade(itemModalDossie.unidade, itemModalDossie.bloco, condoConfig?.tipo_estrutura)}
               </h3>
               <p className="text-xs text-slate-500">
-                Morador: <strong>{itemModalDossie.moradores?.nome || 'Não cadastrado'}</strong> • Telefone: {itemModalDossie.moradores?.telefone || 'S/ Tel'} • Código: <strong>{itemModalDossie.codigo_barras || 'S/ Rastreio'}</strong>
+                Morador: <strong>{itemModalDossie.moradores?.nome || 'Destinatário não identificado'}</strong> • Telefone: {itemModalDossie.moradores?.telefone || 'S/ Tel'} • Código: <strong>{itemModalDossie.codigo_barras || 'S/ Rastreio'}</strong>
               </p>
             </div>
 
@@ -4745,7 +4924,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                 <div className="text-emerald-400 font-bold">DOSSIÊ INFPORT — REGISTRO DE AUDITORIA DE ENCOMENDA</div>
                 <div>ID: {itemModalDossie.id}</div>
                 <div>DESTINO: {formatarIdentificacaoUnidade(itemModalDossie.unidade, itemModalDossie.bloco, condoConfig?.tipo_estrutura)}</div>
-                <div>MORADOR TITULAR: {itemModalDossie.moradores?.nome || 'Não informado'} ({itemModalDossie.moradores?.telefone || 'S/ Tel'})</div>
+                <div>MORADOR TITULAR: {itemModalDossie.moradores?.nome || 'Destinatário não identificado'} ({itemModalDossie.moradores?.telefone || 'S/ Tel'})</div>
                 <div>CÓDIGO DE RASTREIO: {itemModalDossie.codigo_barras || itemModalDossie.codigo_rastreio || itemModalDossie.rastreio || (itemModalDossie.lotes_re?.codigo_re ? `Lote RE ${itemModalDossie.lotes_re.codigo_re}` : 'Sem código')}</div>
                 <div>LOCAL DE GUARDA: {itemModalDossie.local_armazenamento || 'Escaninho'}</div>
                 <div>ENTRADA NA PORTARIA: {new Date(itemModalDossie.created_at).toLocaleString('pt-BR')}</div>
@@ -4768,7 +4947,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                   const codDossie = itemModalDossie.codigo_barras || itemModalDossie.codigo_rastreio || itemModalDossie.rastreio || (itemModalDossie.lotes_re?.codigo_re ? `RE ${itemModalDossie.lotes_re.codigo_re}` : 'S/ Código');
                   const labelDestino = formatarIdentificacaoUnidade(itemModalDossie.unidade, itemModalDossie.bloco, condoConfig?.tipo_estrutura);
                   const texto = `DOSSIÊ DE ENCOMENDA - INFPORT\n` +
-                    `${labelDestino} - Morador: ${itemModalDossie.moradores?.nome || 'N/A'}\n` +
+                    `${labelDestino} - Morador: ${itemModalDossie.moradores?.nome || 'Destinatário não identificado'}\n` +
                     `Código de Rastreio: ${codDossie}\n` +
                     `Status: ${itemModalDossie.status === 'entregue' ? 'ENTREGUE' : 'RETIDO'}\n` +
                     `Entrada: ${new Date(itemModalDossie.created_at).toLocaleString('pt-BR')}\n` +
@@ -5033,6 +5212,37 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
 
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-slate-700 uppercase">
+                  Destinatário (Morador) {moradoresParaEdicaoPacote.length > 1 ? '*' : ''}
+                </label>
+                {moradoresParaEdicaoPacote.length > 0 ? (
+                  <select
+                    required={moradoresParaEdicaoPacote.length > 1}
+                    value={editPacoteMoradorId}
+                    onChange={(e) => setEditPacoteMoradorId(e.target.value)}
+                    className={`w-full p-2.5 rounded-xl text-xs font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 border ${
+                      moradoresParaEdicaoPacote.length > 1 && !editPacoteMoradorId
+                        ? 'bg-amber-50 border-amber-400 text-amber-950'
+                        : 'bg-slate-50 border-slate-300 text-slate-900'
+                    }`}
+                  >
+                    {moradoresParaEdicaoPacote.length > 1 && (
+                      <option value="">-- Selecione o morador destinatário --</option>
+                    )}
+                    {moradoresParaEdicaoPacote.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.nome} {m.telefone ? `(Tel: ${m.telefone})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="p-2.5 bg-slate-100 border border-slate-300 rounded-xl text-xs font-semibold text-slate-600">
+                    Destinatário não identificado (nenhum morador cadastrado nesta unidade)
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-slate-700 uppercase">
                   Código de Barras / Rastreio
                 </label>
                 <input
@@ -5149,7 +5359,7 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
               <div className="p-3 bg-red-50 border border-red-200 rounded-xl space-y-1 text-red-950">
                 <p>• <strong>Código / Rastreio:</strong> {pacoteParaExcluir.codigo_barras || 'Sem código'}</p>
                 <p>• <strong>Local Físico:</strong> {pacoteParaExcluir.local_armazenamento || 'Bancada Principal'}</p>
-                <p>• <strong>Destinatário:</strong> {pacoteParaExcluir.moradores?.nome || 'Não vinculado'}</p>
+                <p>• <strong>Destinatário:</strong> {pacoteParaExcluir.moradores?.nome || 'Destinatário não identificado'}</p>
               </div>
               <p className="text-[11px] text-slate-500 italic">
                 * Esta exclusão será registrada no histórico de auditoria e ajustará os volumes pendentes do lote RE correspondente.
@@ -5291,19 +5501,40 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                 </div>
 
                 {/* SELETOR DE DESTINATÁRIO */}
-                {moradoresDaUnidade.length > 0 && (
-                  <div className="space-y-1 bg-blue-50/80 p-2 rounded-xl border border-blue-200">
-                    <label className="block text-[10px] font-bold text-blue-800 uppercase">Destinatário (Morador)</label>
-                    <select
-                      className="w-full p-2 bg-white border border-blue-200 rounded-lg text-xs font-semibold text-slate-800"
-                      onChange={(e) => setMoradorSelecionado(moradoresDaUnidade.find(m => m.id === e.target.value))}
-                      value={moradorSelecionado?.id || ''}
-                    >
-                      {moradoresDaUnidade.map(m => (
-                        <option key={m.id} value={m.id}>{m.nome} (Tel: {m.telefone || 'Sem tel'})</option>
-                      ))}
-                    </select>
-                  </div>
+                {unidadeTriagem.trim() && (
+                  moradoresDaUnidade.length > 0 ? (
+                    <div className={`space-y-1 p-2 rounded-xl border ${
+                      moradoresDaUnidade.length > 1 && !moradorSelecionado
+                        ? 'bg-amber-50/90 border-amber-400'
+                        : 'bg-blue-50/80 border-blue-200'
+                    }`}>
+                      <label className="block text-[10px] font-bold text-blue-900 uppercase">
+                        Destinatário (Morador) {moradoresDaUnidade.length > 1 ? '— Escolha obrigatória *' : ''}
+                      </label>
+                      <select
+                        required={moradoresDaUnidade.length > 1}
+                        className="w-full p-2 bg-white border border-blue-200 rounded-lg text-xs font-semibold text-slate-800"
+                        onChange={(e) => {
+                          const encontrado = moradoresDaUnidade.find(m => String(m.id) === String(e.target.value)) || null;
+                          setMoradorSelecionado(encontrado);
+                        }}
+                        value={moradorSelecionado?.id || ''}
+                      >
+                        {moradoresDaUnidade.length > 1 && (
+                          <option value="">-- Selecione o morador destinatário ({moradoresDaUnidade.length} na unidade) --</option>
+                        )}
+                        {moradoresDaUnidade.map(m => (
+                          <option key={m.id} value={m.id}>{m.nome} (Tel: {m.telefone || 'Sem tel'})</option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="p-2 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-600">
+                      {!eEstruturaCasas && !isEstruturaNumeralDireto(condoConfig?.tipo_estrutura) && !blocoTriagem.trim()
+                        ? `Selecione o ${rotuloBloco} para listar os moradores da unidade.`
+                        : 'Destinatário não identificado (nenhum morador cadastrado nesta unidade/bloco).'}
+                    </div>
+                  )
                 )}
 
                 {/* LOCAL DE ARMAZENAMENTO E ALERTA DE AGRUPAMENTO (INTEGRADOS ABAIXO DO DESTINATÁRIO) */}
@@ -5659,17 +5890,25 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                           <div className="space-y-1">
                             <label className="block text-[10px] font-bold text-slate-700 uppercase flex items-center gap-1">
                               <User className="w-3 h-3 text-blue-600" />
-                              Morador / Destinatário
+                              Morador / Destinatário {moradoresDaUnidade.length > 1 ? '— Escolha obrigatória *' : ''}
                             </label>
                             {moradoresDaUnidade.length > 0 ? (
                               <select
+                                required={moradoresDaUnidade.length > 1}
                                 value={adic.moradorId || ''}
                                 onChange={(e) => {
                                   const mId = e.target.value;
                                   setEncomendasAdicionais(prev => prev.map(item => item.id === adic.id ? { ...item, moradorId: mId } : item));
                                 }}
-                                className="w-full p-2 bg-white border border-blue-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                                className={`w-full p-2 bg-white border rounded-xl text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${
+                                  moradoresDaUnidade.length > 1 && !adic.moradorId
+                                    ? 'border-amber-400 bg-amber-50'
+                                    : 'border-blue-300'
+                                }`}
                               >
+                                {moradoresDaUnidade.length > 1 && (
+                                  <option value="">-- Selecione o destinatário do Pacote #{numeroPacote} --</option>
+                                )}
                                 {moradoresDaUnidade.map(m => (
                                   <option key={m.id} value={m.id}>
                                     {m.nome} (Tel: {m.telefone || 'Sem tel'})
@@ -5677,8 +5916,8 @@ export default function Encomendas({ usuarioLogado }: EncomendasProps) {
                                 ))}
                               </select>
                             ) : (
-                              <div className="p-2 bg-white border border-blue-200 rounded-xl text-xs text-slate-700 font-medium">
-                                {moradorSelecionado?.nome || 'Morador da Unidade'}
+                              <div className="p-2 bg-white border border-blue-200 rounded-xl text-xs text-slate-600 font-medium">
+                                Destinatário não identificado
                               </div>
                             )}
                           </div>
