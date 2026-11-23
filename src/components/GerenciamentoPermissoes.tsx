@@ -151,6 +151,15 @@ export default function GerenciamentoPermissoes({
     }
 
     novasPermissoes[modulo.id] = permsModulo;
+    if (modulo.id === 'cadastros') {
+      if (preset === 'liberar_tudo') {
+        novasPermissoes.moradores = { visualizar: true, criar: true, editar: true, excluir: true, adicionar: true };
+      } else if (preset === 'apenas_leitura') {
+        novasPermissoes.moradores = { visualizar: true, criar: false, editar: false, excluir: false, adicionar: false };
+      } else {
+        novasPermissoes.moradores = { visualizar: false, criar: false, editar: false, excluir: false, adicionar: false };
+      }
+    }
     const nivelAtualizado: NivelAcessoItem = {
       ...nivelAtivo,
       permissoes: novasPermissoes
@@ -180,12 +189,28 @@ export default function GerenciamentoPermissoes({
     if (!nivelAtivo) return;
 
     const novasPermissoes: any = { ...nivelAtivo.permissoes };
-    if (!novasPermissoes[moduloId]) {
-      novasPermissoes[moduloId] = {};
+    const modAtual = { ...(novasPermissoes[moduloId] || {}) };
+
+    const valorAtual = Boolean(modAtual[campo]);
+    const novoValor = !valorAtual;
+    modAtual[campo] = novoValor;
+    if (campo !== 'visualizar' && novoValor) {
+      modAtual.visualizar = true;
     }
 
-    const valorAtual = Boolean(novasPermissoes[moduloId][campo]);
-    novasPermissoes[moduloId][campo] = !valorAtual;
+    if (moduloId === 'cadastros') {
+      const moradoresLegado = { ...(novasPermissoes.moradores || {}) };
+      if (campo === 'visualizar') moradoresLegado.visualizar = novoValor;
+      if (campo === 'criar') {
+        moradoresLegado.criar = novoValor;
+        moradoresLegado.adicionar = novoValor;
+      }
+      if (campo === 'editar') moradoresLegado.editar = novoValor;
+      if (campo === 'excluir') moradoresLegado.excluir = novoValor;
+      novasPermissoes.moradores = moradoresLegado;
+    }
+
+    novasPermissoes[moduloId] = modAtual;
 
     const nivelAtualizado: NivelAcessoItem = {
       ...nivelAtivo,
@@ -199,12 +224,46 @@ export default function GerenciamentoPermissoes({
     if (!nivelAtivo) return;
 
     const novasPermissoes: any = { ...nivelAtivo.permissoes };
-    if (!novasPermissoes[moduloId]) {
-      novasPermissoes[moduloId] = {};
+    const modAtual = { ...(novasPermissoes[moduloId] || {}) };
+
+    const valorAtual = Boolean(modAtual[acaoId]);
+    const novoValor = !valorAtual;
+    modAtual[acaoId] = novoValor;
+    if (novoValor) {
+      modAtual.visualizar = true;
     }
 
-    const valorAtual = Boolean(novasPermissoes[moduloId][acaoId]);
-    novasPermissoes[moduloId][acaoId] = !valorAtual;
+    if (moduloId === 'cadastros') {
+      if (acaoId === 'cadastrar_morador' || acaoId === 'editar_morador' || acaoId === 'excluir_morador') {
+        if (novoValor) {
+          modAtual.visualizar = true;
+          modAtual.visualizar_moradores = true;
+        }
+        const moradoresLegado = { ...(novasPermissoes.moradores || {}) };
+        if (acaoId === 'cadastrar_morador') {
+          moradoresLegado.adicionar = novoValor;
+          moradoresLegado.criar = novoValor;
+        } else if (acaoId === 'editar_morador') {
+          moradoresLegado.editar = novoValor;
+        } else if (acaoId === 'excluir_morador') {
+          moradoresLegado.excluir = novoValor;
+        }
+        moradoresLegado.visualizar = Boolean(
+          modAtual.visualizar_moradores ||
+          modAtual.cadastrar_morador ||
+          modAtual.editar_morador ||
+          modAtual.excluir_morador
+        );
+        novasPermissoes.moradores = moradoresLegado;
+      } else if (acaoId === 'visualizar_moradores') {
+        novasPermissoes.moradores = {
+          ...(novasPermissoes.moradores || {}),
+          visualizar: novoValor
+        };
+      }
+    }
+
+    novasPermissoes[moduloId] = modAtual;
 
     const nivelAtualizado: NivelAcessoItem = {
       ...nivelAtivo,

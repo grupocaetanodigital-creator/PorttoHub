@@ -439,7 +439,7 @@ export default function PassagemPosto({
     try {
       const { data, error } = await supabase
         .from('operadores')
-        .select('id, nome, login, perfil, foto_url, nivel_acesso, condominio_id, ativo')
+        .select('id, nome, login, perfil, funcao, cargo, unidade, foto_url, nivel_acesso, nivel_acesso_custom_id, permissoes, condominio_id, ativo')
         .eq('ativo', true)
         .order('nome', { ascending: true });
 

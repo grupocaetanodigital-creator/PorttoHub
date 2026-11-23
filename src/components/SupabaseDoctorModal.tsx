@@ -942,7 +942,7 @@ export default function SupabaseDoctorModal({ isOpen, onClose, abaInicial = 'con
 
               {/* Dados de Conexão com o Supabase */}
               <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs text-slate-600 space-y-1 font-mono">
-                <p><strong>API URL:</strong> https://kkeizhscivyfjgetnbke.supabase.co/rest/v1/</p>
+                <p><strong>API URL:</strong> https://kkeizhscivyfjgetnbke.supabase.co</p>
                 <p><strong>Projeto ID:</strong> kkeizhscivyfjgetnbke</p>
                 <p><strong>Estratégia de TTL:</strong> 600s Condomínios | 300s Moradores/Operadores | 60s Encomendas/Bancada</p>
               </div>

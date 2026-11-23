@@ -209,6 +209,25 @@ export default function App() {
 
   useEffect(() => {
     const handleAtualizacao = () => setVersaoPermissoes(v => v + 1);
+    const handleOperadoresAtualizados = (e: any) => {
+      setVersaoPermissoes(v => v + 1);
+      const opAtualizado = e?.detail?.operador;
+      if (opAtualizado && operador) {
+        const opLogin = operador.login?.toLowerCase();
+        const updLogin = opAtualizado.login?.toLowerCase();
+        if (
+          (operador.id && opAtualizado.id && operador.id === opAtualizado.id) ||
+          (opLogin && updLogin && opLogin === updLogin)
+        ) {
+          setOperador((op: any) => {
+            if (!op) return op;
+            const mesclado = { ...op, ...opAtualizado };
+            (window as any).__operadorAtivo = mesclado;
+            return mesclado;
+          });
+        }
+      }
+    };
     const handlePermissoesOperador = (e: any) => {
       setVersaoPermissoes(v => v + 1);
       const detail = e.detail;
@@ -226,11 +245,11 @@ export default function App() {
     };
     window.addEventListener('niveis_acesso_atualizados', handleAtualizacao);
     window.addEventListener('permissoes_operador_atualizadas', handlePermissoesOperador as EventListener);
-    window.addEventListener('operadores_atualizados', handleAtualizacao);
+    window.addEventListener('operadores_atualizados', handleOperadoresAtualizados as EventListener);
     return () => {
       window.removeEventListener('niveis_acesso_atualizados', handleAtualizacao);
       window.removeEventListener('permissoes_operador_atualizadas', handlePermissoesOperador as EventListener);
-      window.removeEventListener('operadores_atualizados', handleAtualizacao);
+      window.removeEventListener('operadores_atualizados', handleOperadoresAtualizados as EventListener);
     };
   }, [operador]);
 
@@ -238,11 +257,16 @@ export default function App() {
   const eSuperAdminGlobal = (operador?.login === 'admin' || operador?.perfil === 'admin_geral' || (Number(operador?.nivel_acesso) <= 1 && (!operador?.condominio_id || operador?.condominio_id === 'global' || operador?.condominio_id === 'todos')));
   const eAdmin = eSuperAdminGlobal || operador?.perfil === 'admin' || operador?.nivel_acesso === 0 || operador?.nivel_acesso === 1;
   const eAcessoMultiCondominio = eSuperAdminGlobal || eSupervisorGlobal || (eAdmin && (!operador?.condominio_id || operador?.condominio_id === 'global' || operador?.condominio_id === 'todos'));
-  const eSindico = operador?.nivel_acesso === 4 || 
-                   operador?.perfil === 'sindico' || 
-                   operador?.perfil === 'Síndico' || 
-                   operador?.funcao?.toLowerCase() === 'síndico' || 
-                   operador?.funcao?.toLowerCase() === 'sindico';
+  const eSindico = !eAdmin &&
+                   operador?.perfil?.toLowerCase() !== 'master' &&
+                   Number(operador?.nivel_acesso) !== 1 &&
+                   (
+                     Number(operador?.nivel_acesso) === 4 ||
+                     operador?.perfil?.toLowerCase() === 'sindico' ||
+                     operador?.perfil?.toLowerCase() === 'síndico' ||
+                     operador?.funcao?.toLowerCase() === 'síndico' ||
+                     operador?.funcao?.toLowerCase() === 'sindico'
+                   );
 
   useEffect(() => {
     let montado = true;
@@ -280,8 +304,11 @@ export default function App() {
             if (opData) {
               if (possuiPermissoesDeModulo(opData.permissoes)) {
                 sincronizarPermissoesOperadorLocal(opData.id, opData.permissoes, opData.login);
-              } else {
-                opData.permissoes = obterPermissoesOperador(opData);
+              } else if (opData.permissoes === null) {
+                try {
+                  if (opData.id) localStorage.removeItem(`porttohub_operador_permissoes_${opData.id}`);
+                  if (opData.login) localStorage.removeItem(`porttohub_operador_permissoes_${String(opData.login).toLowerCase()}`);
+                } catch {}
               }
             }
             if (!opData && sessao.login === 'admin') {
@@ -308,10 +335,22 @@ export default function App() {
               localStorage.setItem('infport_ultimo_operador_nome', nomeAtivoRestaurado);
               (window as any).__operadorAtivoNome = nomeAtivoRestaurado;
               (window as any).__operadorAtivo = opData;
-              const ehSindicoOp = opData.nivel_acesso === 4 || 
-                                  opData.perfil === 'sindico' || 
-                                  opData.funcao?.toLowerCase() === 'síndico' || 
-                                  opData.funcao?.toLowerCase() === 'sindico';
+              const ehAdminOuMaster =
+                opData.login === 'admin' ||
+                opData.perfil?.toLowerCase() === 'admin' ||
+                opData.perfil?.toLowerCase() === 'admin_geral' ||
+                opData.perfil?.toLowerCase() === 'master' ||
+                Number(opData.nivel_acesso) === 0 ||
+                Number(opData.nivel_acesso) === 1;
+              const ehSindicoOp =
+                !ehAdminOuMaster &&
+                (
+                  Number(opData.nivel_acesso) === 4 ||
+                  opData.perfil?.toLowerCase() === 'sindico' ||
+                  opData.perfil?.toLowerCase() === 'síndico' ||
+                  opData.funcao?.toLowerCase() === 'síndico' ||
+                  opData.funcao?.toLowerCase() === 'sindico'
+                );
               if (ehSindicoOp) {
                 setModuloAtual('painel_sindico');
               }
@@ -746,8 +785,11 @@ export default function App() {
       if (opData) {
         if (possuiPermissoesDeModulo(opData.permissoes)) {
           sincronizarPermissoesOperadorLocal(opData.id, opData.permissoes, opData.login);
-        } else {
-          opData.permissoes = obterPermissoesOperador(opData);
+        } else if (opData.permissoes === null) {
+          try {
+            if (opData.id) localStorage.removeItem(`porttohub_operador_permissoes_${opData.id}`);
+            if (opData.login) localStorage.removeItem(`porttohub_operador_permissoes_${String(opData.login).toLowerCase()}`);
+          } catch {}
         }
       }
 
@@ -819,10 +861,22 @@ export default function App() {
         condominio_id: opData.condominio_id
       });
 
-      const ehSindicoOp = opData.nivel_acesso === 4 || 
-                          opData.perfil === 'sindico' || 
-                          opData.funcao?.toLowerCase() === 'síndico' || 
-                          opData.funcao?.toLowerCase() === 'sindico';
+      const ehAdminOuMasterLogin =
+        opData.login === 'admin' ||
+        opData.perfil?.toLowerCase() === 'admin' ||
+        opData.perfil?.toLowerCase() === 'admin_geral' ||
+        opData.perfil?.toLowerCase() === 'master' ||
+        Number(opData.nivel_acesso) === 0 ||
+        Number(opData.nivel_acesso) === 1;
+      const ehSindicoOp =
+        !ehAdminOuMasterLogin &&
+        (
+          Number(opData.nivel_acesso) === 4 ||
+          opData.perfil?.toLowerCase() === 'sindico' ||
+          opData.perfil?.toLowerCase() === 'síndico' ||
+          opData.funcao?.toLowerCase() === 'síndico' ||
+          opData.funcao?.toLowerCase() === 'sindico'
+        );
       mudarModulo(ehSindicoOp ? 'painel_sindico' : 'dashboard');
 
       // Dispara verificação de alarme de troca/início de plantão se houver lembretes ativos
@@ -862,15 +916,33 @@ export default function App() {
   const handleTrocarOperador = async (novoOperador: any) => {
     if (!novoOperador) return;
 
-    const permissoesResolvidas = possuiPermissoesDeModulo(novoOperador.permissoes)
-      ? novoOperador.permissoes
-      : obterPermissoesOperador(novoOperador);
-    if (possuiPermissoesDeModulo(novoOperador.permissoes)) {
-      sincronizarPermissoesOperadorLocal(novoOperador.id, novoOperador.permissoes, novoOperador.login);
+    let operadorBase = novoOperador;
+    if (novoOperador.id && isUUID(novoOperador.id)) {
+      try {
+        const { data: opFresco } = await supabase
+          .from('operadores')
+          .select('*')
+          .eq('id', novoOperador.id)
+          .maybeSingle();
+        if (opFresco) {
+          operadorBase = opFresco;
+        }
+      } catch (err) {
+        console.warn('Aviso ao buscar operador atualizado na troca de posto:', err);
+      }
     }
+
+    if (possuiPermissoesDeModulo(operadorBase.permissoes)) {
+      sincronizarPermissoesOperadorLocal(operadorBase.id, operadorBase.permissoes, operadorBase.login);
+    } else if (operadorBase.permissoes === null) {
+      try {
+        if (operadorBase.id) localStorage.removeItem(`porttohub_operador_permissoes_${operadorBase.id}`);
+        if (operadorBase.login) localStorage.removeItem(`porttohub_operador_permissoes_${String(operadorBase.login).toLowerCase()}`);
+      } catch {}
+    }
+
     const operadorComPermissoes = {
-      ...novoOperador,
-      permissoes: permissoesResolvidas
+      ...operadorBase
     };
 
     // 1. Atualiza estado do operador ativo em memória
@@ -883,22 +955,22 @@ export default function App() {
     // 2. EFETIVA O LOGIN NO DISPOSITIVO (PERSISTÊNCIA NO LOCALSTORAGE)
     // Garante que recarregamentos de página, abas em segundo plano e WhatsApp não desfaçam a troca!
     localStorage.setItem(CHAVE_SESSAO, JSON.stringify({
-      operadorId: novoOperador.id,
-      login: novoOperador.login,
+      operadorId: operadorComPermissoes.id,
+      login: operadorComPermissoes.login,
       nome: nomeNovoOperador,
       operadorNome: nomeNovoOperador,
-      condominioId: novoOperador.condominio_id,
+      condominioId: operadorComPermissoes.condominio_id,
       salvoEm: new Date().toISOString()
     }));
 
-    if (novoOperador.condominio_id) {
-      setCondominioAtivoId(novoOperador.condominio_id);
-      localStorage.setItem('infport_condominio_ativo_id', novoOperador.condominio_id);
+    if (operadorComPermissoes.condominio_id) {
+      setCondominioAtivoId(operadorComPermissoes.condominio_id);
+      localStorage.setItem('infport_condominio_ativo_id', operadorComPermissoes.condominio_id);
       try {
         const { data: cData } = await supabase
           .from('condominios')
           .select('*')
-          .eq('id', novoOperador.condominio_id)
+          .eq('id', operadorComPermissoes.condominio_id)
           .maybeSingle();
         if (cData) {
           setCondominio(cData);
@@ -906,34 +978,46 @@ export default function App() {
       } catch (err) {
         console.error('Erro ao sincronizar condomínio após troca de operador:', err);
       }
-      carregarNiveisAcesso(novoOperador.condominio_id);
-      preCarregarDadosCondominio(novoOperador.condominio_id);
+      carregarNiveisAcesso(operadorComPermissoes.condominio_id);
+      preCarregarDadosCondominio(operadorComPermissoes.condominio_id);
     }
 
     // 3. Registra assunção de plantão no Histórico Absoluto
     registrarAtividade({
       modulo: 'Passagem de Posto',
       acao: 'TROCA_OPERADOR_EFETIVADA',
-      descricao: `Operador ${novoOperador.nome || novoOperador.login} assumiu oficialmente o posto (Login efetivado e autenticado no dispositivo).`,
-      detalhes: { operadorId: novoOperador.id, perfil: novoOperador.perfil, condominioId: novoOperador.condominio_id },
-      operador_nome: novoOperador.nome || novoOperador.login,
-      operador_id: novoOperador.id,
-      operador_login: novoOperador.login,
-      condominio_id: novoOperador.condominio_id
+      descricao: `Operador ${operadorComPermissoes.nome || operadorComPermissoes.login} assumiu oficialmente o posto (Login efetivado e autenticado no dispositivo).`,
+      detalhes: { operadorId: operadorComPermissoes.id, perfil: operadorComPermissoes.perfil, condominioId: operadorComPermissoes.condominio_id },
+      operador_nome: operadorComPermissoes.nome || operadorComPermissoes.login,
+      operador_id: operadorComPermissoes.id,
+      operador_login: operadorComPermissoes.login,
+      condominio_id: operadorComPermissoes.condominio_id
     });
 
     // 4. Notifica globalmente outros módulos e componentes da troca
-    window.dispatchEvent(new CustomEvent('infport:operador_trocado', { detail: novoOperador }));
+    window.dispatchEvent(new CustomEvent('infport:operador_trocado', { detail: operadorComPermissoes }));
 
     // 5. Redireciona para o painel principal do novo operador
-    const ehSindicoOp = novoOperador.nivel_acesso === 4 || 
-                        novoOperador.perfil === 'sindico' || 
-                        novoOperador.funcao?.toLowerCase() === 'síndico' || 
-                        novoOperador.funcao?.toLowerCase() === 'sindico';
+    const ehAdminOuMasterTroca =
+      operadorComPermissoes.login === 'admin' ||
+      operadorComPermissoes.perfil?.toLowerCase() === 'admin' ||
+      operadorComPermissoes.perfil?.toLowerCase() === 'admin_geral' ||
+      operadorComPermissoes.perfil?.toLowerCase() === 'master' ||
+      Number(operadorComPermissoes.nivel_acesso) === 0 ||
+      Number(operadorComPermissoes.nivel_acesso) === 1;
+    const ehSindicoOp =
+      !ehAdminOuMasterTroca &&
+      (
+        Number(operadorComPermissoes.nivel_acesso) === 4 ||
+        operadorComPermissoes.perfil?.toLowerCase() === 'sindico' ||
+        operadorComPermissoes.perfil?.toLowerCase() === 'síndico' ||
+        operadorComPermissoes.funcao?.toLowerCase() === 'síndico' ||
+        operadorComPermissoes.funcao?.toLowerCase() === 'sindico'
+      );
     mudarModulo(ehSindicoOp ? 'painel_sindico' : 'dashboard');
 
     // 6. Toda vez que houver troca de plantão, se tiver algum lembrete, o app dispara o alarme contínuo
-    const idCondAlvo = novoOperador.condominio_id || condominioAtivoId;
+    const idCondAlvo = operadorComPermissoes.condominio_id || condominioAtivoId;
     if (idCondAlvo) {
       checarEDispararAlarmeTrocaPlantao(idCondAlvo);
     }

@@ -12,8 +12,52 @@ import path from 'path';
 import { redisCache } from './src/server/redisClient.ts';
 dotenv.config();
 
-process.env.VITE_SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://kkeizhscivyfjgetnbke.supabase.co';
-process.env.VITE_SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtrZWl6aHNjaXZ5ZmpnZXRuYmtlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2ODk5NDUsImV4cCI6MjEwODI2NTk0NX0.hQzzvICbZfNPziWrj8DlD-A8-Vm4xbr25Nr0xQe3BEA';
+const SUPABASE_FALLBACK_URL = 'https://kkeizhscivyfjgetnbke.supabase.co';
+const SUPABASE_FALLBACK_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtrZWl6aHNjaXZ5ZmpnZXRuYmtlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2ODk5NDUsImV4cCI6MjEwODI2NTk0NX0.hQzzvICbZfNPziWrj8DlD-A8-Vm4xbr25Nr0xQe3BEA';
+
+function ehUrlSupabaseLegadaServer(rawUrl?: string): boolean {
+  const s = (rawUrl || '').toLowerCase();
+  return Boolean(
+    s &&
+    (
+      s.includes('163.176.49.21') ||
+      s.includes('fukxrdzhryumbcqibtas') ||
+      s.includes('juafrepntyksgqiqzyes') ||
+      !s.includes('supabase.co')
+    )
+  );
+}
+
+function normalizarSupabaseBaseUrl(rawUrl?: string): string {
+  const fallback = SUPABASE_FALLBACK_URL;
+  const limpa = (rawUrl || '').trim();
+  if (!limpa || ehUrlSupabaseLegadaServer(limpa)) return fallback;
+  try {
+    const parsed = new URL(limpa);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      const pathNorm = parsed.pathname.replace(/\/+$/, '');
+      if (
+        /^\/(rest|auth|storage|realtime|functions)\/v\d+/i.test(pathNorm) ||
+        parsed.hostname.endsWith('.supabase.co') ||
+        parsed.hostname.endsWith('.supabase.in')
+      ) {
+        return parsed.origin;
+      }
+      return `${parsed.origin}${pathNorm}`;
+    }
+  } catch {
+    // fallback via regex
+  }
+  return limpa
+    .replace(/\/(rest|auth|storage|realtime|functions)\/v\d+.*$/i, '')
+    .replace(/\/+$/, '') || fallback;
+}
+
+const rawEnvSupabaseUrl = process.env.VITE_SUPABASE_URL;
+process.env.VITE_SUPABASE_URL = normalizarSupabaseBaseUrl(rawEnvSupabaseUrl);
+process.env.VITE_SUPABASE_ANON_KEY = (!rawEnvSupabaseUrl || !ehUrlSupabaseLegadaServer(rawEnvSupabaseUrl))
+  ? (process.env.VITE_SUPABASE_ANON_KEY || SUPABASE_FALLBACK_KEY)
+  : SUPABASE_FALLBACK_KEY;
 
 const app = express();
 const port = 3000;
@@ -558,8 +602,9 @@ app.post('/api/cache/query', async (req, res) => {
     }
 
     // 2. Cache Miss: Busca no Supabase REST API
-    const baseUrl = process.env.VITE_SUPABASE_URL || 'https://kkeizhscivyfjgetnbke.supabase.co';
+    const baseUrl = normalizarSupabaseBaseUrl(process.env.VITE_SUPABASE_URL);
     const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+    const cleanTable = table.trim().replace(/^\/+|\/+$/g, '');
 
     const queryParams = new URLSearchParams();
     queryParams.set('select', select);
@@ -585,7 +630,7 @@ app.post('/api/cache/query', async (req, res) => {
       queryParams.set('limit', String(limit));
     }
 
-    const restUrl = `${baseUrl.replace(/\/+$/, '')}/rest/v1/${table}?${queryParams.toString()}`;
+    const restUrl = `${baseUrl}/rest/v1/${cleanTable}?${queryParams.toString()}`;
     const supabaseRes = await fetch(restUrl, {
       method: 'GET',
       headers: {
@@ -664,7 +709,7 @@ app.get('/api/cache/stats', async (_req, res) => {
     return res.json({
       sucesso: true,
       ...stats,
-      supabaseUrl: process.env.VITE_SUPABASE_URL || 'https://kkeizhscivyfjgetnbke.supabase.co',
+      supabaseUrl: normalizarSupabaseBaseUrl(process.env.VITE_SUPABASE_URL),
       horarioServidor: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })
     });
   } catch (err: any) {
@@ -691,7 +736,7 @@ app.post('/api/cache/warmup', async (req, res) => {
   const start = Date.now();
   try {
     const { condominioId } = req.body || {};
-    const baseUrl = process.env.VITE_SUPABASE_URL || 'https://kkeizhscivyfjgetnbke.supabase.co';
+    const baseUrl = normalizarSupabaseBaseUrl(process.env.VITE_SUPABASE_URL);
     const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
 
     const tabelasParaAquecer: { table: string; ttl: number; select: string }[] = [
@@ -700,7 +745,7 @@ app.post('/api/cache/warmup', async (req, res) => {
 
     if (condominioId && condominioId !== 'global' && condominioId !== 'todos') {
       tabelasParaAquecer.push(
-        { table: 'operadores', ttl: 300, select: 'id,condominio_id,nome,login,funcao,turno_padrao,nivel_acesso,perfil,ativo' },
+        { table: 'operadores', ttl: 300, select: 'id,condominio_id,nome,login,funcao,cargo,unidade,foto_url,turno_padrao,nivel_acesso,nivel_acesso_custom_id,perfil,permissoes,ativo' },
         { table: 'chaves', ttl: 180, select: '*' },
         { table: 'moradores', ttl: 300, select: 'id,condominio_id,nome,bloco,unidade,telefone,status_acesso,tag_rfid,veiculo_placa,veiculo_modelo' },
         { table: 'entregadores', ttl: 300, select: '*' },
@@ -711,7 +756,7 @@ app.post('/api/cache/warmup', async (req, res) => {
     const resultados: any[] = [];
     for (const item of tabelasParaAquecer) {
       try {
-        let restUrl = `${baseUrl.replace(/\/+$/, '')}/rest/v1/${item.table}?select=${encodeURIComponent(item.select)}`;
+        let restUrl = `${baseUrl}/rest/v1/${item.table}?select=${encodeURIComponent(item.select)}`;
         if (condominioId && condominioId !== 'global' && condominioId !== 'todos' && item.table !== 'condominios') {
           restUrl += `&condominio_id=eq.${condominioId}`;
         }
@@ -746,14 +791,18 @@ app.post('/api/cache/warmup', async (req, res) => {
  */
 app.get('/api/cache/benchmark', async (_req, res) => {
   try {
-    const baseUrl = process.env.VITE_SUPABASE_URL || 'https://kkeizhscivyfjgetnbke.supabase.co';
+    const baseUrl = normalizarSupabaseBaseUrl(process.env.VITE_SUPABASE_URL);
     const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
 
     // 1. Teste Supabase Direto
     const t0 = Date.now();
-    const supRes = await fetch(`${baseUrl.replace(/\/+$/, '')}/rest/v1/condominios?select=id,nome`, {
+    const supRes = await fetch(`${baseUrl}/rest/v1/condominios?select=id,nome`, {
       headers: { 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}` }
     });
+    if (!supRes.ok) {
+      const errText = await supRes.text();
+      return res.status(supRes.status).json({ sucesso: false, erro: `Erro no Supabase: ${errText}` });
+    }
     const supData = await supRes.json();
     const latenciaSupabaseMs = Date.now() - t0;
 

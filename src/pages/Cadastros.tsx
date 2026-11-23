@@ -259,15 +259,22 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
   const loginStr = (usuarioLogado?.login || '').toLowerCase();
   const nomeStr = (usuarioLogado?.nome || '').toLowerCase();
 
-  // Detecção estrita de Síndico (somente perfis/nível de síndico, sem bloquear Master Nível 1)
+  // Detecção estrita de Síndico (somente perfis/nível de síndico, nunca bloqueia Admin Nível 0 ou Master Nível 1)
+  const ehPerfilAdminOuMaster = Boolean(
+    usuarioLogado?.eSuperAdminGlobal ||
+    loginStr === 'admin' ||
+    perfilStr === 'admin' ||
+    perfilStr === 'admin_geral' ||
+    perfilStr === 'master' ||
+    nivelNum === 0 ||
+    nivelNum === 1
+  );
+
   const ehSindicaLvl1 = Boolean(
-    !usuarioLogado?.eSuperAdminGlobal &&
-    loginStr !== 'admin' &&
+    !ehPerfilAdminOuMaster &&
     (
       perfilStr.includes('sind') ||
       Boolean(usuarioLogado?.eSindico) ||
-      loginStr.includes('sindic') ||
-      nomeStr.includes('sindic') ||
       nivelNum === 4 ||
       usuarioLogado?.nivel_acesso_custom_id === 'nivel_4'
     )
@@ -282,8 +289,8 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
   );
   const eMaster = !ehSindicaLvl1 && (perfilStr === 'master' || nivelNum === 1 || nivelNum === 0 || Boolean(usuarioLogado?.eSuperAdminGlobal));
   const eSupervisor = !ehSindicaLvl1 && (perfilStr === 'supervisor' || nivelNum === 2);
-  const eOperador = (perfilStr === 'operador' || perfilStr === 'porteiro' || nivelNum >= 3) && !eAdmin && !eSupervisor && !ehSindicaLvl1;
-  const eSindico = ehSindicaLvl1 || perfilStr === 'sindico' || perfilStr === 'síndico' || nivelNum === 4;
+  const eOperador = (perfilStr === 'operador' || perfilStr === 'porteiro' || nivelNum >= 3) && !eAdmin && !eMaster && !eSupervisor && !ehSindicaLvl1;
+  const eSindico = !ehPerfilAdminOuMaster && (ehSindicaLvl1 || perfilStr === 'sindico' || perfilStr === 'síndico' || nivelNum === 4);
 
   // Permissões granulares de Cadastros (Cadastro Base - RBAC)
   const podeAcessarCadastros = eAdmin || ehSindicaLvl1 || verificarPermissao(usuarioLogado, 'cadastros', 'visualizar');
@@ -743,7 +750,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
       };
       await salvarPermissoesOperador(opId, permissoesCompletas, operadorPermissoesModal.login);
       
-      // Atualiza na lista de operadores e cache sincronizado
+      const opAtualizadoModal = { ...operadorPermissoesModal, permissoes: permissoesCompletas };
       setOperadores(prev => {
         const atualizados = prev.map(o => {
           if (o.id === operadorPermissoesModal.id || o.login === operadorPermissoesModal.login) {
@@ -754,7 +761,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
         salvarCacheLocal('operadores', atualizados, !eAdmin ? (usuarioLogado?.condominio_id || 'local') : 'global');
         return atualizados;
       });
-      window.dispatchEvent(new CustomEvent('operadores_atualizados'));
+      window.dispatchEvent(new CustomEvent('operadores_atualizados', { detail: { operador: opAtualizadoModal } }));
       
       setMensagem({ tipo: 'sucesso', texto: `Permissões de ${operadorPermissoesModal.nome} atualizadas com sucesso!` });
       setOperadorPermissoesModal(null);
@@ -1057,16 +1064,17 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
         if (!eAdmin) {
           opData = opData.filter(op => op.condominio_id === usuarioLogado?.condominio_id);
         }
-        // Incorpora permissões granulares salvas no objeto de cada operador
+        // Sincroniza permissões explícitas sem congelar padrões em operadores vinculados dinamicamente ao nível (permissoes === null)
         const opComPermissoes = opData.map(op => {
           if (possuiPermissoesDeModulo(op.permissoes)) {
             sincronizarPermissoesOperadorLocal(op.id, op.permissoes, op.login);
-            return op;
+          } else if (op.permissoes === null && typeof localStorage !== 'undefined') {
+            try {
+              if (op.id) localStorage.removeItem(`porttohub_operador_permissoes_${op.id}`);
+              if (op.login) localStorage.removeItem(`porttohub_operador_permissoes_${String(op.login).toLowerCase()}`);
+            } catch {}
           }
-          return {
-            ...op,
-            permissoes: obterPermissoesOperador(op)
-          };
+          return op;
         });
         setOperadores(opComPermissoes);
         salvarCacheLocal('operadores', opComPermissoes, !eAdmin ? (usuarioLogado?.condominio_id || 'local') : 'global');
@@ -1622,10 +1630,11 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           localStorage.setItem(`porttohub_operador_funcao_${idEdicao}`, funcaoFinal);
           localStorage.setItem(`porttohub_operador_funcao_${loginOperador.trim().toLowerCase()}`, funcaoFinal);
           try {
+            const loginNorm = loginOperador.trim().toLowerCase();
             const sessaoRaw = localStorage.getItem('infport_sessao_operador');
             if (sessaoRaw) {
               const sessao = JSON.parse(sessaoRaw);
-              if (sessao.operador && (sessao.operador.id === idEdicao || sessao.operador.login?.toLowerCase() === loginOperador.trim().toLowerCase())) {
+              if (sessao.operador && (sessao.operador.id === idEdicao || sessao.operador.login?.toLowerCase() === loginNorm)) {
                 sessao.operador.funcao = funcaoFinal;
                 sessao.operador.cargo = funcaoFinal;
                 sessao.operador.nome = nomeOperador.trim();
@@ -1634,24 +1643,40 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                 window.dispatchEvent(new CustomEvent('infport_sessao_atualizada', { detail: sessao }));
               }
             }
+            const sessaoAtivaRaw = localStorage.getItem('infport_sessao_ativa_v1');
+            if (sessaoAtivaRaw) {
+              const sessaoAtiva = JSON.parse(sessaoAtivaRaw);
+              if (sessaoAtiva.operadorId === idEdicao || sessaoAtiva.login?.toLowerCase() === loginNorm) {
+                sessaoAtiva.nome = nomeOperador.trim();
+                sessaoAtiva.operadorNome = nomeOperador.trim();
+                sessaoAtiva.login = loginNorm;
+                sessaoAtiva.condominioId = targetCondominioId;
+                localStorage.setItem('infport_sessao_ativa_v1', JSON.stringify(sessaoAtiva));
+              }
+            }
           } catch {}
         }
+
+        const opAtualizadoPayload = {
+          ...dadosAtualizacao,
+          id: idEdicao,
+          funcao: funcaoFinal,
+          cargo: funcaoFinal,
+          permissoes: permissoesFinais,
+          unidade: unidadeFinal,
+          ativo: Boolean(ativoOperador)
+        };
 
         // Atualiza estado local e cache sincronizado preservando as permissões granulares e a função
         setOperadores(prev => {
           const atualizados = prev.map(o => o.id === idEdicao ? { 
             ...o, 
-            ...dadosAtualizacao, 
-            funcao: funcaoFinal,
-            cargo: funcaoFinal,
-            permissoes: permissoesFinais, 
-            unidade: unidadeFinal,
-            ativo: Boolean(ativoOperador) 
+            ...opAtualizadoPayload
           } : o);
           salvarCacheLocal('operadores', atualizados, !eAdmin ? (usuarioLogado?.condominio_id || 'local') : 'global');
           return atualizados;
         });
-        window.dispatchEvent(new CustomEvent('operadores_atualizados'));
+        window.dispatchEvent(new CustomEvent('operadores_atualizados', { detail: { operador: opAtualizadoPayload } }));
 
         setMensagem({ tipo: 'sucesso', texto: `Operador e função (${funcaoFinal}) atualizados com sucesso!` });
       } else {
@@ -1753,7 +1778,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           salvarCacheLocal('operadores', atualizados, !eAdmin ? (usuarioLogado?.condominio_id || 'local') : 'global');
           return atualizados;
         });
-        window.dispatchEvent(new CustomEvent('operadores_atualizados'));
+        window.dispatchEvent(new CustomEvent('operadores_atualizados', { detail: { operador: opFinalParaEstado } }));
 
         setMensagem({ tipo: 'sucesso', texto: `Operador com função (${funcaoFinal}) cadastrado com sucesso!` });
       }
@@ -3874,7 +3899,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                   nomeOperador={nomeOperador}
                   loginOperador={loginOperador}
                   funcaoOperador={funcaoOperador === 'Outro' ? (funcaoCustomizada || 'Personalizada') : funcaoOperador}
-                  somenteLeitura={eOperador}
+                  somenteLeitura={eOperador && !podeEditarOperadores && !eMaster && !eAdmin}
                 />
               </div>
 
@@ -6638,7 +6663,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                 nomeOperador={operadorPermissoesModal.nome}
                 loginOperador={operadorPermissoesModal.login}
                 funcaoOperador={obterFuncaoOperador(operadorPermissoesModal)}
-                somenteLeitura={eOperador}
+                somenteLeitura={eOperador && !podeEditarOperadores && !eMaster && !eAdmin}
               />
             </div>
 

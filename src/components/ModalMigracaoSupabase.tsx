@@ -785,7 +785,7 @@ export default function ModalMigracaoSupabase({
                       </label>
                       <input
                         type="text"
-                        placeholder="https://juafrepntyksgqiqzyes.supabase.co"
+                        placeholder="https://seu-projeto-antigo.supabase.co"
                         value={supabaseUrl}
                         onChange={(e) => {
                           setSupabaseUrl(e.target.value);

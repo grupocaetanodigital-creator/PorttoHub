@@ -6,24 +6,74 @@ export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 export const DEFAULT_STORAGE_BUCKET = 'encomendas';
 
 /**
+ * Normaliza a URL base do projeto Supabase removendo sufixos acidentais (/rest/v1, /storage/v1, /auth/v1, etc.)
+ * para evitar erros PostgREST PGRST125 ("Invalid path specified in request URL").
+ */
+export function normalizarSupabaseUrl(raw: string): string {
+  const limpa = (raw || '').trim();
+  if (!limpa) return '';
+  try {
+    const parsed = new URL(limpa);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      const pathNorm = parsed.pathname.replace(/\/+$/, '');
+      if (
+        /^\/(rest|auth|storage|realtime|functions)\/v\d+/i.test(pathNorm) ||
+        parsed.hostname.endsWith('.supabase.co') ||
+        parsed.hostname.endsWith('.supabase.in')
+      ) {
+        return parsed.origin;
+      }
+      return `${parsed.origin}${pathNorm}`;
+    }
+  } catch {
+    // fallback via regex
+  }
+  return limpa
+    .replace(/\/(rest|auth|storage|realtime|functions)\/v\d+.*$/i, '')
+    .replace(/\/+$/, '');
+}
+
+function ehUrlSupabaseLegada(url: string): boolean {
+  const s = (url || '').toLowerCase();
+  return Boolean(
+    s &&
+    (
+      s.includes('163.176.49.21') ||
+      s.includes('fukxrdzhryumbcqibtas') ||
+      s.includes('juafrepntyksgqiqzyes') ||
+      !s.includes('supabase.co')
+    )
+  );
+}
+
+/**
  * Resolve a URL do Supabase com suporte a env vars e override em runtime via localStorage
  */
 export function obterSupabaseUrl(): string {
   if (typeof window !== 'undefined' && window.localStorage) {
     const salvo = window.localStorage.getItem('porttohub_supabase_url');
     // Sanitização automática: remove URLs legadas (OCI ou projetos antigos)
-    if (salvo && (salvo.includes('163.176.49.21') || salvo.includes('fukxrdzhryumbcqibtas') || salvo.includes('juafrepntyksgqiqzyes') || !salvo.includes('supabase.co'))) {
+    if (salvo && ehUrlSupabaseLegada(salvo)) {
       window.localStorage.removeItem('porttohub_supabase_url');
       window.localStorage.removeItem('porttohub_supabase_key');
       window.localStorage.removeItem('porttohub_supabase_bucket');
     } else if (salvo && salvo.trim().startsWith('http')) {
-      return salvo.trim().replace(/\/+$/, '');
+      const normalizada = normalizarSupabaseUrl(salvo);
+      if (normalizada && normalizada !== salvo) {
+        window.localStorage.setItem('porttohub_supabase_url', normalizada);
+      }
+      if (normalizada.startsWith('http')) {
+        return normalizada;
+      }
     }
   }
   const envUrl = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_URL) ||
                  (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL);
-  if (envUrl && typeof envUrl === 'string' && envUrl.trim().startsWith('http')) {
-    return envUrl.trim().replace(/\/+$/, '');
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim().startsWith('http') && !ehUrlSupabaseLegada(envUrl)) {
+    const normalizada = normalizarSupabaseUrl(envUrl);
+    if (normalizada.startsWith('http')) {
+      return normalizada;
+    }
   }
   return SUPABASE_PROJECT_URL;
 }
@@ -34,7 +84,7 @@ export function obterSupabaseUrl(): string {
 export function obterSupabaseKey(): string {
   if (typeof window !== 'undefined' && window.localStorage) {
     const salvoUrl = window.localStorage.getItem('porttohub_supabase_url');
-    if (salvoUrl && (salvoUrl.includes('163.176.49.21') || !salvoUrl.includes('supabase.co'))) {
+    if (salvoUrl && ehUrlSupabaseLegada(salvoUrl)) {
       window.localStorage.removeItem('porttohub_supabase_key');
     } else {
       const salvo = window.localStorage.getItem('porttohub_supabase_key');
@@ -43,9 +93,16 @@ export function obterSupabaseKey(): string {
       }
     }
   }
+  const envUrl = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_URL) ||
+                 (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL);
   const envKey = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_ANON_KEY) ||
                  (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_ANON_KEY);
-  if (envKey && typeof envKey === 'string' && envKey.trim().length > 10) {
+  if (
+    envKey &&
+    typeof envKey === 'string' &&
+    envKey.trim().length > 10 &&
+    (!envUrl || !ehUrlSupabaseLegada(String(envUrl)))
+  ) {
     return envKey.trim();
   }
   return SUPABASE_ANON_KEY;
@@ -134,7 +191,10 @@ export function obterStatusConexaoBanco() {
 
 export function salvarConfiguracaoOCI(url: string, key?: string): void {
   if (typeof window !== 'undefined' && window.localStorage) {
-    if (url) window.localStorage.setItem('porttohub_supabase_url', url.trim());
+    if (url) {
+      const normalizada = normalizarSupabaseUrl(url);
+      window.localStorage.setItem('porttohub_supabase_url', normalizada || url.trim());
+    }
     if (key) window.localStorage.setItem('porttohub_supabase_key', key.trim());
   }
 }

@@ -117,6 +117,12 @@ NOTIFY pgrst, 'reload schema';`;
       ...atual,
       visualizar: novoStatus
     };
+    if (moduloId === 'cadastros') {
+      clone.moradores = {
+        ...(clone.moradores || {}),
+        visualizar: novoStatus
+      };
+    }
     onChange(clone);
   };
 
