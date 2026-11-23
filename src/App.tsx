@@ -440,12 +440,12 @@ export default function App() {
 
   useEffect(() => {
     if (operador) {
-      const condoId = (eAdmin || eAcessoMultiCondominio) ? (condominioAtivoId || operador.condominio_id) : operador.condominio_id;
+      const condoId = eAcessoMultiCondominio ? (condominioAtivoId || operador.condominio_id) : operador.condominio_id;
       if (condoId && condoId !== 'todos' && condoId !== 'global') {
         preCarregarDadosCondominio(condoId);
       }
     }
-  }, [operador, condominioAtivoId]);
+  }, [operador, condominioAtivoId, eAcessoMultiCondominio]);
 
   const mudarModulo = (novoModulo: string, substituir = false) => {
     let modDestino = novoModulo;
@@ -473,8 +473,8 @@ export default function App() {
 
   useEffect(() => {
     if (operador) {
-      let idCondTarget = (eAdmin || eAcessoMultiCondominio) ? (condominioAtivoId || operador.condominio_id) : operador.condominio_id;
-      if (!idCondTarget || idCondTarget === 'todos' || idCondTarget === 'global' || !isUUID(idCondTarget)) {
+      let idCondTarget = eAcessoMultiCondominio ? (condominioAtivoId || operador.condominio_id) : operador.condominio_id;
+      if (eAcessoMultiCondominio && (!idCondTarget || idCondTarget === 'todos' || idCondTarget === 'global' || !isUUID(idCondTarget))) {
         const idSalvo = localStorage.getItem('infport_condominio_ativo_id');
         if (idSalvo && idSalvo !== 'todos' && idSalvo !== 'global' && isUUID(idSalvo)) {
           idCondTarget = idSalvo;
@@ -486,7 +486,7 @@ export default function App() {
         carregarFeatureFlags(idCondTarget);
       }
     }
-  }, [operador, condominioAtivoId, listaCondominios]);
+  }, [operador, condominioAtivoId, listaCondominios, eAcessoMultiCondominio]);
 
   // Listener para atualização em tempo real quando as flags forem salvas em Configurações
   useEffect(() => {
@@ -594,8 +594,8 @@ export default function App() {
       setListaCondominios(condos || []);
       salvarCacheLocal('condominios', condos || [], 'global');
 
-      // Se for admin e o condomínio ativo atual for vazio, verifica seleção preferencial
-      if (eAdmin && condos && condos.length > 0) {
+      // Se for usuário com acesso multi-condomínio, verifica seleção preferencial; caso contrário trava no condomínio do operador
+      if (eAcessoMultiCondominio && condos && condos.length > 0) {
         const savedCondo = localStorage.getItem('infport_condominio_ativo_id');
         if (savedCondo !== null) {
           if (savedCondo && condos.some(c => c.id === savedCondo)) {
@@ -611,6 +611,11 @@ export default function App() {
             localStorage.setItem('infport_condominio_ativo_id', condoReal.id);
           }
         }
+      } else if (operador?.condominio_id && isUUID(operador.condominio_id) && condos && condos.length > 0) {
+        setCondominioAtivoId(operador.condominio_id);
+        const cObj = condos.find(c => c.id === operador.condominio_id);
+        if (cObj) setCondominio(cObj);
+        localStorage.setItem('infport_condominio_ativo_id', operador.condominio_id);
       }
     } catch (err) {
       console.warn('Erro ao carregar condomínios (tentando cache offline):', err);
@@ -827,8 +832,13 @@ export default function App() {
       localStorage.setItem('infport_ultimo_operador_nome', nomeAtivoLogin);
       (window as any).__operadorAtivoNome = nomeAtivoLogin;
       (window as any).__operadorAtivo = opData;
-      setCondominio(condData || { id: 'condo_principal_001', nome: 'Condomínio Residencial PorttoHub' });
-      setCondominioAtivoId(idCondFinal);
+      setCondominio(condData || null);
+      setCondominioAtivoId(idCondFinal || '');
+      if (idCondFinal && isUUID(idCondFinal)) {
+        localStorage.setItem('infport_condominio_ativo_id', idCondFinal);
+      } else {
+        localStorage.removeItem('infport_condominio_ativo_id');
+      }
       carregarNiveisAcesso(idCondFinal);
 
       // Dispara bootstrapping assíncrono Local-First (IndexedDB) imediatamente no login
@@ -905,6 +915,7 @@ export default function App() {
     }
 
     localStorage.removeItem(CHAVE_SESSAO);
+    localStorage.removeItem('infport_condominio_ativo_id');
     setOperador(null);
     setCondominio(null);
     setLogin('');
@@ -1029,10 +1040,10 @@ export default function App() {
     ...operador,
     somenteLeitura: eSindico,
     eSindico: eSindico,
-    condominio_id: (eAdmin && condominioAtivoId) ? condominioAtivoId : (operador.condominio_id || condominioAtivoId || ''),
-    condominio_nome: (eAdmin && objCondominioSelecionado?.nome) 
-      ? objCondominioSelecionado.nome 
-      : (condominio?.nome || 'Condomínio Geral'),
+    condominio_id: (eAcessoMultiCondominio && condominioAtivoId) ? condominioAtivoId : (operador.condominio_id || condominioAtivoId || ''),
+    condominio_nome: (eAcessoMultiCondominio && objCondominioSelecionado?.nome)
+      ? objCondominioSelecionado.nome
+      : (condominio?.nome || objCondominioSelecionado?.nome || 'Condomínio Ativo'),
     listaCondominios: listaCondominios
   } : null;
 

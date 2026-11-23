@@ -107,10 +107,10 @@ export const ModalInfoVersaoRepositorio: React.FC<ModalInfoVersaoRepositorioProp
         sucesso: true,
         repositorio: 'grupocaetanodigital-creator/PorttoHub',
         branch: 'main',
-        sha: '59d9f79',
-        mensagem: 'fix(ui): corrigir renderizacao do menu modal de versao, responsividade e centralizacao',
+        sha: '0800621',
+        mensagem: 'fix(sindico): isolar dados reais por condominio e remover dados ficticios no Portal do Sindico',
         autor: 'PorttoHub Dev',
-        dataBrasilia: '29/10/2026, 06:32:00 (Horário de Brasília - BRT)',
+        dataBrasilia: '23/11/2026, 16:28:00 (Horário de Brasília - BRT)',
         versaoCalculada: VERSAO_BUILD_ATUAL,
         horarioConsulta: new Date().toLocaleTimeString('pt-BR', { timeZone: FUSO_HORARIO_OFICIAL_BRASIL })
       });

@@ -9,10 +9,10 @@
  * 3. Cache Storage Segregado: Permite purga seletiva de versões antigas sem perder cache de fotos.
  */
 
-const CACHE_APP_SHELL = 'porttohub-shell-v4';
-const CACHE_ESTATICOS_ASSETS = 'porttohub-assets-v4';
-const CACHE_IMAGENS = 'porttohub-images-v4';
-const CACHE_DINAMICO = 'porttohub-runtime-v4';
+const CACHE_APP_SHELL = 'porttohub-shell-v5';
+const CACHE_ESTATICOS_ASSETS = 'porttohub-assets-v5';
+const CACHE_IMAGENS = 'porttohub-images-v5';
+const CACHE_DINAMICO = 'porttohub-runtime-v5';
 
 const ASSETS_ESSENCIAIS = [
   '/',
