@@ -126,12 +126,44 @@ NOTIFY pgrst, 'reload schema';`;
     const novoValor = !Boolean(atual[acaoId]);
 
     const clone: any = { ...permissoes };
-    clone[moduloId] = {
+    const moduloAtualizado: any = {
       ...atual,
       [acaoId]: novoValor,
       // Se ativou uma ação, garante que visualizar está ativo
       visualizar: novoValor ? true : atual.visualizar
     };
+
+    if (moduloId === 'cadastros') {
+      if (acaoId === 'cadastrar_morador' || acaoId === 'editar_morador' || acaoId === 'excluir_morador') {
+        if (novoValor) {
+          moduloAtualizado.visualizar = true;
+          moduloAtualizado.visualizar_moradores = true;
+        }
+        const moradoresLegado = { ...(clone.moradores || {}) };
+        if (acaoId === 'cadastrar_morador') {
+          moradoresLegado.adicionar = novoValor;
+          moradoresLegado.criar = novoValor;
+        } else if (acaoId === 'editar_morador') {
+          moradoresLegado.editar = novoValor;
+        } else if (acaoId === 'excluir_morador') {
+          moradoresLegado.excluir = novoValor;
+        }
+        moradoresLegado.visualizar = Boolean(
+          moduloAtualizado.visualizar_moradores ||
+          moduloAtualizado.cadastrar_morador ||
+          moduloAtualizado.editar_morador ||
+          moduloAtualizado.excluir_morador
+        );
+        clone.moradores = moradoresLegado;
+      } else if (acaoId === 'visualizar_moradores') {
+        clone.moradores = {
+          ...(clone.moradores || {}),
+          visualizar: novoValor
+        };
+      }
+    }
+
+    clone[moduloId] = moduloAtualizado;
     onChange(clone);
   };
 
@@ -348,7 +380,15 @@ NOTIFY pgrst, 'reload schema';`;
                           onClick={() => {
                             const todas = mod.acoesEspecificas.reduce((acc, a) => ({ ...acc, [a.id]: true }), {});
                             const clone: any = { ...permissoes };
-                            clone[mod.id] = { ...modState, ...todas, visualizar: true };
+                            clone[mod.id] = {
+                              ...modState,
+                              ...todas,
+                              ...(mod.id === 'cadastros' ? { moradores: true } : {}),
+                              visualizar: true
+                            };
+                            if (mod.id === 'cadastros') {
+                              clone.moradores = { visualizar: true, criar: true, editar: true, excluir: true, adicionar: true };
+                            }
                             onChange(clone);
                           }}
                           className="text-emerald-600 hover:underline cursor-pointer lowercase"
@@ -361,7 +401,14 @@ NOTIFY pgrst, 'reload schema';`;
                           onClick={() => {
                             const zeradas = mod.acoesEspecificas.reduce((acc, a) => ({ ...acc, [a.id]: false }), {});
                             const clone: any = { ...permissoes };
-                            clone[mod.id] = { ...modState, ...zeradas };
+                            clone[mod.id] = {
+                              ...modState,
+                              ...zeradas,
+                              ...(mod.id === 'cadastros' ? { moradores: false } : {})
+                            };
+                            if (mod.id === 'cadastros') {
+                              clone.moradores = { visualizar: false, criar: false, editar: false, excluir: false, adicionar: false };
+                            }
                             onChange(clone);
                           }}
                           className="text-rose-500 hover:underline cursor-pointer lowercase"

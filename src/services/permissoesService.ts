@@ -713,26 +713,86 @@ export function obterPermissoesPadraoNivel(nivel: string): PermissoesModulo {
   return JSON.parse(JSON.stringify(nivelEncontrado?.permissoes || NIVEIS_PADRAO[3].permissoes));
 }
 
+const CHAVES_MODULOS_PERMISSOES = [
+  'painel_sindico',
+  'encomendas',
+  'custodia',
+  'chaves',
+  'rondas',
+  'autorizados',
+  'prestadores',
+  'materiais',
+  'manutencao',
+  'ocorrencias',
+  'passagem_posto',
+  'passagem',
+  'cadastros',
+  'moradores',
+  'historico_absoluto',
+  'configuracoes',
+  'bancada',
+  'reservas',
+  'controle_acesso'
+];
+
+export function possuiPermissoesDeModulo(permissoes: any): boolean {
+  if (!permissoes || typeof permissoes !== 'object' || Array.isArray(permissoes)) {
+    return false;
+  }
+  return CHAVES_MODULOS_PERMISSOES.some(chave => {
+    const val = permissoes[chave];
+    return Boolean(val && typeof val === 'object');
+  });
+}
+
+export function sincronizarPermissoesOperadorLocal(
+  operadorId: string | undefined,
+  permissoes: PermissoesModulo,
+  loginOperador?: string
+): void {
+  if (!possuiPermissoesDeModulo(permissoes)) return;
+  try {
+    if (operadorId) {
+      localStorage.setItem(`porttohub_operador_permissoes_${operadorId}`, JSON.stringify(permissoes));
+    }
+    if (loginOperador) {
+      localStorage.setItem(`porttohub_operador_permissoes_${loginOperador.toLowerCase()}`, JSON.stringify(permissoes));
+    }
+  } catch {
+    // ignore
+  }
+}
+
 /**
  * Obtém as permissões configuradas diretamente para um operador (no card dele)
  */
 export function obterPermissoesOperador(operador: any): PermissoesModulo {
   if (!operador) return obterPermissoesPadraoNivel('nivel_3');
 
-  // 1. Se já está no objeto do operador (vindo diretamente do banco ou estado sincronizado)
-  if (operador.permissoes && typeof operador.permissoes === 'object' && Object.keys(operador.permissoes).length > 0) {
+  const unidadeMeta: any = {};
+  if (operador.permissoes && typeof operador.permissoes === 'object') {
+    if (operador.permissoes.unidade_acesso !== undefined) unidadeMeta.unidade_acesso = operador.permissoes.unidade_acesso;
+    if (operador.permissoes.unidade !== undefined) unidadeMeta.unidade = operador.permissoes.unidade;
+  }
+
+  // 1. Se já está no objeto do operador com chaves reais de módulos (não apenas metadata de unidade)
+  if (possuiPermissoesDeModulo(operador.permissoes)) {
     return JSON.parse(JSON.stringify(operador.permissoes));
   }
 
   // 2. Se está armazenado no localStorage específico do operador por ID ou Login
-  const chavesIdentificadoras = [operador.id, operador.login].filter(Boolean);
+  const chavesIdentificadoras = Array.from(new Set([
+    operador.id,
+    operador.login,
+    operador.login ? String(operador.login).toLowerCase() : ''
+  ].filter(Boolean)));
   for (const chave of chavesIdentificadoras) {
     try {
       const salvo = localStorage.getItem(`porttohub_operador_permissoes_${chave}`);
       if (salvo) {
         const parsed = JSON.parse(salvo);
-        if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
-          return parsed;
+        if (possuiPermissoesDeModulo(parsed)) {
+          return { ...unidadeMeta, ...parsed };
         }
       }
     } catch {
@@ -750,8 +810,8 @@ export function obterPermissoesOperador(operador: any): PermissoesModulo {
           (operador.id && o.id === operador.id) || 
           (operador.login && o.login?.toLowerCase() === operador.login?.toLowerCase())
         );
-        if (opEncontrado?.permissoes && typeof opEncontrado.permissoes === 'object' && Object.keys(opEncontrado.permissoes).length > 0) {
-          return JSON.parse(JSON.stringify(opEncontrado.permissoes));
+        if (possuiPermissoesDeModulo(opEncontrado?.permissoes)) {
+          return { ...unidadeMeta, ...JSON.parse(JSON.stringify(opEncontrado.permissoes)) };
         }
       }
     }
@@ -760,10 +820,8 @@ export function obterPermissoesOperador(operador: any): PermissoesModulo {
   }
 
   // 4. Fallback para as permissões do nível do operador
-  const nivelStr = operador.nivel_acesso_custom_id || 
-                  (operador.nivel_acesso !== undefined && operador.nivel_acesso !== null ? `nivel_${operador.nivel_acesso}` : null) ||
-                  (operador.perfil ? `nivel_${operador.perfil}` : 'nivel_3');
-  return obterPermissoesPadraoNivel(nivelStr);
+  const nivelStr = extrairIdNivel(operador);
+  return { ...unidadeMeta, ...obterPermissoesPadraoNivel(nivelStr) };
 }
 
 /**
@@ -1111,6 +1169,18 @@ export function verificarPermissao(
       const resAcaoDireta = resolverAcaoEmPermissoesModulo(modConfig, modKey, acao);
       if (resAcaoDireta !== undefined) {
         return resAcaoDireta;
+      }
+      if (modKey === 'cadastros' && (permissoesDiretas as any).moradores) {
+        const modMoradores: any = (permissoesDiretas as any).moradores;
+        if (acao === 'cadastrar_morador' && (modMoradores.adicionar !== undefined || modMoradores.criar !== undefined)) {
+          return Boolean(modMoradores.adicionar ?? modMoradores.criar);
+        }
+        if (acao === 'editar_morador' && modMoradores.editar !== undefined) {
+          return Boolean(modMoradores.editar);
+        }
+        if (acao === 'excluir_morador' && modMoradores.excluir !== undefined) {
+          return Boolean(modMoradores.excluir);
+        }
       }
     }
   }

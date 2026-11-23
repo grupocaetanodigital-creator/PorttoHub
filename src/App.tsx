@@ -82,7 +82,13 @@ import { salvarCacheLocal, obterCacheLocal } from './services/offlineStorageServ
 import { atualizarCacheAutonomia3Horas } from './services/offlineSyncEngine';
 import { carregarEPreaquecerEncomendas, inicializarRealtimeEncomendas } from './services/encomendasService';
 import { registrarAtividade } from './services/auditoriaService';
-import { carregarNiveisAcesso, verificarPermissao, obterPermissoesOperador } from './services/permissoesService';
+import {
+  carregarNiveisAcesso,
+  verificarPermissao,
+  obterPermissoesOperador,
+  possuiPermissoesDeModulo,
+  sincronizarPermissoesOperadorLocal
+} from './services/permissoesService';
 import { isUUID } from './services/condominioService';
 import { cachedQuery, aquecerCacheCondominio } from './services/redisCacheService';
 import { 
@@ -206,7 +212,10 @@ export default function App() {
     const handlePermissoesOperador = (e: any) => {
       setVersaoPermissoes(v => v + 1);
       const detail = e.detail;
-      if (detail && operador && (detail.operadorId === operador.id || detail.login === operador.login || detail.operadorId === operador.login)) {
+      const loginOp = operador?.login?.toLowerCase();
+      const loginDetail = detail?.login?.toLowerCase();
+      const idDetail = detail?.operadorId ? String(detail.operadorId).toLowerCase() : '';
+      if (detail && operador && (detail.operadorId === operador.id || (loginOp && (loginDetail === loginOp || idDetail === loginOp)))) {
         setOperador((op: any) => {
           if (!op) return op;
           const atualizado = { ...op, permissoes: detail.permissoes };
@@ -269,9 +278,11 @@ export default function App() {
 
             let opData: any = opRes.data;
             if (opData) {
-              opData.permissoes = (opData.permissoes && typeof opData.permissoes === 'object' && Object.keys(opData.permissoes).length > 0)
-                ? opData.permissoes
-                : obterPermissoesOperador(opData);
+              if (possuiPermissoesDeModulo(opData.permissoes)) {
+                sincronizarPermissoesOperadorLocal(opData.id, opData.permissoes, opData.login);
+              } else {
+                opData.permissoes = obterPermissoesOperador(opData);
+              }
             }
             if (!opData && sessao.login === 'admin') {
               opData = {
@@ -733,9 +744,11 @@ export default function App() {
       }
 
       if (opData) {
-        opData.permissoes = (opData.permissoes && typeof opData.permissoes === 'object' && Object.keys(opData.permissoes).length > 0)
-          ? opData.permissoes
-          : obterPermissoesOperador(opData);
+        if (possuiPermissoesDeModulo(opData.permissoes)) {
+          sincronizarPermissoesOperadorLocal(opData.id, opData.permissoes, opData.login);
+        } else {
+          opData.permissoes = obterPermissoesOperador(opData);
+        }
       }
 
       if (!opData) {
@@ -849,12 +862,23 @@ export default function App() {
   const handleTrocarOperador = async (novoOperador: any) => {
     if (!novoOperador) return;
 
+    const permissoesResolvidas = possuiPermissoesDeModulo(novoOperador.permissoes)
+      ? novoOperador.permissoes
+      : obterPermissoesOperador(novoOperador);
+    if (possuiPermissoesDeModulo(novoOperador.permissoes)) {
+      sincronizarPermissoesOperadorLocal(novoOperador.id, novoOperador.permissoes, novoOperador.login);
+    }
+    const operadorComPermissoes = {
+      ...novoOperador,
+      permissoes: permissoesResolvidas
+    };
+
     // 1. Atualiza estado do operador ativo em memória
-    setOperador(novoOperador);
-    const nomeNovoOperador = novoOperador.nome || novoOperador.login || '';
+    setOperador(operadorComPermissoes);
+    const nomeNovoOperador = operadorComPermissoes.nome || operadorComPermissoes.login || '';
     localStorage.setItem('infport_ultimo_operador_nome', nomeNovoOperador);
     (window as any).__operadorAtivoNome = nomeNovoOperador;
-    (window as any).__operadorAtivo = novoOperador;
+    (window as any).__operadorAtivo = operadorComPermissoes;
 
     // 2. EFETIVA O LOGIN NO DISPOSITIVO (PERSISTÊNCIA NO LOCALSTORAGE)
     // Garante que recarregamentos de página, abas em segundo plano e WhatsApp não desfaçam a troca!

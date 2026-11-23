@@ -96,7 +96,9 @@ import {
   obterPermissoesOperador,
   salvarPermissoesOperador,
   contarModulosHabilitados,
-  verificarPermissao
+  verificarPermissao,
+  possuiPermissoesDeModulo,
+  sincronizarPermissoesOperadorLocal
 } from '../services/permissoesService';
 import { salvarCacheLocal, obterCacheLocal } from '../services/offlineStorageService';
 import { cachedQuery, invalidarCacheTabela } from '../services/redisCacheService';
@@ -257,7 +259,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
   const loginStr = (usuarioLogado?.login || '').toLowerCase();
   const nomeStr = (usuarioLogado?.nome || '').toLowerCase();
 
-  // Detecção estrita de Síndica Login Lvl 1 (ou perfil Síndico)
+  // Detecção estrita de Síndico (somente perfis/nível de síndico, sem bloquear Master Nível 1)
   const ehSindicaLvl1 = Boolean(
     !usuarioLogado?.eSuperAdminGlobal &&
     loginStr !== 'admin' &&
@@ -266,8 +268,6 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
       Boolean(usuarioLogado?.eSindico) ||
       loginStr.includes('sindic') ||
       nomeStr.includes('sindic') ||
-      nivelNum === 1 ||
-      usuarioLogado?.nivel_acesso_custom_id === 'nivel_1' ||
       nivelNum === 4 ||
       usuarioLogado?.nivel_acesso_custom_id === 'nivel_4'
     )
@@ -287,11 +287,17 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
 
   // Permissões granulares de Cadastros (Cadastro Base - RBAC)
   const podeAcessarCadastros = eAdmin || ehSindicaLvl1 || verificarPermissao(usuarioLogado, 'cadastros', 'visualizar');
-  const podeVisualizarMoradores = podeAcessarCadastros && (eAdmin || ehSindicaLvl1 || verificarPermissao(usuarioLogado, 'cadastros', 'visualizar_moradores') || verificarPermissao(usuarioLogado, 'cadastros', 'moradores'));
-  const podeCadastrarMorador = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'cadastrar_morador') || verificarPermissao(usuarioLogado, 'cadastros', 'moradores') || verificarPermissao(usuarioLogado, 'moradores', 'adicionar'));
-  const podeEditarMorador = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'editar_morador') || verificarPermissao(usuarioLogado, 'cadastros', 'moradores') || verificarPermissao(usuarioLogado, 'moradores', 'editar'));
-  const podeExcluirMorador = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'excluir_morador') || verificarPermissao(usuarioLogado, 'cadastros', 'excluir') || verificarPermissao(usuarioLogado, 'moradores', 'excluir'));
-  const podeGerenciarMoradores = podeCadastrarMorador || podeEditarMorador;
+  const podeCadastrarMorador = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'cadastrar_morador'));
+  const podeEditarMorador = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'editar_morador'));
+  const podeExcluirMorador = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'excluir_morador'));
+  const podeVisualizarMoradores = podeAcessarCadastros && (
+    eAdmin ||
+    ehSindicaLvl1 ||
+    verificarPermissao(usuarioLogado, 'cadastros', 'visualizar_moradores') ||
+    podeCadastrarMorador ||
+    podeEditarMorador ||
+    podeExcluirMorador
+  );
   const podeGerenciarVeiculos = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'gerenciar_veiculos') || verificarPermissao(usuarioLogado, 'cadastros', 'moradores'));
   const podeVincularTags = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'vincular_tags') || verificarPermissao(usuarioLogado, 'cadastros', 'moradores'));
   const podeAlterarStatusAcessoMorador = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'status_acesso_morador') || eMaster || eSupervisor);
@@ -306,7 +312,6 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
 
   const podeConfigurarCondominio = !eSindico && (eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'configurar_condominio'));
   const podeCadastrarNovosCondominios = eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'condominios');
-  const podeExcluirCadastros = eAdmin || verificarPermissao(usuarioLogado, 'cadastros', 'excluir');
 
   // Diretriz de Segurança RBAC: Permite customizar numeração se for Admin/Master/Supervisor ou tiver permissão ativa
   const podeCustomizarEstrutura = !eSindico && (eAdmin || eMaster || (eSupervisor && podeConfigurarCondominio) || verificarPermissao(usuarioLogado, 'cadastros', 'condominios'));
@@ -406,6 +411,8 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
         setAbaAtiva(podeVisualizarMoradores ? 'moradores' : (podeVerOperadores ? 'operadores' : 'moradores'));
       } else if (abaAtiva === 'operadores' && !podeVerOperadores) {
         setAbaAtiva('moradores');
+      } else if (abaAtiva === 'moradores' && !podeVisualizarMoradores && podeVerOperadores) {
+        setAbaAtiva('operadores');
       }
     }
   }, [eAdmin, abaAtiva, podeVisualizarMoradores, podeVerOperadores]);
@@ -726,15 +733,28 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
     setSalvandoPermissoesModal(true);
     try {
       const opId = operadorPermissoesModal.id || operadorPermissoesModal.login;
-      await salvarPermissoesOperador(opId, permissoesModalState, operadorPermissoesModal.login);
+      const unidadePreservada =
+        operadorPermissoesModal.unidade ||
+        operadorPermissoesModal.permissoes?.unidade_acesso ||
+        operadorPermissoesModal.permissoes?.unidade;
+      const permissoesCompletas: any = {
+        ...permissoesModalState,
+        ...(unidadePreservada ? { unidade_acesso: unidadePreservada, unidade: unidadePreservada } : {})
+      };
+      await salvarPermissoesOperador(opId, permissoesCompletas, operadorPermissoesModal.login);
       
-      // Atualiza na lista de operadores
-      setOperadores(prev => prev.map(o => {
-        if (o.id === operadorPermissoesModal.id || o.login === operadorPermissoesModal.login) {
-          return { ...o, permissoes: permissoesModalState };
-        }
-        return o;
-      }));
+      // Atualiza na lista de operadores e cache sincronizado
+      setOperadores(prev => {
+        const atualizados = prev.map(o => {
+          if (o.id === operadorPermissoesModal.id || o.login === operadorPermissoesModal.login) {
+            return { ...o, permissoes: permissoesCompletas };
+          }
+          return o;
+        });
+        salvarCacheLocal('operadores', atualizados, !eAdmin ? (usuarioLogado?.condominio_id || 'local') : 'global');
+        return atualizados;
+      });
+      window.dispatchEvent(new CustomEvent('operadores_atualizados'));
       
       setMensagem({ tipo: 'sucesso', texto: `Permissões de ${operadorPermissoesModal.nome} atualizadas com sucesso!` });
       setOperadorPermissoesModal(null);
@@ -948,6 +968,10 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
   };
 
   const abrirNovoMorador = (unidadePredefinida?: { numero: string; bloco?: string }) => {
+    if (!podeCadastrarMorador) {
+      setMensagem({ tipo: 'erro', texto: 'Seu perfil de acesso não possui permissão para cadastrar novos moradores.' });
+      return;
+    }
     limparFormularios();
     let targetCondo = condoAtivoId || (condominios[0]?.id || usuarioLogado?.condominio_id || '');
     if (targetCondo === 'global' || targetCondo === 'todos') {
@@ -1034,12 +1058,16 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           opData = opData.filter(op => op.condominio_id === usuarioLogado?.condominio_id);
         }
         // Incorpora permissões granulares salvas no objeto de cada operador
-        const opComPermissoes = opData.map(op => ({
-          ...op,
-          permissoes: (op.permissoes && typeof op.permissoes === 'object' && Object.keys(op.permissoes).length > 0)
-            ? op.permissoes
-            : obterPermissoesOperador(op)
-        }));
+        const opComPermissoes = opData.map(op => {
+          if (possuiPermissoesDeModulo(op.permissoes)) {
+            sincronizarPermissoesOperadorLocal(op.id, op.permissoes, op.login);
+            return op;
+          }
+          return {
+            ...op,
+            permissoes: obterPermissoesOperador(op)
+          };
+        });
         setOperadores(opComPermissoes);
         salvarCacheLocal('operadores', opComPermissoes, !eAdmin ? (usuarioLogado?.condominio_id || 'local') : 'global');
       }
@@ -1536,29 +1564,52 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
           .update(dadosAtualizacao)
           .eq('id', idEdicao);
 
-        if (error && (
-          error.message?.includes('permissoes') ||
-          error.message?.includes('nivel_acesso_custom_id') || 
-          error.message?.includes('perfil') || 
-          error.message?.includes('funcao') || 
-          error.message?.includes('cargo') || 
-          error.message?.includes('schema cache') || 
-          error.message?.includes('column') || 
-          (error as any).code === '42703' ||
-          (error as any).code === 'PGRST204'
-        )) {
-          console.warn('Fallback: salvando operador sem colunas extras de RBAC/permissoes/funcao...');
-          const fallback: any = {
+        const erroColunaAusente = (err: any) => Boolean(
+          err && (
+            err.message?.includes('schema cache') ||
+            err.message?.includes('column') ||
+            err.message?.includes('permissoes') ||
+            err.message?.includes('nivel_acesso_custom_id') ||
+            err.message?.includes('perfil') ||
+            err.message?.includes('funcao') ||
+            err.message?.includes('cargo') ||
+            err.message?.includes('unidade') ||
+            err.code === '42703' ||
+            err.code === 'PGRST204'
+          )
+        );
+
+        if (erroColunaAusente(error)) {
+          // 1º Fallback: mantém permissoes, nivel_acesso_custom_id e perfil, removendo apenas unidade/funcao/cargo que podem não existir no schema
+          const fallbackComPermissoes: any = {
             nome: nomeOperador.trim(),
             login: loginOperador.trim().toLowerCase(),
             nivel_acesso: nivelNum,
+            nivel_acesso_custom_id: customId,
+            perfil: perfilStr,
             foto_url: fotoOperador || null,
             condominio_id: targetCondominioId,
+            permissoes: permissoesFinais,
             ativo: Boolean(ativoOperador)
           };
-          if (dadosAtualizacao.senha) fallback.senha = dadosAtualizacao.senha;
-          const retry = await supabase.from('operadores').update(fallback).eq('id', idEdicao);
-          error = retry.error;
+          if (dadosAtualizacao.senha) fallbackComPermissoes.senha = dadosAtualizacao.senha;
+          const retryComPerms = await supabase.from('operadores').update(fallbackComPermissoes).eq('id', idEdicao);
+          error = retryComPerms.error;
+
+          if (erroColunaAusente(error)) {
+            console.warn('Fallback mínimo: salvando operador sem colunas extras de RBAC/permissoes/funcao...');
+            const fallback: any = {
+              nome: nomeOperador.trim(),
+              login: loginOperador.trim().toLowerCase(),
+              nivel_acesso: nivelNum,
+              foto_url: fotoOperador || null,
+              condominio_id: targetCondominioId,
+              ativo: Boolean(ativoOperador)
+            };
+            if (dadosAtualizacao.senha) fallback.senha = dadosAtualizacao.senha;
+            const retry = await supabase.from('operadores').update(fallback).eq('id', idEdicao);
+            error = retry.error;
+          }
         }
 
         if (error) throw error;
@@ -1578,6 +1629,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                 sessao.operador.funcao = funcaoFinal;
                 sessao.operador.cargo = funcaoFinal;
                 sessao.operador.nome = nomeOperador.trim();
+                sessao.operador.permissoes = permissoesFinais;
                 localStorage.setItem('infport_sessao_operador', JSON.stringify(sessao));
                 window.dispatchEvent(new CustomEvent('infport_sessao_atualizada', { detail: sessao }));
               }
@@ -1596,7 +1648,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
             unidade: unidadeFinal,
             ativo: Boolean(ativoOperador) 
           } : o);
-          salvarCacheLocal('operadores', atualizados, 'global');
+          salvarCacheLocal('operadores', atualizados, !eAdmin ? (usuarioLogado?.condominio_id || 'local') : 'global');
           return atualizados;
         });
         window.dispatchEvent(new CustomEvent('operadores_atualizados'));
@@ -1626,50 +1678,79 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
 
         let { data: opCriado, error } = await supabase.from('operadores').insert([novoOp]).select().single();
 
-        if (error && (
-          error.message?.includes('permissoes') ||
-          error.message?.includes('nivel_acesso_custom_id') || 
-          error.message?.includes('perfil') || 
-          error.message?.includes('funcao') || 
-          error.message?.includes('cargo') || 
-          error.message?.includes('schema cache') || 
-          error.message?.includes('column') || 
-          (error as any).code === '42703' ||
-          (error as any).code === 'PGRST204'
-        )) {
-          console.warn('Fallback: cadastrando operador sem colunas extras de RBAC/permissoes/funcao...');
-          const fallbackOp = {
+        const erroColunaInsert = (err: any) => Boolean(
+          err && (
+            err.message?.includes('schema cache') ||
+            err.message?.includes('column') ||
+            err.message?.includes('permissoes') ||
+            err.message?.includes('nivel_acesso_custom_id') ||
+            err.message?.includes('perfil') ||
+            err.message?.includes('funcao') ||
+            err.message?.includes('cargo') ||
+            err.code === '42703' ||
+            err.code === 'PGRST204'
+          )
+        );
+
+        if (erroColunaInsert(error)) {
+          const fallbackOpComPermissoes = {
             nome: novoOp.nome,
             login: novoOp.login,
             senha: novoOp.senha,
             nivel_acesso: novoOp.nivel_acesso,
+            nivel_acesso_custom_id: novoOp.nivel_acesso_custom_id,
+            perfil: novoOp.perfil,
+            foto_url: novoOp.foto_url,
             condominio_id: novoOp.condominio_id,
+            permissoes: permissoesFinais,
             ativo: Boolean(ativoOperador)
           };
-          const retry = await supabase.from('operadores').insert([fallbackOp]).select().single();
-          error = retry.error;
-          opCriado = retry.data;
+          const retryComPerms = await supabase.from('operadores').insert([fallbackOpComPermissoes]).select().single();
+          error = retryComPerms.error;
+          opCriado = retryComPerms.data;
+
+          if (erroColunaInsert(error)) {
+            console.warn('Fallback mínimo: cadastrando operador sem colunas extras de RBAC/permissoes/funcao...');
+            const fallbackOp = {
+              nome: novoOp.nome,
+              login: novoOp.login,
+              senha: novoOp.senha,
+              nivel_acesso: novoOp.nivel_acesso,
+              condominio_id: novoOp.condominio_id,
+              ativo: Boolean(ativoOperador)
+            };
+            const retry = await supabase.from('operadores').insert([fallbackOp]).select().single();
+            error = retry.error;
+            opCriado = retry.data;
+          }
         }
 
         if (error) throw error;
 
         const opIdSalvo = opCriado?.id || novoOp.login;
-        await salvarPermissoesOperador(opIdSalvo, permissoesOperador, novoOp.login);
+        await salvarPermissoesOperador(opIdSalvo, permissoesFinais, novoOp.login);
         if (typeof localStorage !== 'undefined') {
-          if (opIdSalvo) localStorage.setItem(`porttohub_operador_funcao_${opIdSalvo}`, funcaoFinal);
-          if (novoOp.login) localStorage.setItem(`porttohub_operador_funcao_${novoOp.login.toLowerCase()}`, funcaoFinal);
+          if (opIdSalvo) {
+            localStorage.setItem(`infport_sindica_unidade_${opIdSalvo}`, unidadeFinal);
+            localStorage.setItem(`porttohub_operador_funcao_${opIdSalvo}`, funcaoFinal);
+          }
+          if (novoOp.login) {
+            localStorage.setItem(`infport_sindica_unidade_${novoOp.login.toLowerCase()}`, unidadeFinal);
+            localStorage.setItem(`porttohub_operador_funcao_${novoOp.login.toLowerCase()}`, funcaoFinal);
+          }
         }
 
         const opFinalParaEstado = {
           ...(opCriado || novoOp),
           funcao: funcaoFinal,
           cargo: funcaoFinal,
-          permissoes: permissoesOperador
+          unidade: unidadeFinal,
+          permissoes: permissoesFinais
         };
 
         setOperadores(prev => {
           const atualizados = [...prev.filter(o => o.id !== opFinalParaEstado.id), opFinalParaEstado];
-          salvarCacheLocal('operadores', atualizados, 'global');
+          salvarCacheLocal('operadores', atualizados, !eAdmin ? (usuarioLogado?.condominio_id || 'local') : 'global');
           return atualizados;
         });
         window.dispatchEvent(new CustomEvent('operadores_atualizados'));
@@ -2706,7 +2787,17 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                 className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition cursor-pointer flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
               >
                 <Save className="w-4 h-4" />
-                <span>{loading ? 'Salvando...' : idEdicao ? 'Salvar Alterações' : 'Salvar Condomínio'}</span>
+                <span>
+                  {loading
+                    ? 'Salvando...'
+                    : idEdicao
+                    ? 'Salvar Alterações'
+                    : tipoFormulario === 'condominio'
+                    ? 'Salvar Condomínio'
+                    : tipoFormulario === 'operador'
+                    ? 'Salvar Operador'
+                    : 'Salvar Morador'}
+                </span>
               </button>
             </div>
           </div>
@@ -5052,6 +5143,18 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                   </span>
                 )}
               </button>
+
+              {podeCadastrarMorador && (
+                <button
+                  type="button"
+                  onClick={() => abrirNovoMorador()}
+                  className="ml-auto px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer active:scale-95 shrink-0"
+                  title="Cadastrar novo morador"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Novo Morador</span>
+                </button>
+              )}
             </div>
 
             {/* Painel de Busca e Filtro Selecionável Aberto Dinamicamente via Ícone de Filtrar */}
@@ -5484,7 +5587,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                             >
                               <Eye className="w-4 h-4" />
                             </button>
-                            {podeGerenciarMoradores && (
+                            {podeEditarMorador && (
                               <button
                                 type="button"
                                 onClick={() => prepararEdicaoMorador(m)}
@@ -5494,7 +5597,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                                 <span>Editar</span>
                               </button>
                             )}
-                            {podeGerenciarMoradores && podeExcluirCadastros && (
+                            {podeExcluirMorador && (
                               <button
                                 type="button"
                                 onClick={() => excluirMorador(m)}
@@ -5515,7 +5618,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                 <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 space-y-2">
                   <Home className="w-10 h-10 text-slate-300 mx-auto" />
                   <p className="text-xs text-slate-500">Nenhum morador encontrado com os filtros atuais.</p>
-                  {podeGerenciarMoradores && (
+                  {podeCadastrarMorador && (
                     <button
                       onClick={() => abrirNovoMorador()}
                       className="px-4 py-2 bg-purple-600 text-white rounded-xl text-xs font-bold cursor-pointer"
@@ -5819,7 +5922,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
               </div>
 
               {/* Botão de Adicionar Morador nesta Unidade */}
-              {podeGerenciarMoradores && (
+              {podeCadastrarMorador && (
                 <div className="shrink-0">
                   <button
                     type="button"
@@ -5889,7 +5992,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                             <Eye className="w-4 h-4" />
                           </button>
 
-                          {podeGerenciarMoradores && (
+                          {podeEditarMorador && (
                             <button
                               type="button"
                               onClick={() => prepararEdicaoMorador(m)}
@@ -5900,7 +6003,7 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                             </button>
                           )}
 
-                          {podeGerenciarMoradores && podeExcluirCadastros && (
+                          {podeExcluirMorador && (
                             <button
                               type="button"
                               onClick={() => excluirMorador(m)}
@@ -6784,6 +6887,111 @@ export default function Cadastros({ usuarioLogado, condominioAtivoProp, onTrocar
                     <span>Confirmar e Excluir</span>
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Dossiê / Visualização Somente Leitura do Morador */}
+      {moradorDetalheModal && (
+        <div
+          className="fixed inset-0 z-[75] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4"
+          onClick={() => setMoradorDetalheModal(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 max-w-md w-full p-5 space-y-4 shadow-2xl animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3 min-w-0">
+                {moradorDetalheModal.foto_url ? (
+                  <img
+                    src={moradorDetalheModal.foto_url}
+                    alt={moradorDetalheModal.nome}
+                    className="w-12 h-12 rounded-2xl object-cover border-2 border-purple-400 shrink-0"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-800 font-black text-sm flex items-center justify-center shrink-0 border border-purple-200">
+                    {moradorDetalheModal.nome ? moradorDetalheModal.nome.slice(0, 2).toUpperCase() : 'MO'}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <h4 className="font-black text-sm sm:text-base text-slate-900 dark:text-white truncate">
+                    {moradorDetalheModal.nome}
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {eEstruturaCasasAtivo ? `Casa ${moradorDetalheModal.unidade}` : `${moradorDetalheModal.bloco ? `${moradorDetalheModal.bloco} - ` : ''}Ap. ${moradorDetalheModal.unidade}`} • {moradorDetalheModal.tipo || 'Morador'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMoradorDetalheModal(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-xl transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 flex justify-between gap-2">
+                <span className="font-bold text-slate-500">Telefone:</span>
+                <span className="font-semibold">{moradorDetalheModal.telefone || 'Não informado'}</span>
+              </div>
+              {moradorDetalheModal.cpf && (
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 flex justify-between gap-2">
+                  <span className="font-bold text-slate-500">CPF:</span>
+                  <span className="font-mono">{moradorDetalheModal.cpf}</span>
+                </div>
+              )}
+              {moradorDetalheModal.rg && (
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 flex justify-between gap-2">
+                  <span className="font-bold text-slate-500">RG:</span>
+                  <span className="font-mono">{moradorDetalheModal.rg}</span>
+                </div>
+              )}
+              {moradorDetalheModal.veiculo_placa && (
+                <div className="p-2.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 flex justify-between gap-2">
+                  <span className="font-bold text-amber-800 dark:text-amber-300">Veículo:</span>
+                  <span className="font-bold">{moradorDetalheModal.veiculo_placa} {moradorDetalheModal.veiculo_modelo ? `(${moradorDetalheModal.veiculo_modelo})` : ''}</span>
+                </div>
+              )}
+              {moradorDetalheModal.tag_rfid && (
+                <div className="p-2.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/60 flex justify-between gap-2">
+                  <span className="font-bold text-indigo-800 dark:text-indigo-300">Tag RFID:</span>
+                  <span className="font-mono font-bold">{moradorDetalheModal.tag_rfid}</span>
+                </div>
+              )}
+              {moradorDetalheModal.observacoes && (
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-1">
+                  <span className="font-bold text-slate-500 block">Observações:</span>
+                  <p className="text-slate-700 dark:text-slate-200">{moradorDetalheModal.observacoes}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              {podeEditarMorador && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const m = moradorDetalheModal;
+                    setMoradorDetalheModal(null);
+                    prepararEdicaoMorador(m);
+                  }}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  <span>Editar Morador</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setMoradorDetalheModal(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                Fechar
               </button>
             </div>
           </div>
